@@ -1,0 +1,17 @@
+[package]
+
+name = "imap"
+version = "0.0.1"
+authors = ["Matt McCoy <mattnenterprise@yahoo.com>"]
+repository = "https://github.com/mattnenterprise/rust-imap"
+description = "IMAP client for Rust"
+readme = "README.md"
+license = "MIT"
+
+[dependencies]
+openssl = "*"
+regex = "*"
+
+[[bin]]
+name = "example"
+path = "example.rs"
