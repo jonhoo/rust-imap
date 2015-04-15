@@ -18,7 +18,7 @@ fn main() {
 	match imap_socket.capability() {
 		Ok(capabilities) => {
 			for capability in capabilities.iter() {
-				//println!("{}", capability);
+				println!("{}", capability);
 			}
 		},
 		Err(_) => println!("Error retreiving capabilities")
