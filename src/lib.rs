@@ -1,4 +1,3 @@
-#![feature(collections, convert)]
 #![crate_name = "imap"]
 #![crate_type = "lib"]
 

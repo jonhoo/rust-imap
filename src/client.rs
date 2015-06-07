@@ -46,12 +46,12 @@ impl IMAPStream {
 
 	//LOGIN
 	pub fn login(&mut self, username: & str, password: & str) -> Result<()> {
-		self.run_command_and_check_ok(format!("LOGIN {} {}", username, password).as_str())
+		self.run_command_and_check_ok(&format!("LOGIN {} {}", username, password).to_string())
 	}
 
 	//SELECT
 	pub fn select(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
-		match self.run_command(format!("SELECT {}", mailbox_name).as_str()) {
+		match self.run_command(&format!("SELECT {}", mailbox_name).to_string()) {
 			Ok(lines) => IMAPStream::parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
@@ -100,7 +100,7 @@ impl IMAPStream {
 		};
 
 		let mut mailbox = IMAPMailbox{
-			flags: String::from_str(""),
+			flags: "".to_string(),
 			exists: 0,
 			recent: 0,
 			unseen: None,
@@ -118,7 +118,7 @@ impl IMAPStream {
 				mailbox.recent = cap.at(1).unwrap().parse::<u32>().unwrap();
 			} else if flags_regex.is_match(line) {
 				let cap = flags_regex.captures(line).unwrap();
-				mailbox.flags = String::from_str(cap.at(1).unwrap());
+				mailbox.flags = cap.at(1).unwrap().to_string();
 			} else if unseen_regex.is_match(line) {
 				let cap = unseen_regex.captures(line).unwrap();
 				mailbox.unseen = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
@@ -130,7 +130,7 @@ impl IMAPStream {
 				mailbox.uid_next = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
 			} else if permanent_flags_regex.is_match(line) {
 				let cap = permanent_flags_regex.captures(line).unwrap();
-				mailbox.permanent_flags = Some(String::from_str(cap.at(1).unwrap()));
+				mailbox.permanent_flags = Some(cap.at(1).unwrap().to_string());
 			}
 		}
 
@@ -139,7 +139,7 @@ impl IMAPStream {
 
 	//EXAMINE
 	pub fn examine(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
-		match self.run_command(format!("EXAMINE {}", mailbox_name).as_str()) {
+		match self.run_command(&format!("EXAMINE {}", mailbox_name).to_string()) {
 			Ok(lines) => IMAPStream::parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
@@ -147,7 +147,7 @@ impl IMAPStream {
 
 	//FETCH
 	pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<String>> {
-		self.run_command(format!("FETCH {} {}", sequence_set, query).as_str())
+		self.run_command(&format!("FETCH {} {}", sequence_set, query).to_string())
 	}
 
 	//NOOP
@@ -162,32 +162,32 @@ impl IMAPStream {
 
 	//CREATE
 	pub fn create(&mut self, mailbox_name: &str) -> Result<()> {
-		self.run_command_and_check_ok(format!("CREATE {}", mailbox_name).as_str())
+		self.run_command_and_check_ok(&format!("CREATE {}", mailbox_name).to_string())
 	}
 
 	//DELETE
 	pub fn delete(&mut self, mailbox_name: &str) -> Result<()> {
-		self.run_command_and_check_ok(format!("DELETE {}", mailbox_name).as_str())
+		self.run_command_and_check_ok(&format!("DELETE {}", mailbox_name).to_string())
 	}
 
 	//RENAME
 	pub fn rename(&mut self, current_mailbox_name: &str, new_mailbox_name: &str) -> Result<()> {
-		self.run_command_and_check_ok(format!("RENAME {} {}", current_mailbox_name, new_mailbox_name).as_str())
+		self.run_command_and_check_ok(&format!("RENAME {} {}", current_mailbox_name, new_mailbox_name).to_string())
 	}
 
 	//SUBSCRIBE
 	pub fn subscribe(&mut self, mailbox: &str) -> Result<()> {
-		self.run_command_and_check_ok(format!("SUBSCRIBE {}", mailbox).as_str())
+		self.run_command_and_check_ok(&format!("SUBSCRIBE {}", mailbox).to_string())
 	}
 
 	//UNSUBSCRIBE
 	pub fn unsubscribe(&mut self, mailbox: &str) -> Result<()> {
-		self.run_command_and_check_ok(format!("UNSUBSCRIBE {}", mailbox).as_str())
+		self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", mailbox).to_string())
 	}
 
 	//CAPABILITY
 	pub fn capability(&mut self) -> Result<Vec<String>> {
-		match self.run_command(format!("CAPABILITY").as_str()) {
+		match self.run_command(&format!("CAPABILITY").to_string()) {
 			Ok(lines) => IMAPStream::parse_capability(lines),
 			Err(e) => Err(e)
 		}
@@ -209,7 +209,7 @@ impl IMAPStream {
 			if capability_regex.is_match(line) {
 				let cap = capability_regex.captures(line).unwrap();
 				let capabilities_str = cap.at(1).unwrap();
-				return Ok(capabilities_str.split(' ').map(|x| String::from_str(x)).collect());
+				return Ok(capabilities_str.split(' ').map(|x| x.to_string()).collect());
 			}
 		}
 
@@ -218,7 +218,7 @@ impl IMAPStream {
 
 	//COPY
 	pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
-		self.run_command_and_check_ok(format!("COPY {} {}", sequence_set, mailbox_name).as_str())
+		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
 	}
 
 	fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
@@ -229,7 +229,7 @@ impl IMAPStream {
 	}
 
 	fn run_command(&mut self, untagged_command: &str) -> Result<Vec<String>> {
-		let command = self.create_command(String::from_str(untagged_command));
+		let command = self.create_command(untagged_command.to_string());
 
 		match self.write_str(&*command) {
 			Ok(_) => (),
@@ -260,7 +260,7 @@ impl IMAPStream {
 			}
 		}
 
-		return Err(Error::new(ErrorKind::Other, format!("Invalid Response: {}", last_line).as_str()));
+		return Err(Error::new(ErrorKind::Other, format!("Invalid Response: {}", last_line).to_string()));
 	}
 
 	fn write_str(&mut self, s: &str) -> Result<()> {
