@@ -10,7 +10,7 @@ enum IMAPStreamTypes {
 
 pub struct IMAPStream {
 	stream: IMAPStreamTypes,
-	pub host: &'static str,
+	pub host: String,
 	pub port: u16,
 	tag: u32,
 	tag_prefix: &'static str
@@ -28,12 +28,13 @@ pub struct IMAPMailbox {
 
 impl IMAPStream {
 
-	pub fn connect(host: &'static str, port: u16, ssl_context: Option<SslContext>) -> Result<IMAPStream> {
-		let connect_string = format!("{}:{}", host, port);
+	pub fn connect<S: Into<String>>(host: S, port: u16, ssl_context: Option<SslContext>) -> Result<IMAPStream> {
+                let host_string = host.into();
+		let connect_string = format!("{}:{}", host_string, port);
 		let tcp_stream = TcpStream::connect(&*connect_string).unwrap();
 		let mut socket = match ssl_context {
-			Some(context) => IMAPStream { stream: IMAPStreamTypes::Ssl(SslStream::new(&context, tcp_stream).unwrap()), host: host, port: port, tag: 1, tag_prefix: "a"},
-			None => IMAPStream { stream: IMAPStreamTypes::Basic(tcp_stream), host: host, port: port, tag: 1, tag_prefix: "a"},
+			Some(context) => IMAPStream { stream: IMAPStreamTypes::Ssl(SslStream::new(&context, tcp_stream).unwrap()), host: host_string, port: port, tag: 1, tag_prefix: "a"},
+			None => IMAPStream { stream: IMAPStreamTypes::Basic(tcp_stream), host: host_string, port: port, tag: 1, tag_prefix: "a"},
 		};
 
 		match socket.read_greeting() {
