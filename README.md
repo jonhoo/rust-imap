@@ -17,7 +17,7 @@ imap = "*"
 ```
 
 ### Usage
-```rs
+```rust
 extern crate imap;
 extern crate openssl;
 
