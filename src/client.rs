@@ -222,14 +222,14 @@ impl IMAPStream {
 		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
 	}
 
-	fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
+	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
 		match self.run_command(command) {
 			Ok(lines) => IMAPStream::parse_response_ok(lines),
 			Err(e) => Err(e)
 		}
 	}
 
-	fn run_command(&mut self, untagged_command: &str) -> Result<Vec<String>> {
+	pub fn run_command(&mut self, untagged_command: &str) -> Result<Vec<String>> {
 		let command = self.create_command(untagged_command.to_string());
 
 		match self.write_str(&*command) {
