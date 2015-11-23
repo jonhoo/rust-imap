@@ -33,7 +33,7 @@ impl IMAPStream {
 		let connect_string = format!("{}:{}", host_string, port);
 		let tcp_stream = TcpStream::connect(&*connect_string).unwrap();
 		let mut socket = match ssl_context {
-			Some(context) => IMAPStream { stream: IMAPStreamTypes::Ssl(SslStream::new(&context, tcp_stream).unwrap()), host: host_string, port: port, tag: 1, tag_prefix: "a"},
+			Some(context) => IMAPStream { stream: IMAPStreamTypes::Ssl(SslStream::connect(&context, tcp_stream).unwrap()), host: host_string, port: port, tag: 1, tag_prefix: "a"},
 			None => IMAPStream { stream: IMAPStreamTypes::Basic(tcp_stream), host: host_string, port: port, tag: 1, tag_prefix: "a"},
 		};
 
