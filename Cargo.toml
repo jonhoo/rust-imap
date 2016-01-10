@@ -6,7 +6,7 @@ authors = ["Matt McCoy <mattnenterprise@yahoo.com>"]
 repository = "https://github.com/mattnenterprise/rust-imap"
 description = "IMAP client for Rust"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0/MIT"
 
 [dependencies]
 openssl = "*"
