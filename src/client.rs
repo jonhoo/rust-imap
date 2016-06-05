@@ -31,7 +31,7 @@ impl IMAPStream {
 	pub fn connect<S: Into<String>>(host: S, port: u16, ssl_context: Option<SslContext>) -> Result<IMAPStream> {
                 let host_string = host.into();
 		let connect_string = format!("{}:{}", host_string, port);
-		let tcp_stream = TcpStream::connect(&*connect_string).unwrap();
+		let tcp_stream = try!(TcpStream::connect(&*connect_string));
 		let mut socket = match ssl_context {
 			Some(context) => IMAPStream { stream: IMAPStreamTypes::Ssl(SslStream::connect(&context, tcp_stream).unwrap()), host: host_string, port: port, tag: 1, tag_prefix: "a"},
 			None => IMAPStream { stream: IMAPStreamTypes::Basic(tcp_stream), host: host_string, port: port, tag: 1, tag_prefix: "a"},
@@ -333,4 +333,10 @@ impl IMAPStream {
 		let command = format!("{}{} {}\r\n", self.tag_prefix, self.tag, command);
 		return command;
 	}
+}
+
+#[test]
+fn connect() {
+    let imap = IMAPStream::connect("this-is-not-an-imap-server", 143, None);
+    assert!(imap.is_err());
 }
