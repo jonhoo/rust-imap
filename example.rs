@@ -6,7 +6,7 @@ use imap::client::IMAPStream;
 use imap::client::IMAPMailbox;
 
 fn main() {
-	let mut imap_socket = match IMAPStream::connect("imap.gmail.com", 993, Some(SslContext::new(SslMethod::Sslv23).unwrap())) {
+	let mut imap_socket = match IMAPStream::connect(("imap.gmail.com", 993), Some(SslContext::new(SslMethod::Sslv23).unwrap())) {
 		Ok(s) => s,
 		Err(e) => panic!("{}", e)
 	};
@@ -14,7 +14,7 @@ fn main() {
 	if let Err(e) = imap_socket.login("username", "password") {
 		println!("Error: {}", e)
 	};
-		
+
 	match imap_socket.capability() {
 		Ok(capabilities) => {
 			for capability in capabilities.iter() {
@@ -42,5 +42,5 @@ fn main() {
 
 	if let Err(e) = imap_socket.logout() {
 		println!("Error: {}", e)
-	};	
+	};
 }
