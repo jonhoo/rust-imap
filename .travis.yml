@@ -1,23 +1,18 @@
 language: rust
 rust:
-  -stable
-
-# load travis-cargo
+-stable
 before_install:
-  - |
-      pip install 'travis-cargo<0.2' --user &&
-      export PATH=$HOME/.local/bin:$PATH
-
+- |
+    pip install 'travis-cargo<0.2' --user &&
+    export PATH=$HOME/.local/bin:$PATH
 # the main build
 script:
-  - |
-      travis-cargo build &&
-      travis-cargo test &&
-      travis-cargo --only stable doc
-
+- |
+    travis-cargo build &&
+    travis-cargo test &&
+    travis-cargo --only stable doc
 after_success:
-  - travis-cargo --only stable doc-upload
-
+- travis-cargo --only stable doc-upload
 env:
   global:
     secure: E/K+u8fhwLNKDvjG6kiuDumrXY/RMZOMa7SS88qhsPKStdHjNmaCwUFUe76RJDzMCqeN31u2mUwvMfMK3xDShABQjoD/tze/KbV5v6VTeL4vplHwZh6TzwaYKKBtNxL1q47A8FSTNK9PUbT+gEIAEY9Nadho7wKrYfT+CQxcb2A=
