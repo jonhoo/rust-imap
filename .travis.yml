@@ -1,6 +1,6 @@
 language: rust
 rust:
--stable
+- stable
 before_install:
 - |
     pip install 'travis-cargo<0.2' --user &&
