@@ -333,6 +333,6 @@ impl IMAPStream {
 
 #[test]
 fn connect() {
-    let imap = IMAPStream::connect("this-is-not-an-imap-server", 143, None);
+    let imap = IMAPStream::connect(("this-is-not-an-imap-server", 143), None);
     assert!(imap.is_err());
 }
