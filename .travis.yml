@@ -12,5 +12,3 @@ script:
   travis-cargo --only stable doc
 after_success:
 - travis-cargo --only stable doc-upload
-dd:
-  secure: ll7jIAIihXeyQPxoKyyIVQaawNPJilZFPPJ08ZX6irytSgLF3E3T2pDCU/8+DnGZDxkadCMMybPDW7tKLeSXrgEmI50KVbgicvKdIhPVKjPIemucWUjFjF8b5y/PQ1IqT+azu2+R2M+foKCvbME3eKcQQkZb7jn2eKaXtSqr22g=
