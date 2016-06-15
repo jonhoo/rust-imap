@@ -1,16 +1,22 @@
 [package]
 
 name = "imap"
-version = "0.0.5"
+version = "0.0.6"
 authors = ["Matt McCoy <mattnenterprise@yahoo.com>"]
+documentation = "http://mattnenterprise.github.io/rust-imap"
 repository = "https://github.com/mattnenterprise/rust-imap"
 description = "IMAP client for Rust"
 readme = "README.md"
 license = "Apache-2.0/MIT"
+keywords = ["imap"]
+
+[lib]
+name = "imap"
+path = "src/lib.rs"
 
 [dependencies]
-openssl = "*"
-regex = "*"
+openssl = "0.7.13"
+regex = "0.1.71"
 
 [[bin]]
 name = "example"
