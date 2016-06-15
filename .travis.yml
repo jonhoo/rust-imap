@@ -3,7 +3,7 @@ rust:
   -stable
 
 # load travis-cargo
-before_script:
+before_install:
   - |
       pip install 'travis-cargo<0.2' --user &&
       export PATH=$HOME/.local/bin:$PATH
