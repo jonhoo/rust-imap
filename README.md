@@ -3,10 +3,13 @@ rust-imap
 IMAP Client for Rust
 
 This client has SSL support. SSL is configured using an SSLContext that is passed into the connect method of a IMAPStream. If no SSL
-support is wanted just pass in None. The library rust-openssl is used to support SSL for this project. 
+support is wanted just pass in None. The library rust-openssl is used to support SSL for this project.
 
 
 [![Build Status](https://travis-ci.org/mattnenterprise/rust-imap.svg)](https://travis-ci.org/mattnenterprise/rust-imap)
+
+[Documentation](http://mattnenterprise.github.io/rust-imap),
+[crates.io](https://crates.io/crates/imap).
 
 ### Installation
 
@@ -34,7 +37,7 @@ fn main() {
     if let Err(e) = imap_socket.login("username", "password") {
         println!("Error: {}", e)
     };
-        
+
     match imap_socket.capability() {
         Ok(capabilities) => {
             for capability in capabilities.iter() {
