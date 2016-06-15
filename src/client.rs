@@ -8,6 +8,7 @@ enum IMAPStreamTypes {
 	Ssl(SslStream<TcpStream>)
 }
 
+/// Stream to interface with the IMAP server. This interface is only for the command stream.
 pub struct IMAPStream {
 	stream: IMAPStreamTypes,
 	tag: u32,
@@ -25,7 +26,7 @@ pub struct IMAPMailbox {
 }
 
 impl IMAPStream {
-
+	/// Creates an IMAP Stream.
 	pub fn connect<A: ToSocketAddrs>(addr: A, ssl_context: Option<SslContext>) -> Result<IMAPStream> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
@@ -41,12 +42,12 @@ impl IMAPStream {
 		}
 	}
 
-	//LOGIN
+	/// Log in to the IMAP server.
 	pub fn login(&mut self, username: & str, password: & str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("LOGIN {} {}", username, password).to_string())
 	}
 
-	//SELECT
+	/// Selects a mailbox
 	pub fn select(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
 		match self.run_command(&format!("SELECT {}", mailbox_name).to_string()) {
 			Ok(lines) => IMAPStream::parse_select_or_examine(lines),
@@ -134,7 +135,7 @@ impl IMAPStream {
 		return Ok(mailbox);
 	}
 
-	//EXAMINE
+	/// Examine is identical to Select, but the selected mailbox is identified as read-only
 	pub fn examine(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
 		match self.run_command(&format!("EXAMINE {}", mailbox_name).to_string()) {
 			Ok(lines) => IMAPStream::parse_select_or_examine(lines),
@@ -142,47 +143,49 @@ impl IMAPStream {
 		}
 	}
 
-	//FETCH
+	/// Fetch retreives data associated with a message in the mailbox.
 	pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<String>> {
 		self.run_command(&format!("FETCH {} {}", sequence_set, query).to_string())
 	}
 
-	//NOOP
+	/// Noop always succeeds, and it does nothing.
 	pub fn noop(&mut self) -> Result<()> {
 		self.run_command_and_check_ok("NOOP")
 	}
 
-	//LOGOUT
+	/// Logout informs the server that the client is done with the connection.
 	pub fn logout(&mut self) -> Result<()> {
 		self.run_command_and_check_ok("LOGOUT")
 	}
 
-	//CREATE
+	/// Create creates a mailbox with the given name.
 	pub fn create(&mut self, mailbox_name: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("CREATE {}", mailbox_name).to_string())
 	}
 
-	//DELETE
+	/// Delete permanently removes the mailbox with the given name.
 	pub fn delete(&mut self, mailbox_name: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("DELETE {}", mailbox_name).to_string())
 	}
 
-	//RENAME
+	/// Rename changes the name of a mailbox.
 	pub fn rename(&mut self, current_mailbox_name: &str, new_mailbox_name: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("RENAME {} {}", current_mailbox_name, new_mailbox_name).to_string())
 	}
 
-	//SUBSCRIBE
+	/// Subscribe adds the specified mailbox name to the server's set of "active" or "subscribed"
+	/// mailboxes as returned by the LSUB command.
 	pub fn subscribe(&mut self, mailbox: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("SUBSCRIBE {}", mailbox).to_string())
 	}
 
-	//UNSUBSCRIBE
+	/// Unsubscribe removes the specified mailbox name from the server's set of "active" or "subscribed"
+	/// mailboxes as returned by the LSUB command.
 	pub fn unsubscribe(&mut self, mailbox: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", mailbox).to_string())
 	}
 
-	//CAPABILITY
+	/// Capability requests a listing of capabilities that the server supports.
 	pub fn capability(&mut self) -> Result<Vec<String>> {
 		match self.run_command(&format!("CAPABILITY").to_string()) {
 			Ok(lines) => IMAPStream::parse_capability(lines),
@@ -213,7 +216,7 @@ impl IMAPStream {
 		Err(Error::new(ErrorKind::Other, "Error parsing capabilities response"))
 	}
 
-	//COPY
+	/// Copy copies the specified message to the end of the specified destination mailbox.
 	pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
 	}
