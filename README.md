@@ -7,9 +7,9 @@ support is wanted just pass in None. The library rust-openssl is used to support
 
 
 [![Build Status](https://travis-ci.org/mattnenterprise/rust-imap.svg)](https://travis-ci.org/mattnenterprise/rust-imap)
+[![crates.io](http://meritbadge.herokuapp.com/imap)](https://crates.io/crates/imap)
 
-[Documentation](http://mattnenterprise.github.io/rust-imap),
-[crates.io](https://crates.io/crates/imap).
+[Documentation](http://mattnenterprise.github.io/rust-imap)
 
 ### Installation
 
