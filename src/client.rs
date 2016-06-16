@@ -216,6 +216,23 @@ impl IMAPStream {
 		Err(Error::new(ErrorKind::Other, "Error parsing capabilities response"))
 	}
 
+	/// Expunge permanently removes all messages that have the \Deleted flag set from the currently
+	/// selected mailbox.
+	pub fn expunge(&mut self) -> Result<()> {
+		self.run_command_and_check_ok("CHECK")
+	}
+
+	/// Check requests a checkpoint of the currently selected mailbox.
+	pub fn check(&mut self) -> Result<()> {
+		self.run_command_and_check_ok("CHECK")
+	}
+
+	/// Close permanently removes all messages that have the \Deleted flag set from the currently
+	/// selected mailbox, and returns to the authenticated state from the selected state.
+	pub fn close(&mut self) -> Result<()> {
+		self.run_command_and_check_ok("CLOSE")
+	}
+
 	/// Copy copies the specified message to the end of the specified destination mailbox.
 	pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
