@@ -386,6 +386,19 @@ mod tests {
 	}
 
 	#[test]
+	fn check() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK CHECK completed\r\n".to_vec();
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		match client.check() {
+			Err(err) => panic!("Error reading response: {}", err),
+			_ => {},
+		}
+		assert!(client.stream.written_buf == b"a1 CHECK\r\n".to_vec(), "Invalid close command");
+	}
+
+	#[test]
 	fn close() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CLOSE completed\r\n".to_vec();
