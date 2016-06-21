@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Read, Result, Write};
 use regex::Regex;
 
 static TAG_PREFIX: &'static str = "a";
-const INITIAL_TAG: i32 = 1;
+const INITIAL_TAG: u32 = 1;
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
 pub struct IMAPStream<T> {
@@ -68,40 +68,19 @@ impl<T: Read+Write> IMAPStream<T> {
 	}
 
 	fn parse_select_or_examine(&mut self, lines: Vec<String>) -> Result<IMAPMailbox> {
-		let exists_regex = match Regex::new(r"^\* (\d+) EXISTS\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let exists_regex = Regex::new(r"^\* (\d+) EXISTS\r\n").unwrap();
 
-		let recent_regex = match Regex::new(r"^\* (\d+) RECENT\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let recent_regex = Regex::new(r"^\* (\d+) RECENT\r\n").unwrap();
 
-		let flags_regex = match Regex::new(r"^\* FLAGS (.+)\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let flags_regex = Regex::new(r"^\* FLAGS (.+)\r\n").unwrap();
 
-		let unseen_regex = match Regex::new(r"^OK \[UNSEEN (\d+)\](.*)\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let unseen_regex = Regex::new(r"^OK \[UNSEEN (\d+)\](.*)\r\n").unwrap();
 
-		let uid_validity_regex = match Regex::new(r"^OK \[UIDVALIDITY (\d+)\](.*)\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let uid_validity_regex = Regex::new(r"^OK \[UIDVALIDITY (\d+)\](.*)\r\n").unwrap();
 
-		let uid_next_regex = match Regex::new(r"^OK \[UIDNEXT (\d+)\](.*)\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let uid_next_regex = Regex::new(r"^OK \[UIDNEXT (\d+)\](.*)\r\n").unwrap();
 
-		let permanent_flags_regex = match Regex::new(r"^OK \[PERMANENTFLAGS (.+)\]\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let permanent_flags_regex = Regex::new(r"^OK \[PERMANENTFLAGS (.+)\]\r\n").unwrap();
 
 		//Check Ok
 		match self.parse_response_ok(lines.clone()) {
