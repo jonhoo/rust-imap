@@ -327,3 +327,80 @@ impl<T: Read+Write> Client<T> {
 		return command;
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::io::{Read, Result, Write, Error, ErrorKind};
+
+	struct MockStream {
+		read_buf: Vec<u8>,
+		read_pos: usize,
+		written_buf: Vec<u8>
+	}
+
+	impl MockStream {
+		fn new(read_buf: Vec<u8>) -> MockStream {
+			MockStream{
+				read_buf: read_buf,
+				read_pos: 0,
+				written_buf: Vec::new()
+			}
+		}
+	}
+
+	impl Read for MockStream {
+		fn read(&mut self, buf: &mut[u8]) -> Result<usize> {
+			if self.read_pos >= self.read_buf.len() {
+				return Err(Error::new(ErrorKind::UnexpectedEof, "EOF"))
+			}
+			let write_len = min(buf.len(), self.read_buf.len() - self.read_pos);
+			let max_pos = self.read_pos + write_len;
+			for x in self.read_pos..max_pos {
+				buf[x - self.read_pos] = self.read_buf[x];
+			}
+			self.read_pos += write_len;
+			Ok(write_len)
+		}
+	}
+
+	impl Write for MockStream {
+		fn write(&mut self, buf: &[u8]) -> Result<usize> {
+			self.written_buf.extend_from_slice(buf);
+			Ok(buf.len())
+		}
+
+		fn flush(&mut self) -> Result<()> {
+			Ok(())
+		}
+	}
+
+	fn min(a: usize, b: usize) -> usize {
+		if a < b {
+			a
+		} else if b < a {
+			b
+		} else {
+			a
+		}
+	}
+
+	fn create_client_with_mock_stream(mock_stream: MockStream) -> Client<MockStream> {
+		Client {
+			stream: mock_stream,
+			tag: 1
+		}
+	}
+
+	#[test]
+	fn close() {
+		let response = b"a1 OK CLOSE completed\r\n".to_vec();
+		let mock_stream = MockStream::new(response);
+		let mut imap_stream = create_client_with_mock_stream(mock_stream);
+		match imap_stream.close() {
+			Err(err) => panic!("Error reading response: {}", err),
+			_ => {},
+		}
+		assert!(imap_stream.stream.written_buf == b"a1 CLOSE\r\n".to_vec(), "Invalid close command");
+	}
+}
