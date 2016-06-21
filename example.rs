@@ -6,7 +6,7 @@ use imap::client::IMAPStream;
 use imap::client::IMAPMailbox;
 
 fn main() {
-	let mut imap_socket = match IMAPStream::connect(("imap.gmail.com", 993), Some(SslContext::new(SslMethod::Sslv23).unwrap())) {
+	let mut imap_socket = match IMAPStream::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()) {
 		Ok(s) => s,
 		Err(e) => panic!("{}", e)
 	};

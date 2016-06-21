@@ -3,16 +3,13 @@ use openssl::ssl::{SslContext, SslStream};
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use regex::Regex;
 
-enum IMAPStreamTypes {
-	Basic(TcpStream),
-	Ssl(SslStream<TcpStream>)
-}
+static TAG_PREFIX: &'static str = "a";
+const INITIAL_TAG: i32 = 1;
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
-pub struct IMAPStream {
-	stream: IMAPStreamTypes,
-	tag: u32,
-	tag_prefix: &'static str
+pub struct IMAPStream<T> {
+	stream: T,
+	tag: u32
 }
 
 pub struct IMAPMailbox {
@@ -25,15 +22,12 @@ pub struct IMAPMailbox {
 	pub uid_validity: Option<u32>
 }
 
-impl IMAPStream {
-	/// Creates an IMAP Stream.
-	pub fn connect<A: ToSocketAddrs>(addr: A, ssl_context: Option<SslContext>) -> Result<IMAPStream> {
+impl IMAPStream<TcpStream> {
+	///
+	pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<IMAPStream<TcpStream>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let mut socket = match ssl_context {
-					Some(context) => IMAPStream { stream: IMAPStreamTypes::Ssl(SslStream::connect(&context, stream).unwrap()), tag: 1, tag_prefix: "a"},
-					None => IMAPStream { stream: IMAPStreamTypes::Basic(stream), tag: 1, tag_prefix: "a"},
-				};
+				let mut socket = IMAPStream { stream: stream, tag: INITIAL_TAG};
 
 				try!(socket.read_greeting());
 				Ok(socket)
@@ -41,6 +35,24 @@ impl IMAPStream {
 			Err(e) => Err(e)
 		}
 	}
+}
+
+impl IMAPStream<SslStream<TcpStream>> {
+	///
+	pub fn secure_connect<A: ToSocketAddrs>(addr: A, ssl_context: SslContext) -> Result<IMAPStream<SslStream<TcpStream>>> {
+		match TcpStream::connect(addr) {
+			Ok(stream) => {
+				let mut socket = IMAPStream { stream: SslStream::connect(&ssl_context, stream).unwrap(), tag: INITIAL_TAG};
+
+				try!(socket.read_greeting());
+				Ok(socket)
+			},
+			Err(e) => Err(e)
+		}
+	}
+}
+
+impl<T: Read+Write> IMAPStream<T> {
 
 	/// Log in to the IMAP server.
 	pub fn login(&mut self, username: & str, password: & str) -> Result<()> {
@@ -50,12 +62,12 @@ impl IMAPStream {
 	/// Selects a mailbox
 	pub fn select(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
 		match self.run_command(&format!("SELECT {}", mailbox_name).to_string()) {
-			Ok(lines) => IMAPStream::parse_select_or_examine(lines),
+			Ok(lines) => self.parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
 	}
 
-	fn parse_select_or_examine(lines: Vec<String>) -> Result<IMAPMailbox> {
+	fn parse_select_or_examine(&mut self, lines: Vec<String>) -> Result<IMAPMailbox> {
 		let exists_regex = match Regex::new(r"^\* (\d+) EXISTS\r\n") {
     		Ok(re) => re,
     		Err(err) => panic!("{}", err),
@@ -92,7 +104,7 @@ impl IMAPStream {
 		};
 
 		//Check Ok
-		match IMAPStream::parse_response_ok(lines.clone()) {
+		match self.parse_response_ok(lines.clone()) {
 			Ok(_) => (),
 			Err(e) => return Err(e)
 		};
@@ -138,7 +150,7 @@ impl IMAPStream {
 	/// Examine is identical to Select, but the selected mailbox is identified as read-only
 	pub fn examine(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
 		match self.run_command(&format!("EXAMINE {}", mailbox_name).to_string()) {
-			Ok(lines) => IMAPStream::parse_select_or_examine(lines),
+			Ok(lines) => self.parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
 	}
@@ -188,19 +200,19 @@ impl IMAPStream {
 	/// Capability requests a listing of capabilities that the server supports.
 	pub fn capability(&mut self) -> Result<Vec<String>> {
 		match self.run_command(&format!("CAPABILITY").to_string()) {
-			Ok(lines) => IMAPStream::parse_capability(lines),
+			Ok(lines) => self.parse_capability(lines),
 			Err(e) => Err(e)
 		}
 	}
 
-	fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
+	fn parse_capability(&mut self, lines: Vec<String>) -> Result<Vec<String>> {
 		let capability_regex = match Regex::new(r"^\* CAPABILITY (.*)\r\n") {
     		Ok(re) => re,
     		Err(err) => panic!("{}", err),
 		};
 
 		//Check Ok
-		match IMAPStream::parse_response_ok(lines.clone()) {
+		match self.parse_response_ok(lines.clone()) {
 			Ok(_) => (),
 			Err(e) => return Err(e)
 		};
@@ -240,7 +252,7 @@ impl IMAPStream {
 
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
 		match self.run_command(command) {
-			Ok(lines) => IMAPStream::parse_response_ok(lines),
+			Ok(lines) => self.parse_response_ok(lines),
 			Err(e) => Err(e)
 		}
 	}
@@ -248,7 +260,7 @@ impl IMAPStream {
 	pub fn run_command(&mut self, untagged_command: &str) -> Result<Vec<String>> {
 		let command = self.create_command(untagged_command.to_string());
 
-		match self.write_str(&*command) {
+		match self.stream.write_fmt(format_args!("{}", &*command)) {
 			Ok(_) => (),
 			Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to write")),
 		};
@@ -263,7 +275,7 @@ impl IMAPStream {
 		return ret;
 	}
 
-	fn parse_response_ok(lines: Vec<String>) -> Result<()> {
+	fn parse_response_ok(&mut self, lines: Vec<String>) -> Result<()> {
 		let ok_regex = match Regex::new(r"^([a-zA-Z0-9]+) ([a-zA-Z0-9]+)(.*)") {
     		Ok(re) => re,
     		Err(err) => panic!("{}", err),
@@ -280,34 +292,20 @@ impl IMAPStream {
 		return Err(Error::new(ErrorKind::Other, format!("Invalid Response: {}", last_line).to_string()));
 	}
 
-	fn write_str(&mut self, s: &str) -> Result<()> {
-		match self.stream {
-			IMAPStreamTypes::Ssl(ref mut stream) => stream.write_fmt(format_args!("{}", s)),
-			IMAPStreamTypes::Basic(ref mut stream) => stream.write_fmt(format_args!("{}", s)),
-		}
-	}
-
-	fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-		match self.stream {
-			IMAPStreamTypes::Ssl(ref mut stream) => stream.read(buf),
-			IMAPStreamTypes::Basic(ref mut stream) => stream.read(buf),
-		}
-	}
-
 	fn read_response(&mut self) -> Result<Vec<String>> {
 		//Carriage return
 		let cr = 0x0d;
 		//Line Feed
 		let lf = 0x0a;
 		let mut found_tag_line = false;
-		let start_str = format!("a{} ", self.tag);
+		let start_str = format!("{}{} ", TAG_PREFIX, self.tag);
 		let mut lines: Vec<String> = Vec::new();
 
 		while !found_tag_line {
 			let mut line_buffer: Vec<u8> = Vec::new();
 			while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != lf && line_buffer[line_buffer.len()-2] != cr) {
 					let byte_buffer: &mut [u8] = &mut [0];
-					match self.read(byte_buffer) {
+					match self.stream.read(byte_buffer) {
 						Ok(_) => {},
 						Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to read the response")),
 					}
@@ -335,7 +333,7 @@ impl IMAPStream {
 		let mut line_buffer: Vec<u8> = Vec::new();
 		while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != lf && line_buffer[line_buffer.len()-2] != cr) {
 				let byte_buffer: &mut [u8] = &mut [0];
-				match self.read(byte_buffer) {
+				match self.stream.read(byte_buffer) {
 					Ok(_) => {},
 					Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to read the response")),
 				}
@@ -346,13 +344,7 @@ impl IMAPStream {
 	}
 
 	fn create_command(&mut self, command: String) -> String {
-		let command = format!("{}{} {}\r\n", self.tag_prefix, self.tag, command);
+		let command = format!("{}{} {}\r\n", TAG_PREFIX, self.tag, command);
 		return command;
 	}
-}
-
-#[test]
-fn connect() {
-    let imap = IMAPStream::connect(("this-is-not-an-imap-server", 143), None);
-    assert!(imap.is_err());
 }
