@@ -27,7 +27,10 @@ impl Client<TcpStream> {
 	pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let mut socket = Client { stream: stream, tag: INITIAL_TAG};
+				let mut socket = Client {
+					stream: stream,
+					tag: INITIAL_TAG
+				};
 
 				try!(socket.read_greeting());
 				Ok(socket)
@@ -42,7 +45,10 @@ impl Client<SslStream<TcpStream>> {
 	pub fn secure_connect<A: ToSocketAddrs>(addr: A, ssl_context: SslContext) -> Result<Client<SslStream<TcpStream>>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let mut socket = Client { stream: SslStream::connect(&ssl_context, stream).unwrap(), tag: INITIAL_TAG};
+				let mut socket = Client {
+					stream: SslStream::connect(&ssl_context, stream).unwrap(),
+					tag: INITIAL_TAG
+				};
 
 				try!(socket.read_greeting());
 				Ok(socket)
