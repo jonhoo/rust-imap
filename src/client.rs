@@ -7,7 +7,7 @@ static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 1;
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
-pub struct IMAPStream<T> {
+pub struct Client<T> {
 	stream: T,
 	tag: u32
 }
@@ -22,12 +22,12 @@ pub struct IMAPMailbox {
 	pub uid_validity: Option<u32>
 }
 
-impl IMAPStream<TcpStream> {
-	/// Creates an IMAP Stream.
-	pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<IMAPStream<TcpStream>> {
+impl Client<TcpStream> {
+	/// Creates a new client.
+	pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let mut socket = IMAPStream { stream: stream, tag: INITIAL_TAG};
+				let mut socket = Client { stream: stream, tag: INITIAL_TAG};
 
 				try!(socket.read_greeting());
 				Ok(socket)
@@ -37,12 +37,12 @@ impl IMAPStream<TcpStream> {
 	}
 }
 
-impl IMAPStream<SslStream<TcpStream>> {
-	/// Creates an IMAP Stream with an Ssl wrapper.
-	pub fn secure_connect<A: ToSocketAddrs>(addr: A, ssl_context: SslContext) -> Result<IMAPStream<SslStream<TcpStream>>> {
+impl Client<SslStream<TcpStream>> {
+	/// Creates a client with an SSL wrapper.
+	pub fn secure_connect<A: ToSocketAddrs>(addr: A, ssl_context: SslContext) -> Result<Client<SslStream<TcpStream>>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let mut socket = IMAPStream { stream: SslStream::connect(&ssl_context, stream).unwrap(), tag: INITIAL_TAG};
+				let mut socket = Client { stream: SslStream::connect(&ssl_context, stream).unwrap(), tag: INITIAL_TAG};
 
 				try!(socket.read_greeting());
 				Ok(socket)
@@ -52,7 +52,7 @@ impl IMAPStream<SslStream<TcpStream>> {
 	}
 }
 
-impl<T: Read+Write> IMAPStream<T> {
+impl<T: Read+Write> Client<T> {
 
 	/// Log in to the IMAP server.
 	pub fn login(&mut self, username: & str, password: & str) -> Result<()> {

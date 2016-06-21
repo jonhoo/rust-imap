@@ -2,11 +2,11 @@ extern crate imap;
 extern crate openssl;
 
 use openssl::ssl::{SslContext, SslMethod};
-use imap::client::IMAPStream;
+use imap::client::Client;
 use imap::client::IMAPMailbox;
 
 fn main() {
-	let mut imap_socket = match IMAPStream::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()) {
+	let mut imap_socket = match Client::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()) {
 		Ok(s) => s,
 		Err(e) => panic!("{}", e)
 	};
