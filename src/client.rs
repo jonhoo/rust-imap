@@ -23,7 +23,7 @@ pub struct IMAPMailbox {
 }
 
 impl IMAPStream<TcpStream> {
-	///
+	/// Creates an IMAP Stream.
 	pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<IMAPStream<TcpStream>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
@@ -38,7 +38,7 @@ impl IMAPStream<TcpStream> {
 }
 
 impl IMAPStream<SslStream<TcpStream>> {
-	///
+	/// Creates an IMAP Stream with an Ssl wrapper.
 	pub fn secure_connect<A: ToSocketAddrs>(addr: A, ssl_context: SslContext) -> Result<IMAPStream<SslStream<TcpStream>>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
