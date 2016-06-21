@@ -387,7 +387,7 @@ mod tests {
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
 		client.check().unwrap();
-		assert!(client.stream.written_buf == b"a1 CHECK\r\n".to_vec(), "Invalid close command");
+		assert!(client.stream.written_buf == b"a1 CHECK\r\n".to_vec(), "Invalid check command");
 	}
 
 	#[test]
