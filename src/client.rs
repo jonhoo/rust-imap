@@ -353,10 +353,8 @@ mod tests {
 		let expected_response: Vec<String> = vec![response.to_string()];
 		let mock_stream = MockStream::new(response.as_bytes().to_vec());
 		let mut client = create_client_with_mock_stream(mock_stream);
-		match client.read_response() {
-			Ok(r) => assert!(expected_response == r, "expected response doesn't equal actual"),
-			Err(err) => panic!("Error reading response: {}", err),
-		}
+		let actual_response = client.read_response().unwrap();
+		assert!(expected_response == actual_response, "expected response doesn't equal actual");
 	}
 
 	#[test]
@@ -364,10 +362,7 @@ mod tests {
 		let greeting = "* OK Dovecot ready.\r\n";
 		let mock_stream = MockStream::new(greeting.as_bytes().to_vec());
 		let mut client = create_client_with_mock_stream(mock_stream);
-		match client.read_greeting() {
-			Err(err) => panic!("Error reading response: {}", err),
-			_ => {},
-		}
+		client.read_greeting().unwrap();
 	}
 
 	#[test]
@@ -391,10 +386,7 @@ mod tests {
 		let response = b"a1 OK CHECK completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
-		match client.check() {
-			Err(err) => panic!("Error reading response: {}", err),
-			_ => {},
-		}
+		client.check().unwrap();
 		assert!(client.stream.written_buf == b"a1 CHECK\r\n".to_vec(), "Invalid close command");
 	}
 
@@ -404,10 +396,7 @@ mod tests {
 		let response = b"a1 OK CLOSE completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
-		match client.close() {
-			Err(err) => panic!("Error reading response: {}", err),
-			_ => {},
-		}
+		client.close().unwrap();
 		assert!(client.stream.written_buf == b"a1 CLOSE\r\n".to_vec(), "Invalid close command");
 	}
 }
