@@ -256,12 +256,7 @@ impl<T: Read+Write> Client<T> {
 			Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to write")),
 		};
 
-		let ret = match self.read_response() {
-			Ok(lines) => Ok(lines),
-			Err(_) => Err(Error::new(ErrorKind::Other, "Failed to read")),
-		};
-
-		return ret;
+		self.read_response()
 	}
 
 	fn parse_response_ok(&mut self, lines: Vec<String>) -> Result<()> {
