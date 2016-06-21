@@ -381,6 +381,40 @@ mod tests {
 	}
 
 	#[test]
+	fn subscribe() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK SUBSCRIBE completed\r\n".to_vec();
+		let mailbox = "INBOX";
+		let command = format!("a1 SUBSCRIBE {}\r\n", mailbox);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.subscribe(mailbox).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid subscribe command");
+	}
+
+	#[test]
+	fn unsubscribe() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK UNSUBSCRIBE completed\r\n".to_vec();
+		let mailbox = "INBOX";
+		let command = format!("a1 UNSUBSCRIBE {}\r\n", mailbox);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.unsubscribe(mailbox).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid unsubscribe command");
+	}
+
+	#[test]
+	fn expunge() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK EXPUNGE completed\r\n".to_vec();
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.expunge().unwrap();
+		assert!(client.stream.written_buf == b"a1 EXPUNGE\r\n".to_vec(), "Invalid expunge command");
+	}
+
+	#[test]
 	fn check() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CHECK completed\r\n".to_vec();
