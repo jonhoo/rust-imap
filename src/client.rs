@@ -222,7 +222,7 @@ impl<T: Read+Write> Client<T> {
 	/// Expunge permanently removes all messages that have the \Deleted flag set from the currently
 	/// selected mailbox.
 	pub fn expunge(&mut self) -> Result<()> {
-		self.run_command_and_check_ok("CHECK")
+		self.run_command_and_check_ok("EXPUNGE")
 	}
 
 	/// Check requests a checkpoint of the currently selected mailbox.
