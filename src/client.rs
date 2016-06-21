@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Read, Result, Write};
 use regex::Regex;
 
 static TAG_PREFIX: &'static str = "a";
-const INITIAL_TAG: u32 = 1;
+const INITIAL_TAG: u32 = 0;
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
 pub struct Client<T> {
@@ -261,8 +261,6 @@ impl<T: Read+Write> Client<T> {
 			Err(_) => Err(Error::new(ErrorKind::Other, "Failed to read")),
 		};
 
-		self.tag += 1;
-
 		return ret;
 	}
 
@@ -335,6 +333,7 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn create_command(&mut self, command: String) -> String {
+		self.tag += 1;
 		let command = format!("{}{} {}\r\n", TAG_PREFIX, self.tag, command);
 		return command;
 	}
@@ -354,15 +353,53 @@ mod tests {
 	}
 
 	#[test]
+	fn read_response() {
+		let response = "a0 OK Logged in.\r\n";
+		let expected_response: Vec<String> = vec![response.to_string()];
+		let mock_stream = MockStream::new(response.as_bytes().to_vec());
+		let mut client = create_client_with_mock_stream(mock_stream);
+		match client.read_response() {
+			Ok(r) => assert!(expected_response == r, "expected response doesn't equal actual"),
+			Err(err) => panic!("Error reading response: {}", err),
+		}
+	}
+
+	#[test]
+	fn read_greeting() {
+		let greeting = "* OK Dovecot ready.\r\n";
+		let mock_stream = MockStream::new(greeting.as_bytes().to_vec());
+		let mut client = create_client_with_mock_stream(mock_stream);
+		match client.read_greeting() {
+			Err(err) => panic!("Error reading response: {}", err),
+			_ => {},
+		}
+	}
+
+	#[test]
+	fn create_command() {
+		let base_command = "CHECK";
+		let mock_stream = MockStream::new(Vec::new());
+		let mut imap_stream = create_client_with_mock_stream(mock_stream);
+
+		let expected_command = format!("a1 {}\r\n", base_command);
+		let command = imap_stream.create_command(String::from(base_command));
+		assert!(command == expected_command, "expected command doesn't equal actual command");
+
+		let expected_command2 = format!("a2 {}\r\n", base_command);
+		let command2 = imap_stream.create_command(String::from(base_command));
+		assert!(command2 == expected_command2, "expected command doesn't equal actual command");
+	}
+
+	#[test]
 	fn close() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CLOSE completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
-		let mut imap_stream = create_client_with_mock_stream(mock_stream);
-		match imap_stream.close() {
+		let mut client = create_client_with_mock_stream(mock_stream);
+		match client.close() {
 			Err(err) => panic!("Error reading response: {}", err),
 			_ => {},
 		}
-		assert!(imap_stream.stream.written_buf == b"a1 CLOSE\r\n".to_vec(), "Invalid close command");
+		assert!(client.stream.written_buf == b"a1 CLOSE\r\n".to_vec(), "Invalid close command");
 	}
 }
