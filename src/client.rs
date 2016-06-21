@@ -135,7 +135,7 @@ impl<T: Read+Write> Client<T> {
 			}
 		}
 
-		return Ok(mailbox);
+		Ok(mailbox)
 	}
 
 	/// Examine is identical to Select, but the selected mailbox is identified as read-only
