@@ -12,7 +12,7 @@ pub struct Client<T> {
 	tag: u32
 }
 
-pub struct IMAPMailbox {
+pub struct Mailbox {
 	pub flags: String,
 	pub exists: u32,
 	pub recent: u32,
@@ -20,6 +20,20 @@ pub struct IMAPMailbox {
 	pub permanent_flags: Option<String>,
 	pub uid_next: Option<u32>,
 	pub uid_validity: Option<u32>
+}
+
+impl Default for Mailbox {
+	fn default() -> Mailbox {
+		Mailbox {
+			flags: "".to_string(),
+			exists: 0,
+			recent: 0,
+			unseen: None,
+			permanent_flags: None,
+			uid_next: None,
+			uid_validity: None
+		}
+	}
 }
 
 impl Client<TcpStream> {
@@ -66,14 +80,14 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	/// Selects a mailbox
-	pub fn select(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
+	pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
 		match self.run_command(&format!("SELECT {}", mailbox_name).to_string()) {
 			Ok(lines) => self.parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
 	}
 
-	fn parse_select_or_examine(&mut self, lines: Vec<String>) -> Result<IMAPMailbox> {
+	fn parse_select_or_examine(&mut self, lines: Vec<String>) -> Result<Mailbox> {
 		let exists_regex = Regex::new(r"^\* (\d+) EXISTS\r\n").unwrap();
 
 		let recent_regex = Regex::new(r"^\* (\d+) RECENT\r\n").unwrap();
@@ -94,15 +108,7 @@ impl<T: Read+Write> Client<T> {
 			Err(e) => return Err(e)
 		};
 
-		let mut mailbox = IMAPMailbox{
-			flags: "".to_string(),
-			exists: 0,
-			recent: 0,
-			unseen: None,
-			permanent_flags: None,
-			uid_next: None,
-			uid_validity: None
-		};
+		let mut mailbox = Mailbox::default();
 
 		for line in lines.iter() {
 			if exists_regex.is_match(line) {
@@ -133,7 +139,7 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	/// Examine is identical to Select, but the selected mailbox is identified as read-only
-	pub fn examine(&mut self, mailbox_name: &str) -> Result<IMAPMailbox> {
+	pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
 		match self.run_command(&format!("EXAMINE {}", mailbox_name).to_string()) {
 			Ok(lines) => self.parse_select_or_examine(lines),
 			Err(e) => Err(e)
