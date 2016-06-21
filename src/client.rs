@@ -355,6 +355,7 @@ mod tests {
 
 	#[test]
 	fn close() {
+		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CLOSE completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
 		let mut imap_stream = create_client_with_mock_stream(mock_stream);
