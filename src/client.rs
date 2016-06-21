@@ -331,12 +331,13 @@ impl<T: Read+Write> Client<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use super::INITIAL_TAG;
 	use super::super::mock_stream::MockStream;
 
 	fn create_client_with_mock_stream(mock_stream: MockStream) -> Client<MockStream> {
 		Client {
 			stream: mock_stream,
-			tag: 1
+			tag: INITIAL_TAG
 		}
 	}
 
