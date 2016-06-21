@@ -7,3 +7,6 @@ extern crate openssl;
 extern crate regex;
 
 pub mod client;
+
+#[cfg(test)]
+mod mock_stream;
