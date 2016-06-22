@@ -486,6 +486,18 @@ mod tests {
 	}
 
 	#[test]
+	fn capability() {
+		let response = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
+			a1 OK CAPABILITY completed\r\n".to_vec();
+		let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		let capabilities = client.capability().unwrap();
+		assert!(client.stream.written_buf == b"a1 CAPABILITY\r\n".to_vec(), "Invalid capability command");
+		assert!(capabilities == expected_capabilities, "Unexpected capabilities response");
+	}
+
+	#[test]
 	fn create() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CREATE completed\r\n".to_vec();
