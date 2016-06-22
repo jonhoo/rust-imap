@@ -381,6 +381,30 @@ mod tests {
 	}
 
 	#[test]
+	fn login() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK Logged in\r\n".to_vec();
+		let username = "username";
+		let password = "password";
+		let command = format!("a1 LOGIN {} {}\r\n", username, password);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.login(username, password).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid login command");
+	}
+
+	#[test]
+	fn logout() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK Logout completed.\r\n".to_vec();
+		let command = format!("a1 LOGOUT\r\n");
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.logout().unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid logout command");
+	}
+
+	#[test]
 	fn rename() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK RENAME completed\r\n".to_vec();
