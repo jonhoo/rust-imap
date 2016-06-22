@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Read, Result, Write};
 use regex::Regex;
 
 use super::mailbox::Mailbox;
-use super::parse::parse_response_ok;
+use super::parse::{parse_response_ok, parse_capability};
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -170,29 +170,9 @@ impl<T: Read+Write> Client<T> {
 	/// Capability requests a listing of capabilities that the server supports.
 	pub fn capability(&mut self) -> Result<Vec<String>> {
 		match self.run_command(&format!("CAPABILITY").to_string()) {
-			Ok(lines) => self.parse_capability(lines),
+			Ok(lines) => parse_capability(lines),
 			Err(e) => Err(e)
 		}
-	}
-
-	fn parse_capability(&mut self, lines: Vec<String>) -> Result<Vec<String>> {
-		let capability_regex = Regex::new(r"^\* CAPABILITY (.*)\r\n").unwrap();
-
-		//Check Ok
-		match parse_response_ok(lines.clone()) {
-			Ok(_) => (),
-			Err(e) => return Err(e)
-		};
-
-		for line in lines.iter() {
-			if capability_regex.is_match(line) {
-				let cap = capability_regex.captures(line).unwrap();
-				let capabilities_str = cap.at(1).unwrap();
-				return Ok(capabilities_str.split(' ').map(|x| x.to_string()).collect());
-			}
-		}
-
-		Err(Error::new(ErrorKind::Other, "Error parsing capabilities response"))
 	}
 
 	/// Expunge permanently removes all messages that have the \Deleted flag set from the currently
