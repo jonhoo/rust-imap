@@ -255,31 +255,20 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn read_response(&mut self) -> Result<Vec<String>> {
-		//Carriage return
-		let cr = 0x0d;
-		//Line Feed
-		let lf = 0x0a;
 		let mut found_tag_line = false;
 		let start_str = format!("{}{} ", TAG_PREFIX, self.tag);
 		let mut lines: Vec<String> = Vec::new();
 
 		while !found_tag_line {
-			let mut line_buffer: Vec<u8> = Vec::new();
-			while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != lf && line_buffer[line_buffer.len()-2] != cr) {
-					let byte_buffer: &mut [u8] = &mut [0];
-					match self.stream.read(byte_buffer) {
-						Ok(_) => {},
-						Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to read the response")),
+			match self.readline() {
+				Ok(raw_data) => {
+					let line = String::from_utf8(raw_data).unwrap();
+					lines.push(line.clone());
+					if (&*line).starts_with(&*start_str) {
+						found_tag_line = true;
 					}
-					line_buffer.push(byte_buffer[0]);
-			}
-
-			let line = String::from_utf8(line_buffer).unwrap();
-
-			lines.push(line.clone());
-
-			if (&*line).starts_with(&*start_str) {
-				found_tag_line = true;
+				},
+				Err(err) => return Err(err)
 			}
 		}
 
@@ -287,6 +276,13 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn read_greeting(&mut self) -> Result<()> {
+		match self.readline() {
+			Ok(_) => Ok(()),
+			Err(err) => Err(err)
+		}
+	}
+
+	fn readline(&mut self) -> Result<Vec<u8>> {
 		//Carriage return
 		let cr = 0x0d;
 		//Line Feed
@@ -301,8 +297,7 @@ impl<T: Read+Write> Client<T> {
 				}
 				line_buffer.push(byte_buffer[0]);
 		}
-
-		Ok(())
+		Ok(line_buffer)
 	}
 
 	fn create_command(&mut self, command: String) -> String {
