@@ -1,10 +1,9 @@
 use std::net::{TcpStream, ToSocketAddrs};
 use openssl::ssl::{SslContext, SslStream};
 use std::io::{Error, ErrorKind, Read, Result, Write};
-use regex::Regex;
 
 use super::mailbox::Mailbox;
-use super::parse::{parse_response_ok, parse_capability};
+use super::parse::{parse_response_ok, parse_capability, parse_select_or_examine};
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -61,66 +60,15 @@ impl<T: Read+Write> Client<T> {
 	/// Selects a mailbox
 	pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
 		match self.run_command(&format!("SELECT {}", mailbox_name).to_string()) {
-			Ok(lines) => self.parse_select_or_examine(lines),
+			Ok(lines) => parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
-	}
-
-	fn parse_select_or_examine(&mut self, lines: Vec<String>) -> Result<Mailbox> {
-		let exists_regex = Regex::new(r"^\* (\d+) EXISTS\r\n").unwrap();
-
-		let recent_regex = Regex::new(r"^\* (\d+) RECENT\r\n").unwrap();
-
-		let flags_regex = Regex::new(r"^\* FLAGS (.+)\r\n").unwrap();
-
-		let unseen_regex = Regex::new(r"^\* OK \[UNSEEN (\d+)\](.*)\r\n").unwrap();
-
-		let uid_validity_regex = Regex::new(r"^\* OK \[UIDVALIDITY (\d+)\](.*)\r\n").unwrap();
-
-		let uid_next_regex = Regex::new(r"^\* OK \[UIDNEXT (\d+)\](.*)\r\n").unwrap();
-
-		let permanent_flags_regex = Regex::new(r"^\* OK \[PERMANENTFLAGS (.+)\]\r\n").unwrap();
-
-		//Check Ok
-		match parse_response_ok(lines.clone()) {
-			Ok(_) => (),
-			Err(e) => return Err(e)
-		};
-
-		let mut mailbox = Mailbox::default();
-
-		for line in lines.iter() {
-			if exists_regex.is_match(line) {
-				let cap = exists_regex.captures(line).unwrap();
-				mailbox.exists = cap.at(1).unwrap().parse::<u32>().unwrap();
-			} else if recent_regex.is_match(line) {
-				let cap = recent_regex.captures(line).unwrap();
-				mailbox.recent = cap.at(1).unwrap().parse::<u32>().unwrap();
-			} else if flags_regex.is_match(line) {
-				let cap = flags_regex.captures(line).unwrap();
-				mailbox.flags = cap.at(1).unwrap().to_string();
-			} else if unseen_regex.is_match(line) {
-				let cap = unseen_regex.captures(line).unwrap();
-				mailbox.unseen = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
-			} else if uid_validity_regex.is_match(line) {
-				let cap = uid_validity_regex.captures(line).unwrap();
-				mailbox.uid_validity = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
-			} else if uid_next_regex.is_match(line) {
-				let cap = uid_next_regex.captures(line).unwrap();
-				mailbox.uid_next = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
-			} else if permanent_flags_regex.is_match(line) {
-				let cap = permanent_flags_regex.captures(line).unwrap();
-				mailbox.permanent_flags = Some(cap.at(1).unwrap().to_string());
-			}
-		}
-
-		Ok(mailbox)
 	}
 
 	/// Examine is identical to Select, but the selected mailbox is identified as read-only
 	pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
 		match self.run_command(&format!("EXAMINE {}", mailbox_name).to_string()) {
-			Ok(lines) => self.parse_select_or_examine(lines),
+			Ok(lines) => parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
 	}
