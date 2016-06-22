@@ -462,6 +462,30 @@ mod tests {
 	}
 
 	#[test]
+	fn create() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK CREATE completed\r\n".to_vec();
+		let mailbox_name = "INBOX";
+		let command = format!("a1 CREATE {}\r\n", mailbox_name);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.create(mailbox_name).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid create command");
+	}
+
+	#[test]
+	fn delete() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK DELETE completed\r\n".to_vec();
+		let mailbox_name = "INBOX";
+		let command = format!("a1 DELETE {}\r\n", mailbox_name);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.delete(mailbox_name).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid delete command");
+	}
+
+	#[test]
 	fn noop() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK NOOP completed\r\n".to_vec();
