@@ -418,6 +418,19 @@ mod tests {
 	}
 
 	#[test]
+	fn fetch() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK FETCH completed\r\n".to_vec();
+		let sequence_set = "1";
+		let query = "BODY[]";
+		let command = format!("a1 FETCH {} {}\r\n", sequence_set, query);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.fetch(sequence_set, query).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid fetch command");
+	}
+
+	#[test]
 	fn subscribe() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK SUBSCRIBE completed\r\n".to_vec();
