@@ -175,10 +175,7 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn parse_capability(&mut self, lines: Vec<String>) -> Result<Vec<String>> {
-		let capability_regex = match Regex::new(r"^\* CAPABILITY (.*)\r\n") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let capability_regex = Regex::new(r"^\* CAPABILITY (.*)\r\n").unwrap();
 
 		//Check Ok
 		match self.parse_response_ok(lines.clone()) {
@@ -238,7 +235,7 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn parse_response_ok(&mut self, lines: Vec<String>) -> Result<()> {
-		let ok_regex = Regex::new(r"^([a-zA-Z0-9]+) ([a-zA-Z0-9]+)(.*)");
+		let ok_regex = Regex::new(r"^([a-zA-Z0-9]+) ([a-zA-Z0-9]+)(.*)").unwrap();
 		let last_line = lines.last().unwrap();
 
 		for cap in ok_regex.captures_iter(last_line) {
