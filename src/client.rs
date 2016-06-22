@@ -238,10 +238,7 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn parse_response_ok(&mut self, lines: Vec<String>) -> Result<()> {
-		let ok_regex = match Regex::new(r"^([a-zA-Z0-9]+) ([a-zA-Z0-9]+)(.*)") {
-    		Ok(re) => re,
-    		Err(err) => panic!("{}", err),
-		};
+		let ok_regex = Regex::new(r"^([a-zA-Z0-9]+) ([a-zA-Z0-9]+)(.*)");
 		let last_line = lines.last().unwrap();
 
 		for cap in ok_regex.captures_iter(last_line) {
