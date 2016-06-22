@@ -72,13 +72,13 @@ impl<T: Read+Write> Client<T> {
 
 		let flags_regex = Regex::new(r"^\* FLAGS (.+)\r\n").unwrap();
 
-		let unseen_regex = Regex::new(r"^OK \[UNSEEN (\d+)\](.*)\r\n").unwrap();
+		let unseen_regex = Regex::new(r"^\* OK \[UNSEEN (\d+)\](.*)\r\n").unwrap();
 
-		let uid_validity_regex = Regex::new(r"^OK \[UIDVALIDITY (\d+)\](.*)\r\n").unwrap();
+		let uid_validity_regex = Regex::new(r"^\* OK \[UIDVALIDITY (\d+)\](.*)\r\n").unwrap();
 
-		let uid_next_regex = Regex::new(r"^OK \[UIDNEXT (\d+)\](.*)\r\n").unwrap();
+		let uid_next_regex = Regex::new(r"^\* OK \[UIDNEXT (\d+)\](.*)\r\n").unwrap();
 
-		let permanent_flags_regex = Regex::new(r"^OK \[PERMANENTFLAGS (.+)\]\r\n").unwrap();
+		let permanent_flags_regex = Regex::new(r"^\* OK \[PERMANENTFLAGS (.+)\]\r\n").unwrap();
 
 		//Check Ok
 		match self.parse_response_ok(lines.clone()) {
@@ -312,6 +312,7 @@ mod tests {
 	use super::*;
 	use super::INITIAL_TAG;
 	use super::super::mock_stream::MockStream;
+	use super::super::mailbox::Mailbox;
 
 	fn create_client_with_mock_stream(mock_stream: MockStream) -> Client<MockStream> {
 		Client {
@@ -454,6 +455,34 @@ mod tests {
 		let mut client = create_client_with_mock_stream(mock_stream);
 		client.check().unwrap();
 		assert!(client.stream.written_buf == b"a1 CHECK\r\n".to_vec(), "Invalid check command");
+	}
+
+	#[test]
+	fn examine() {
+		let response = b"* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n\
+			* OK [PERMANENTFLAGS ()] Read-only mailbox.\r\n\
+			* 1 EXISTS\r\n\
+			* 1 RECENT\r\n\
+			* OK [UNSEEN 1] First unseen.\r\n\
+			* OK [UIDVALIDITY 1257842737] UIDs valid\r\n\
+			* OK [UIDNEXT 2] Predicted next UID\r\n\
+			a1 OK [READ-ONLY] Select completed.\r\n".to_vec();
+		let expected_mailbox = Mailbox {
+			flags: String::from("(\\Answered \\Flagged \\Deleted \\Seen \\Draft)"),
+			exists: 1,
+			recent: 1,
+			unseen: Some(1),
+			permanent_flags: None,
+			uid_next: Some(2),
+			uid_validity: Some(1257842737)
+		};
+		let mailbox_name = "INBOX";
+		let command = format!("a1 EXAMINE {}\r\n", mailbox_name);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		let mailbox = client.examine(mailbox_name).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid create command");
+		assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
 	}
 
 	#[test]
