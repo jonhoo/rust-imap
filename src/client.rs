@@ -339,6 +339,15 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic]
+	fn readline_err() {
+		// TODO Check the error test
+		let mock_stream = MockStream::new_err();
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.readline().unwrap();
+	}
+
+	#[test]
 	fn create_command() {
 		let base_command = "CHECK";
 		let mock_stream = MockStream::new(Vec::new());

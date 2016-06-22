@@ -3,7 +3,8 @@ use std::io::{Read, Result, Write, Error, ErrorKind};
 pub struct MockStream {
     read_buf: Vec<u8>,
     read_pos: usize,
-    pub written_buf: Vec<u8>
+    pub written_buf: Vec<u8>,
+    err_on_read: bool
 }
 
 impl MockStream {
@@ -11,13 +12,26 @@ impl MockStream {
         MockStream{
             read_buf: read_buf,
             read_pos: 0,
-            written_buf: Vec::new()
+            written_buf: Vec::new(),
+            err_on_read: false
+        }
+    }
+
+    pub fn new_err() -> MockStream {
+        MockStream{
+            read_buf: Vec::new(),
+            read_pos: 0,
+            written_buf: Vec::new(),
+            err_on_read: true
         }
     }
 }
 
 impl Read for MockStream {
     fn read(&mut self, buf: &mut[u8]) -> Result<usize> {
+        if self.err_on_read {
+            return Err(Error::new(ErrorKind::Other, "MockStream Error"))
+        }
         if self.read_pos >= self.read_buf.len() {
             return Err(Error::new(ErrorKind::UnexpectedEof, "EOF"))
         }
