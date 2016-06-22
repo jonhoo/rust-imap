@@ -462,6 +462,16 @@ mod tests {
 	}
 
 	#[test]
+	fn noop() {
+		// TODO Make sure the response was read correctly
+		let response = b"a1 OK NOOP completed\r\n".to_vec();
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		client.noop().unwrap();
+		assert!(client.stream.written_buf == b"a1 NOOP\r\n".to_vec(), "Invalid noop command");
+	}
+
+	#[test]
 	fn close() {
 		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CLOSE completed\r\n".to_vec();
