@@ -293,7 +293,7 @@ impl<T: Read+Write> Client<T> {
 				let byte_buffer: &mut [u8] = &mut [0];
 				match self.stream.read(byte_buffer) {
 					Ok(_) => {},
-					Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to read the response")),
+					Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to read line")),
 				}
 				line_buffer.push(byte_buffer[0]);
 		}
