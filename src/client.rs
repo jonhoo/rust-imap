@@ -4,6 +4,7 @@ use std::io::{Error, ErrorKind, Read, Result, Write};
 use regex::Regex;
 
 use super::mailbox::Mailbox;
+use super::parse::parse_response_ok;
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -81,7 +82,7 @@ impl<T: Read+Write> Client<T> {
 		let permanent_flags_regex = Regex::new(r"^\* OK \[PERMANENTFLAGS (.+)\]\r\n").unwrap();
 
 		//Check Ok
-		match self.parse_response_ok(lines.clone()) {
+		match parse_response_ok(lines.clone()) {
 			Ok(_) => (),
 			Err(e) => return Err(e)
 		};
@@ -178,7 +179,7 @@ impl<T: Read+Write> Client<T> {
 		let capability_regex = Regex::new(r"^\* CAPABILITY (.*)\r\n").unwrap();
 
 		//Check Ok
-		match self.parse_response_ok(lines.clone()) {
+		match parse_response_ok(lines.clone()) {
 			Ok(_) => (),
 			Err(e) => return Err(e)
 		};
@@ -218,7 +219,7 @@ impl<T: Read+Write> Client<T> {
 
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
 		match self.run_command(command) {
-			Ok(lines) => self.parse_response_ok(lines),
+			Ok(lines) => parse_response_ok(lines),
 			Err(e) => Err(e)
 		}
 	}
@@ -232,20 +233,6 @@ impl<T: Read+Write> Client<T> {
 		};
 
 		self.read_response()
-	}
-
-	fn parse_response_ok(&mut self, lines: Vec<String>) -> Result<()> {
-		let ok_regex = Regex::new(r"^([a-zA-Z0-9]+) ([a-zA-Z0-9]+)(.*)").unwrap();
-		let last_line = lines.last().unwrap();
-
-		for cap in ok_regex.captures_iter(last_line) {
-			let response_type = cap.at(2).unwrap_or("");
-			if response_type == "OK" {
-				return Ok(());
-			}
-		}
-
-		return Err(Error::new(ErrorKind::Other, format!("Invalid Response: {}", last_line).to_string()));
 	}
 
 	fn read_response(&mut self) -> Result<Vec<String>> {

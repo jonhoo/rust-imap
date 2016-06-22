@@ -9,5 +9,7 @@ extern crate regex;
 pub mod client;
 pub mod mailbox;
 
+mod parse;
+
 #[cfg(test)]
 mod mock_stream;
