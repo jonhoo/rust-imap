@@ -145,6 +145,7 @@ impl<T: Read+Write> Client<T> {
 		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
 	}
 
+	/// Runs a command and checks if it returns OK.
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
 		match self.run_command(command) {
 			Ok(lines) => parse_response_ok(lines),
@@ -152,6 +153,7 @@ impl<T: Read+Write> Client<T> {
 		}
 	}
 
+	/// Runs any command passed to it.
 	pub fn run_command(&mut self, untagged_command: &str) -> Result<Vec<String>> {
 		let command = self.create_command(untagged_command.to_string());
 
