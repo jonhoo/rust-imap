@@ -392,7 +392,35 @@ mod tests {
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
 		let mailbox = client.examine(mailbox_name).unwrap();
-		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid create command");
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid examine command");
+		assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
+	}
+
+	#[test]
+	fn select() {
+		let response = b"* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n\
+			* OK [PERMANENTFLAGS ()] Read-only mailbox.\r\n\
+			* 1 EXISTS\r\n\
+			* 1 RECENT\r\n\
+			* OK [UNSEEN 1] First unseen.\r\n\
+			* OK [UIDVALIDITY 1257842737] UIDs valid\r\n\
+			* OK [UIDNEXT 2] Predicted next UID\r\n\
+			a1 OK [READ-ONLY] Select completed.\r\n".to_vec();
+		let expected_mailbox = Mailbox {
+			flags: String::from("(\\Answered \\Flagged \\Deleted \\Seen \\Draft)"),
+			exists: 1,
+			recent: 1,
+			unseen: Some(1),
+			permanent_flags: None,
+			uid_next: Some(2),
+			uid_validity: Some(1257842737)
+		};
+		let mailbox_name = "INBOX";
+		let command = format!("a1 SELECT {}\r\n", mailbox_name);
+		let mock_stream = MockStream::new(response);
+		let mut client = create_client_with_mock_stream(mock_stream);
+		let mailbox = client.select(mailbox_name).unwrap();
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid select command");
 		assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
 	}
 
