@@ -50,7 +50,7 @@ pub fn parse_select_or_examine(lines: Vec<String>) -> Result<Mailbox> {
 
     let uid_next_regex = Regex::new(r"^\* OK \[UIDNEXT (\d+)\](.*)\r\n").unwrap();
 
-    let permanent_flags_regex = Regex::new(r"^\* OK \[PERMANENTFLAGS (.+)\]\r\n").unwrap();
+    let permanent_flags_regex = Regex::new(r"^\* OK \[PERMANENTFLAGS (.+)\](.*)\r\n").unwrap();
 
     //Check Ok
     match parse_response_ok(lines.clone()) {

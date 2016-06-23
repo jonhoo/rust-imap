@@ -383,7 +383,7 @@ mod tests {
 			exists: 1,
 			recent: 1,
 			unseen: Some(1),
-			permanent_flags: None,
+			permanent_flags: Some(String::from("()")),
 			uid_next: Some(2),
 			uid_validity: Some(1257842737)
 		};
@@ -399,7 +399,7 @@ mod tests {
 	#[test]
 	fn select() {
 		let response = b"* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n\
-			* OK [PERMANENTFLAGS ()] Read-only mailbox.\r\n\
+			* OK [PERMANENTFLAGS (\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)] Read-only mailbox.\r\n\
 			* 1 EXISTS\r\n\
 			* 1 RECENT\r\n\
 			* OK [UNSEEN 1] First unseen.\r\n\
@@ -411,7 +411,7 @@ mod tests {
 			exists: 1,
 			recent: 1,
 			unseen: Some(1),
-			permanent_flags: None,
+			permanent_flags: Some(String::from("(\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)")),
 			uid_next: Some(2),
 			uid_validity: Some(1257842737)
 		};
