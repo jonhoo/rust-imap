@@ -1,8 +1,7 @@
-use std::io::{self};
 use regex::Regex;
 
 use super::mailbox::Mailbox;
-use super::error::{Error, Result};
+use super::error::{Error, ParseError, Result};
 
 pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
     let capability_regex = Regex::new(r"^\* CAPABILITY (.*)\r\n").unwrap();
@@ -21,7 +20,7 @@ pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
         }
     }
 
-    Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Error parsing capabilities response")))
+    Err(Error::Parse(ParseError::Capability(lines)))
 }
 
 pub fn parse_response_ok(lines: Vec<String>) -> Result<()> {
@@ -35,7 +34,7 @@ pub fn parse_response_ok(lines: Vec<String>) -> Result<()> {
         }
     }
 
-    Err(Error::Io(io::Error::new(io::ErrorKind::Other, format!("Invalid Response: {}", last_line).to_string())))
+    Err(Error::Parse(ParseError::StatusResponse(lines.clone())))
 }
 
 pub fn parse_select_or_examine(lines: Vec<String>) -> Result<Mailbox> {

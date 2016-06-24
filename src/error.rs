@@ -18,6 +18,8 @@ pub enum Error {
     BadResponse(Vec<String>),
     /// A NO response from the IMAP server.
     NoResponse(Vec<String>),
+    // Error parsing a server response.
+    Parse(ParseError)
 }
 
 impl From<IoError> for Error {
@@ -47,8 +49,9 @@ impl StdError for Error {
         match *self {
             Error::Io(ref e) => e.description(),
             Error::Ssl(ref e) => e.description(),
+            Error::Parse(ref e) => e.description(),
             Error::BadResponse(_) => "Bad Response",
-            Error::NoResponse(_) => "No Response"
+            Error::NoResponse(_) => "No Response",
         }
     }
 
@@ -57,6 +60,37 @@ impl StdError for Error {
             Error::Io(ref e) => Some(e),
             Error::Ssl(ref e) => Some(e),
             _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ParseError {
+    // Indicates an error parsing the status response. Such as OK, NO, and BAD.
+    StatusResponse(Vec<String>),
+    // Error parsing the cabability response.
+    Capability(Vec<String>)
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ref e => f.write_str(e.description()),
+        }
+    }
+}
+
+impl StdError for ParseError {
+    fn description(&self) -> &str {
+        match *self {
+            ParseError::StatusResponse(_) => "Unable to parse status response",
+            ParseError::Capability(_) => "Unable to parse capability response"
+        }
+    }
+
+    fn cause(&self) -> Option<&StdError> {
+        match *self {
+            _ => None
         }
     }
 }
