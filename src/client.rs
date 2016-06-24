@@ -1,9 +1,11 @@
 use std::net::{TcpStream, ToSocketAddrs};
 use openssl::ssl::{SslContext, SslStream};
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::io::{ErrorKind, Read, Write};
+use std::io::{self};
 
 use super::mailbox::Mailbox;
 use super::parse::{parse_response_ok, parse_capability, parse_select_or_examine};
+use super::error::{Error, Result};
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -27,7 +29,7 @@ impl Client<TcpStream> {
 				try!(socket.read_greeting());
 				Ok(socket)
 			},
-			Err(e) => Err(e)
+			Err(e) => Err(Error::Io(e))
 		}
 	}
 }
@@ -45,7 +47,7 @@ impl Client<SslStream<TcpStream>> {
 				try!(socket.read_greeting());
 				Ok(socket)
 			},
-			Err(e) => Err(e)
+			Err(e) => Err(Error::Io(e))
 		}
 	}
 }
@@ -159,7 +161,7 @@ impl<T: Read+Write> Client<T> {
 
 		match self.stream.write_fmt(format_args!("{}", &*command)) {
 			Ok(_) => (),
-			Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to write")),
+			Err(_) => return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write"))),
 		};
 
 		self.read_response()
@@ -204,7 +206,7 @@ impl<T: Read+Write> Client<T> {
 				let byte_buffer: &mut [u8] = &mut [0];
 				match self.stream.read(byte_buffer) {
 					Ok(_) => {},
-					Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to read line")),
+					Err(_) => return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to read line"))),
 				}
 				line_buffer.push(byte_buffer[0]);
 		}

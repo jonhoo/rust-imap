@@ -7,6 +7,7 @@ extern crate openssl;
 extern crate regex;
 
 pub mod client;
+pub mod error;
 pub mod mailbox;
 
 mod parse;
