@@ -87,3 +87,23 @@ pub fn parse_select_or_examine(lines: Vec<String>) -> Result<Mailbox> {
 
     Ok(mailbox)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_capability_test() {
+        let expected_capabilities = vec![String::from("IMAP4rev1"), String::from("STARTTLS"), String::from("AUTH=GSSAPI"), String::from("LOGINDISABLED")];
+        let lines = vec![String::from("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"), String::from("a1 OK CAPABILITY completed\r\n")];
+        let capabilities = parse_capability(lines).unwrap();
+        assert!(capabilities == expected_capabilities, "Unexpected capabilities parse response");
+    }
+
+    #[test]
+    #[should_panic]
+    fn parse_capability_invalid_test() {
+        let lines = vec![String::from("* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"), String::from("a1 OK CAPABILITY completed\r\n")];
+        parse_capability(lines).unwrap();
+    }
+}
