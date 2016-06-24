@@ -1,5 +1,3 @@
-extern crate openssl;
-
 use std::io::{self};
 use std::result;
 use std::fmt::{self};

@@ -1,6 +1,6 @@
 use std::net::{TcpStream, ToSocketAddrs};
 use openssl::ssl::{SslContext, SslStream};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{Read, Write};
 use std::io::{self};
 
 use super::mailbox::Mailbox;
