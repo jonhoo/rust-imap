@@ -149,25 +149,32 @@ impl<T: Read+Write> Client<T> {
 	/// The LIST command returns a subset of names from the complete set
     /// of all names available to the client.
 	pub fn list(&mut self, reference_name: &str, mailbox_search_pattern: &str) -> Result<Vec<String>> {
-		match self.run_command(&format!("LIST {} {}", reference_name, mailbox_search_pattern)) {
-			Ok(lines) => parse_response(lines),
-			Err(e) => Err(e)
-		}
+		self.run_command_and_parse(&format!("LIST {} {}", reference_name, mailbox_search_pattern))
 	}
 
 	/// The LSUB command returns a subset of names from the set of names
 	/// that the user has declared as being "active" or "subscribed".
 	pub fn lsub(&mut self, reference_name: &str, mailbox_search_pattern: &str) -> Result<Vec<String>> {
-		match self.run_command(&format!("LSUB {} {}", reference_name, mailbox_search_pattern)) {
-			Ok(lines) => parse_response(lines),
-			Err(e) => Err(e)
-		}
+		self.run_command_and_parse(&format!("LSUB {} {}", reference_name, mailbox_search_pattern))
+	}
+
+	/// The STATUS command requests the status of the indicated mailbox.
+	pub fn status(&mut self, mailbox_name: &str, status_data_items: &str) -> Result<Vec<String>> {
+		self.run_command_and_parse(&format!("STATUS {} {}", mailbox_name, status_data_items))
 	}
 
 	/// Runs a command and checks if it returns OK.
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
 		match self.run_command(command) {
 			Ok(lines) => parse_response_ok(lines),
+			Err(e) => Err(e)
+		}
+	}
+
+	// Run a command and parse the status response.
+	pub fn run_command_and_parse(&mut self, command: &str) -> Result<Vec<String>> {
+		match self.run_command(command) {
+			Ok(lines) => parse_response(lines),
 			Err(e) => Err(e)
 		}
 	}
