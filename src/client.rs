@@ -3,7 +3,7 @@ use openssl::ssl::{SslContext, SslStream};
 use std::io::{self, Read, Write};
 
 use super::mailbox::Mailbox;
-use super::parse::{parse_response_ok, parse_capability, parse_select_or_examine};
+use super::parse::{parse_response_ok, parse_capability, parse_select_or_examine, parse_response};
 use super::error::{Error, Result};
 
 static TAG_PREFIX: &'static str = "a";
@@ -144,6 +144,15 @@ impl<T: Read+Write> Client<T> {
 	/// Copy copies the specified message to the end of the specified destination mailbox.
 	pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
+	}
+
+	/// The LIST command returns a subset of names from the complete set
+    /// of all names available to the client.
+	pub fn list(&mut self, reference_name: &str, mailbox_search_pattern: &str) -> Result<Vec<String>> {
+		match self.run_command(&format!("LIST {} {}", reference_name, mailbox_search_pattern)) {
+			Ok(lines) => parse_response(lines),
+			Err(e) => Err(e)
+		}
 	}
 
 	/// Runs a command and checks if it returns OK.
