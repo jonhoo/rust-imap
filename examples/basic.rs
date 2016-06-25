@@ -6,14 +6,9 @@ use imap::client::Client;
 use imap::mailbox::Mailbox;
 
 fn main() {
-	let mut imap_socket = match Client::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()) {
-		Ok(s) => s,
-		Err(e) => panic!("{}", e)
-	};
+	let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()).unwrap();
 
-	if let Err(e) = imap_socket.login("username", "password") {
-		println!("Error: {}", e)
-	};
+	imap_socket.login("username", "password").unwrap();
 
 	match imap_socket.capability() {
 		Ok(capabilities) => {
@@ -40,7 +35,5 @@ fn main() {
 		Err(_) => println!("Error Fetching email 2")
 	};
 
-	if let Err(e) = imap_socket.logout() {
-		println!("Error: {}", e)
-	};
+	imap_socket.logout().unwrap();
 }
