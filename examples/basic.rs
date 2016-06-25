@@ -3,7 +3,6 @@ extern crate openssl;
 
 use openssl::ssl::{SslContext, SslMethod};
 use imap::client::Client;
-use imap::mailbox::Mailbox;
 
 fn main() {
 	let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()).unwrap();
@@ -20,8 +19,8 @@ fn main() {
 	};
 
 	match imap_socket.select("INBOX") {
-		Ok(Mailbox{flags, exists, recent, unseen, permanent_flags, uid_next, uid_validity}) => {
-			println!("flags: {}, exists: {}, recent: {}, unseen: {:?}, permanent_flags: {:?}, uid_next: {:?}, uid_validity: {:?}", flags, exists, recent, unseen, permanent_flags, uid_next, uid_validity);
+		Ok(mailbox) => {
+			println!("{}", mailbox);
 		},
 		Err(e) => println!("Error selecting INBOX: {}", e)
 	};
