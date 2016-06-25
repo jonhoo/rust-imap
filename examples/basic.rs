@@ -16,14 +16,14 @@ fn main() {
 				println!("{}", capability);
 			}
 		},
-		Err(_) => println!("Error retreiving capabilities")
+		Err(e) => println!("Error parsing capability: {}", e)
 	};
 
 	match imap_socket.select("INBOX") {
 		Ok(Mailbox{flags, exists, recent, unseen, permanent_flags, uid_next, uid_validity}) => {
 			println!("flags: {}, exists: {}, recent: {}, unseen: {:?}, permanent_flags: {:?}, uid_next: {:?}, uid_validity: {:?}", flags, exists, recent, unseen, permanent_flags, uid_next, uid_validity);
 		},
-		Err(_) => println!("Error selecting INBOX")
+		Err(e) => println!("Error selecting INBOX: {}", e)
 	};
 
 	match imap_socket.fetch("2", "body[text]") {
@@ -32,7 +32,7 @@ fn main() {
 				print!("{}", line);
 			}
 		},
-		Err(_) => println!("Error Fetching email 2")
+		Err(e) => println!("Error Fetching email 2: {}", e)
 	};
 
 	imap_socket.logout().unwrap();
