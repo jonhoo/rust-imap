@@ -155,6 +155,15 @@ impl<T: Read+Write> Client<T> {
 		}
 	}
 
+	/// The LSUB command returns a subset of names from the set of names
+	/// that the user has declared as being "active" or "subscribed".
+	pub fn lsub(&mut self, reference_name: &str, mailbox_search_pattern: &str) -> Result<Vec<String>> {
+		match self.run_command(&format!("LSUB {} {}", reference_name, mailbox_search_pattern)) {
+			Ok(lines) => parse_response(lines),
+			Err(e) => Err(e)
+		}
+	}
+
 	/// Runs a command and checks if it returns OK.
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
 		match self.run_command(command) {
