@@ -302,7 +302,6 @@ mod tests {
 
 	#[test]
 	fn login() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK Logged in\r\n".to_vec();
 		let username = "username";
 		let password = "password";
@@ -315,7 +314,6 @@ mod tests {
 
 	#[test]
 	fn logout() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK Logout completed.\r\n".to_vec();
 		let command = format!("a1 LOGOUT\r\n");
 		let mock_stream = MockStream::new(response);
@@ -326,7 +324,6 @@ mod tests {
 
 	#[test]
 	fn rename() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK RENAME completed\r\n".to_vec();
 		let current_mailbox_name = "INBOX";
 		let new_mailbox_name = "NEWINBOX";
@@ -339,7 +336,6 @@ mod tests {
 
 	#[test]
 	fn fetch() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK FETCH completed\r\n".to_vec();
 		let sequence_set = "1";
 		let query = "BODY[]";
@@ -352,7 +348,6 @@ mod tests {
 
 	#[test]
 	fn subscribe() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK SUBSCRIBE completed\r\n".to_vec();
 		let mailbox = "INBOX";
 		let command = format!("a1 SUBSCRIBE {}\r\n", mailbox);
@@ -364,7 +359,6 @@ mod tests {
 
 	#[test]
 	fn unsubscribe() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK UNSUBSCRIBE completed\r\n".to_vec();
 		let mailbox = "INBOX";
 		let command = format!("a1 UNSUBSCRIBE {}\r\n", mailbox);
@@ -376,7 +370,6 @@ mod tests {
 
 	#[test]
 	fn expunge() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK EXPUNGE completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
@@ -386,7 +379,6 @@ mod tests {
 
 	#[test]
 	fn check() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CHECK completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
@@ -464,7 +456,6 @@ mod tests {
 
 	#[test]
 	fn create() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CREATE completed\r\n".to_vec();
 		let mailbox_name = "INBOX";
 		let command = format!("a1 CREATE {}\r\n", mailbox_name);
@@ -476,7 +467,6 @@ mod tests {
 
 	#[test]
 	fn delete() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK DELETE completed\r\n".to_vec();
 		let mailbox_name = "INBOX";
 		let command = format!("a1 DELETE {}\r\n", mailbox_name);
@@ -488,7 +478,6 @@ mod tests {
 
 	#[test]
 	fn noop() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK NOOP completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
@@ -498,7 +487,6 @@ mod tests {
 
 	#[test]
 	fn close() {
-		// TODO Make sure the response was read correctly
 		let response = b"a1 OK CLOSE completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
 		let mut client = create_client_with_mock_stream(mock_stream);
