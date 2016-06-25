@@ -20,10 +20,7 @@ impl Client<TcpStream> {
 	pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let mut socket = Client {
-					stream: stream,
-					tag: INITIAL_TAG
-				};
+				let mut socket = Client::new(stream);
 
 				try!(socket.read_greeting());
 				Ok(socket)
@@ -38,10 +35,11 @@ impl Client<SslStream<TcpStream>> {
 	pub fn secure_connect<A: ToSocketAddrs>(addr: A, ssl_context: SslContext) -> Result<Client<SslStream<TcpStream>>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let mut socket = Client {
-					stream: SslStream::connect(&ssl_context, stream).unwrap(),
-					tag: INITIAL_TAG
+				let ssl_stream = match SslStream::connect(&ssl_context, stream) {
+					Ok(s) => s,
+					Err(e) => return Err(Error::Ssl(e))
 				};
+				let mut socket = Client::new(ssl_stream);
 
 				try!(socket.read_greeting());
 				Ok(socket)
@@ -52,6 +50,14 @@ impl Client<SslStream<TcpStream>> {
 }
 
 impl<T: Read+Write> Client<T> {
+
+	/// Creates a new client with the underlying stream.
+	pub fn new(stream: T) -> Client<T> {
+		Client{
+			stream: stream,
+			tag: INITIAL_TAG
+		}
+	}
 
 	/// Log in to the IMAP server.
 	pub fn login(&mut self, username: & str, password: & str) -> Result<()> {
@@ -247,23 +253,15 @@ impl<T: Read+Write> Client<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::INITIAL_TAG;
 	use super::super::mock_stream::MockStream;
 	use super::super::mailbox::Mailbox;
-
-	fn create_client_with_mock_stream(mock_stream: MockStream) -> Client<MockStream> {
-		Client {
-			stream: mock_stream,
-			tag: INITIAL_TAG
-		}
-	}
 
 	#[test]
 	fn read_response() {
 		let response = "a0 OK Logged in.\r\n";
 		let expected_response: Vec<String> = vec![response.to_string()];
 		let mock_stream = MockStream::new(response.as_bytes().to_vec());
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		let actual_response = client.read_response().unwrap();
 		assert!(expected_response == actual_response, "expected response doesn't equal actual");
 	}
@@ -272,7 +270,7 @@ mod tests {
 	fn read_greeting() {
 		let greeting = "* OK Dovecot ready.\r\n";
 		let mock_stream = MockStream::new(greeting.as_bytes().to_vec());
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.read_greeting().unwrap();
 	}
 
@@ -281,7 +279,7 @@ mod tests {
 	fn readline_err() {
 		// TODO Check the error test
 		let mock_stream = MockStream::new_err();
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.readline().unwrap();
 	}
 
@@ -289,7 +287,7 @@ mod tests {
 	fn create_command() {
 		let base_command = "CHECK";
 		let mock_stream = MockStream::new(Vec::new());
-		let mut imap_stream = create_client_with_mock_stream(mock_stream);
+		let mut imap_stream = Client::new(mock_stream);
 
 		let expected_command = format!("a1 {}\r\n", base_command);
 		let command = imap_stream.create_command(String::from(base_command));
@@ -307,7 +305,7 @@ mod tests {
 		let password = "password";
 		let command = format!("a1 LOGIN {} {}\r\n", username, password);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.login(username, password).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid login command");
 	}
@@ -317,7 +315,7 @@ mod tests {
 		let response = b"a1 OK Logout completed.\r\n".to_vec();
 		let command = format!("a1 LOGOUT\r\n");
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.logout().unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid logout command");
 	}
@@ -329,7 +327,7 @@ mod tests {
 		let new_mailbox_name = "NEWINBOX";
 		let command = format!("a1 RENAME {} {}\r\n", current_mailbox_name, new_mailbox_name);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.rename(current_mailbox_name, new_mailbox_name).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid rename command");
 	}
@@ -341,7 +339,7 @@ mod tests {
 		let query = "BODY[]";
 		let command = format!("a1 FETCH {} {}\r\n", sequence_set, query);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.fetch(sequence_set, query).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid fetch command");
 	}
@@ -352,7 +350,7 @@ mod tests {
 		let mailbox = "INBOX";
 		let command = format!("a1 SUBSCRIBE {}\r\n", mailbox);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.subscribe(mailbox).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid subscribe command");
 	}
@@ -363,7 +361,7 @@ mod tests {
 		let mailbox = "INBOX";
 		let command = format!("a1 UNSUBSCRIBE {}\r\n", mailbox);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.unsubscribe(mailbox).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid unsubscribe command");
 	}
@@ -372,7 +370,7 @@ mod tests {
 	fn expunge() {
 		let response = b"a1 OK EXPUNGE completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.expunge().unwrap();
 		assert!(client.stream.written_buf == b"a1 EXPUNGE\r\n".to_vec(), "Invalid expunge command");
 	}
@@ -381,7 +379,7 @@ mod tests {
 	fn check() {
 		let response = b"a1 OK CHECK completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.check().unwrap();
 		assert!(client.stream.written_buf == b"a1 CHECK\r\n".to_vec(), "Invalid check command");
 	}
@@ -408,7 +406,7 @@ mod tests {
 		let mailbox_name = "INBOX";
 		let command = format!("a1 EXAMINE {}\r\n", mailbox_name);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		let mailbox = client.examine(mailbox_name).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid examine command");
 		assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
@@ -436,7 +434,7 @@ mod tests {
 		let mailbox_name = "INBOX";
 		let command = format!("a1 SELECT {}\r\n", mailbox_name);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		let mailbox = client.select(mailbox_name).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid select command");
 		assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
@@ -448,7 +446,7 @@ mod tests {
 			a1 OK CAPABILITY completed\r\n".to_vec();
 		let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		let capabilities = client.capability().unwrap();
 		assert!(client.stream.written_buf == b"a1 CAPABILITY\r\n".to_vec(), "Invalid capability command");
 		assert!(capabilities == expected_capabilities, "Unexpected capabilities response");
@@ -460,7 +458,7 @@ mod tests {
 		let mailbox_name = "INBOX";
 		let command = format!("a1 CREATE {}\r\n", mailbox_name);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.create(mailbox_name).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid create command");
 	}
@@ -471,7 +469,7 @@ mod tests {
 		let mailbox_name = "INBOX";
 		let command = format!("a1 DELETE {}\r\n", mailbox_name);
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.delete(mailbox_name).unwrap();
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid delete command");
 	}
@@ -480,7 +478,7 @@ mod tests {
 	fn noop() {
 		let response = b"a1 OK NOOP completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.noop().unwrap();
 		assert!(client.stream.written_buf == b"a1 NOOP\r\n".to_vec(), "Invalid noop command");
 	}
@@ -489,7 +487,7 @@ mod tests {
 	fn close() {
 		let response = b"a1 OK CLOSE completed\r\n".to_vec();
 		let mock_stream = MockStream::new(response);
-		let mut client = create_client_with_mock_stream(mock_stream);
+		let mut client = Client::new(mock_stream);
 		client.close().unwrap();
 		assert!(client.stream.written_buf == b"a1 CLOSE\r\n".to_vec(), "Invalid close command");
 	}
