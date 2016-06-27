@@ -3,7 +3,8 @@ use openssl::ssl::{SslContext, SslStream};
 use std::io::{self, Read, Write};
 
 use super::mailbox::Mailbox;
-use super::parse::{parse_response_ok, parse_capability, parse_select_or_examine, parse_response};
+use super::authenticator::Authenticator;
+use super::parse::{parse_response_ok, parse_capability, parse_select_or_examine, parse_response, parse_authenticate_response};
 use super::error::{Error, Result};
 
 static TAG_PREFIX: &'static str = "a";
@@ -56,6 +57,32 @@ impl<T: Read+Write> Client<T> {
 		Client{
 			stream: stream,
 			tag: INITIAL_TAG
+		}
+	}
+
+	pub fn authenticate<A: Authenticator>(&mut self, auth_type: &str, authenticator: A) -> Result<()> {
+		match self.run_command(&format!("AUTHENTICATE {}\r\n", auth_type).to_string()) {
+			Ok(lines) => {
+				// TODO test this for the many authentication use cases
+				let data = match parse_authenticate_response(lines) {
+					Ok(d) => d,
+					Err(e) => return Err(e)
+				};
+				let auth_response = authenticator.process(data);
+				match self.stream.write_all(auth_response.into_bytes().as_slice()) {
+					Err(e) => return Err(Error::Io(e)),
+					_ => {}
+				};
+				match self.stream.write(vec![0x0d, 0x0a].as_slice()) {
+					Err(e) => return Err(Error::Io(e)),
+					_ => {}
+				};
+				match self.read_response() {
+					Ok(_) => Ok(()),
+					Err(e) => return Err(e)
+				}
+			},
+			Err(e) => Err(e)
 		}
 	}
 

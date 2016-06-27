@@ -69,7 +69,9 @@ pub enum ParseError {
     // Indicates an error parsing the status response. Such as OK, NO, and BAD.
     StatusResponse(Vec<String>),
     // Error parsing the cabability response.
-    Capability(Vec<String>)
+    Capability(Vec<String>),
+    // Authentication errors.
+    Authentication(Vec<String>)
 }
 
 impl fmt::Display for ParseError {
@@ -84,7 +86,8 @@ impl StdError for ParseError {
     fn description(&self) -> &str {
         match *self {
             ParseError::StatusResponse(_) => "Unable to parse status response",
-            ParseError::Capability(_) => "Unable to parse capability response"
+            ParseError::Capability(_) => "Unable to parse capability response",
+            ParseError::Authentication(_) => "Unable to parse authentication response"
         }
     }
 

@@ -3,6 +3,21 @@ use regex::Regex;
 use super::mailbox::Mailbox;
 use super::error::{Error, ParseError, Result};
 
+pub fn parse_authenticate_response(lines: Vec<String>) -> Result<String> {
+    let authenticate_regex = Regex::new("^+ (.*)\r\n").unwrap();
+    let last_line = match lines.last() {
+        Some(l) => l,
+        None => return Err(Error::Parse(ParseError::Authentication(lines.clone())))
+    };
+
+    for cap in authenticate_regex.captures_iter(last_line) {
+        let data = cap.at(1).unwrap_or("");
+        return Ok(String::from(data));
+    }
+
+    Err(Error::Parse(ParseError::Authentication(lines.clone())))
+}
+
 pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
     let capability_regex = Regex::new(r"^\* CAPABILITY (.*)\r\n").unwrap();
 
