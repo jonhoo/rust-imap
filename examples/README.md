@@ -1,7 +1,7 @@
 Examples
 ========
 
-This directory examples of working with the IMAP client.
+This directory contains examples of working with the IMAP client.
 
 Examples:
   * basic - This is a very basic example of using the client.
