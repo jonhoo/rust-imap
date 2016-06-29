@@ -6,6 +6,7 @@ IMAP Client for Rust
 [![crates.io](http://meritbadge.herokuapp.com/imap)](https://crates.io/crates/imap)
 [![Coverage Status](https://coveralls.io/repos/github/mattnenterprise/rust-imap/badge.svg?branch=master)](https://coveralls.io/github/mattnenterprise/rust-imap?branch=master)
 
+
 [Documentation](http://mattnenterprise.github.io/rust-imap)
 
 ### Usage
