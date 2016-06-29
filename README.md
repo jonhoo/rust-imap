@@ -4,6 +4,7 @@ IMAP Client for Rust
 
 [![Build Status](https://travis-ci.org/mattnenterprise/rust-imap.svg)](https://travis-ci.org/mattnenterprise/rust-imap)
 [![crates.io](http://meritbadge.herokuapp.com/imap)](https://crates.io/crates/imap)
+[![Coverage Status](https://coveralls.io/repos/github/mattnenterprise/rust-imap/badge.svg?branch=master)](https://coveralls.io/github/mattnenterprise/rust-imap?branch=master)
 
 [Documentation](http://mattnenterprise.github.io/rust-imap)
 
