@@ -19,6 +19,5 @@ path = "src/lib.rs"
 openssl = "0.7.13"
 regex = "0.1.71"
 
-[[bin]]
-name = "example"
-path = "example.rs"
+[dev-dependencies]
+base64 = "0.2.0"

@@ -21,4 +21,4 @@ addons:
     - libdw-dev
 after_success:
 - travis-cargo --only stable doc-upload
-- travis-cargo coveralls --no-sudo
+- travis-cargo coveralls --exclude-pattern="/target" --no-sudo
