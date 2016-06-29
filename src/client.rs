@@ -29,6 +29,19 @@ impl Client<TcpStream> {
 			Err(e) => Err(Error::Io(e))
 		}
 	}
+
+	/// This will upgrade a regular TCP connection to use SSL.
+	pub fn secure(mut self, ssl_context: SslContext) -> Result<Client<SslStream<TcpStream>>> {
+		// TODO This needs to be tested
+		match self.run_command_and_check_ok("STARTTLS") {
+			Err(e) => return Err(e),
+			_ => {}
+		};
+		match SslStream::connect(&ssl_context, self.stream) {
+			Ok(s) => Ok(Client::new(s)),
+			Err(e) => Err(Error::Ssl(e))
+		}
+	}
 }
 
 impl Client<SslStream<TcpStream>> {
