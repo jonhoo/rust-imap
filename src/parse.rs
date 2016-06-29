@@ -145,11 +145,4 @@ mod tests {
         let lines = vec![String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"), String::from("a2 BAD broken.\r\n")];
         parse_response(lines).unwrap();
     }
-
-    #[test]
-    #[should_panic]
-    fn parse_response_invalid2_test() {
-        let lines = vec![String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"), String::from("a2 broken.\r\n")];
-        parse_response(lines).unwrap();
-    }
 }
