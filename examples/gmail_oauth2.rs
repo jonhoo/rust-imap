@@ -29,20 +29,18 @@ fn main() {
     imap_socket.authenticate("XOAUTH2", gmail_auth).unwrap();
 
     match imap_socket.select("INBOX") {
-		Ok(mailbox) => {
-			println!("{}", mailbox);
-		},
-		Err(e) => println!("Error selecting INBOX: {}", e)
-	};
+        Ok(mailbox) => println!("{}", mailbox),
+        Err(e) => println!("Error selecting INBOX: {}", e)
+    };
 
-	match imap_socket.fetch("2", "body[text]") {
-		Ok(lines) => {
-			for line in lines.iter() {
-				print!("{}", line);
-			}
-		},
-		Err(e) => println!("Error Fetching email 2: {}", e)
-	};
+    match imap_socket.fetch("2", "body[text]") {
+        Ok(lines) => {
+            for line in lines.iter() {
+                print!("{}", line);
+            }
+        },
+        Err(e) => println!("Error Fetching email 2: {}", e)
+    };
 
-	imap_socket.logout().unwrap();
+    imap_socket.logout().unwrap();
 }
