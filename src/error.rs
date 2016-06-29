@@ -71,7 +71,7 @@ pub enum ParseError {
     // Error parsing the cabability response.
     Capability(Vec<String>),
     // Authentication errors.
-    Authentication(Vec<String>)
+    Authentication(String)
 }
 
 impl fmt::Display for ParseError {

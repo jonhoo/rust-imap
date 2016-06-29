@@ -3,19 +3,15 @@ use regex::Regex;
 use super::mailbox::Mailbox;
 use super::error::{Error, ParseError, Result};
 
-pub fn parse_authenticate_response(lines: Vec<String>) -> Result<String> {
-    let authenticate_regex = Regex::new("^+ (.*)\r\n").unwrap();
-    let last_line = match lines.last() {
-        Some(l) => l,
-        None => return Err(Error::Parse(ParseError::Authentication(lines.clone())))
-    };
+pub fn parse_authenticate_response(line: String) -> Result<String> {
+    let authenticate_regex = Regex::new("^+(.*)\r\n").unwrap();
 
-    for cap in authenticate_regex.captures_iter(last_line) {
+    for cap in authenticate_regex.captures_iter(line.as_str()) {
         let data = cap.at(1).unwrap_or("");
         return Ok(String::from(data));
     }
 
-    Err(Error::Parse(ParseError::Authentication(lines.clone())))
+    Err(Error::Parse(ParseError::Authentication(line)))
 }
 
 pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {

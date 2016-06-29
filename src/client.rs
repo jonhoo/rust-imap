@@ -61,14 +61,20 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	pub fn authenticate<A: Authenticator>(&mut self, auth_type: &str, authenticator: A) -> Result<()> {
-		match self.run_command(&format!("AUTHENTICATE {}\r\n", auth_type).to_string()) {
-			Ok(lines) => {
+		match self.run_command(&format!("AUTHENTICATE {}", auth_type).to_string()) {
+			Ok(_) => {
+				let line = match self.readline() {
+					Ok(l) => l,
+					Err(e) => return Err(e)
+				};
 				// TODO test this for the many authentication use cases
-				let data = match parse_authenticate_response(lines) {
+				let data = match parse_authenticate_response(String::from_utf8(line).unwrap()) {
 					Ok(d) => d,
 					Err(e) => return Err(e)
 				};
+				println!("Done parsing authenticating response");
 				let auth_response = authenticator.process(data);
+				println!("Writing: {}", auth_response.clone());
 				match self.stream.write_all(auth_response.into_bytes().as_slice()) {
 					Err(e) => return Err(Error::Io(e)),
 					_ => {}
@@ -79,7 +85,7 @@ impl<T: Read+Write> Client<T> {
 				};
 				match self.read_response() {
 					Ok(_) => Ok(()),
-					Err(e) => return Err(e)
+					Err(e) => Err(e)
 				}
 			},
 			Err(e) => Err(e)
@@ -93,7 +99,7 @@ impl<T: Read+Write> Client<T> {
 
 	/// Selects a mailbox
 	pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-		match self.run_command(&format!("SELECT {}", mailbox_name).to_string()) {
+		match self.run_command_and_read_response(&format!("SELECT {}", mailbox_name).to_string()) {
 			Ok(lines) => parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
@@ -101,7 +107,7 @@ impl<T: Read+Write> Client<T> {
 
 	/// Examine is identical to Select, but the selected mailbox is identified as read-only
 	pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-		match self.run_command(&format!("EXAMINE {}", mailbox_name).to_string()) {
+		match self.run_command_and_read_response(&format!("EXAMINE {}", mailbox_name).to_string()) {
 			Ok(lines) => parse_select_or_examine(lines),
 			Err(e) => Err(e)
 		}
@@ -109,7 +115,7 @@ impl<T: Read+Write> Client<T> {
 
 	/// Fetch retreives data associated with a message in the mailbox.
 	pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<String>> {
-		self.run_command(&format!("FETCH {} {}", sequence_set, query).to_string())
+		self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query).to_string())
 	}
 
 	/// Noop always succeeds, and it does nothing.
@@ -151,7 +157,7 @@ impl<T: Read+Write> Client<T> {
 
 	/// Capability requests a listing of capabilities that the server supports.
 	pub fn capability(&mut self) -> Result<Vec<String>> {
-		match self.run_command(&format!("CAPABILITY").to_string()) {
+		match self.run_command_and_read_response(&format!("CAPABILITY").to_string()) {
 			Ok(lines) => parse_capability(lines),
 			Err(e) => Err(e)
 		}
@@ -198,7 +204,7 @@ impl<T: Read+Write> Client<T> {
 
 	/// Runs a command and checks if it returns OK.
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
-		match self.run_command(command) {
+		match self.run_command_and_read_response(command) {
 			Ok(lines) => parse_response_ok(lines),
 			Err(e) => Err(e)
 		}
@@ -206,22 +212,27 @@ impl<T: Read+Write> Client<T> {
 
 	// Run a command and parse the status response.
 	pub fn run_command_and_parse(&mut self, command: &str) -> Result<Vec<String>> {
-		match self.run_command(command) {
+		match self.run_command_and_read_response(command) {
 			Ok(lines) => parse_response(lines),
 			Err(e) => Err(e)
 		}
 	}
 
 	/// Runs any command passed to it.
-	pub fn run_command(&mut self, untagged_command: &str) -> Result<Vec<String>> {
+	pub fn run_command(&mut self, untagged_command: &str) -> Result<()> {
 		let command = self.create_command(untagged_command.to_string());
 
 		match self.stream.write_fmt(format_args!("{}", &*command)) {
-			Ok(_) => (),
-			Err(_) => return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write"))),
-		};
+			Ok(_) => Ok(()),
+			Err(_) => Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write"))),
+		}
+	}
 
-		self.read_response()
+	pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<String>> {
+		match self.run_command(untagged_command) {
+			Ok(_) => self.read_response(),
+			Err(e) => Err(e)
+		}
 	}
 
 	fn read_response(&mut self) -> Result<Vec<String>> {
@@ -265,8 +276,10 @@ impl<T: Read+Write> Client<T> {
 					Ok(_) => {},
 					Err(_) => return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to read line"))),
 				}
+				print!("{}", String::from_utf8_lossy(byte_buffer));
 				line_buffer.push(byte_buffer[0]);
 		}
+		println!("{}", String::from_utf8(line_buffer.clone()).unwrap());
 		Ok(line_buffer)
 	}
 
