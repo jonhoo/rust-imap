@@ -3,7 +3,7 @@ extern crate openssl;
 extern crate base64;
 
 use openssl::ssl::{SslContext, SslMethod};
-use base64::{encode, decode};
+use base64::{encode};
 use imap::client::Client;
 use imap::authenticator::Authenticator;
 
@@ -13,15 +13,16 @@ struct GmailOAuth2 {
 }
 
 impl Authenticator for GmailOAuth2 {
+    #[allow(unused_variables)]
     fn process(&self, data: String) -> String {
-        String::from("dXNlcj1tYXR0bWNjb3kxMTBAZ21haWwuY29tAWF1dGg9QmVhcmVyIHlhMjkuQ2k4UUEzQ1Y5SW1OQ0Z1NDNpbkZRcngtSUR0cjVFSkZHNXdEM1IySzBXdTdiM1dzVG1Md")
+        encode(format!("user={}\x01auth=Bearer {}\x01\x01", self.user, self.access_token).as_bytes())
     }
 }
 
 fn main() {
-    let mut gmail_auth = GmailOAuth2{
-        user: String::from("email@gmail.com"),
-        access_token: String::from("")
+    let gmail_auth = GmailOAuth2{
+        user: String::from("sombody@gmail.com"),
+        access_token: String::from("<access_token>")
     };
     let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()).unwrap();
 

@@ -63,29 +63,41 @@ impl<T: Read+Write> Client<T> {
 	pub fn authenticate<A: Authenticator>(&mut self, auth_type: &str, authenticator: A) -> Result<()> {
 		match self.run_command(&format!("AUTHENTICATE {}", auth_type).to_string()) {
 			Ok(_) => {
-				let line = match self.readline() {
-					Ok(l) => l,
-					Err(e) => return Err(e)
-				};
-				// TODO test this for the many authentication use cases
-				let data = match parse_authenticate_response(String::from_utf8(line).unwrap()) {
-					Ok(d) => d,
-					Err(e) => return Err(e)
-				};
-				println!("Done parsing authenticating response");
-				let auth_response = authenticator.process(data);
-				println!("Writing: {}", auth_response.clone());
-				match self.stream.write_all(auth_response.into_bytes().as_slice()) {
-					Err(e) => return Err(Error::Io(e)),
-					_ => {}
-				};
-				match self.stream.write(vec![0x0d, 0x0a].as_slice()) {
-					Err(e) => return Err(Error::Io(e)),
-					_ => {}
-				};
-				match self.read_response() {
-					Ok(_) => Ok(()),
-					Err(e) => Err(e)
+				loop {
+					let line = match self.readline() {
+						Ok(l) => l,
+						Err(e) => return Err(e)
+					};
+					if line.starts_with(b"+") {
+						let data = match parse_authenticate_response(String::from_utf8(line).unwrap()) {
+							Ok(d) => d,
+							Err(e) => return Err(e)
+						};
+						let auth_response = authenticator.process(data);
+						match self.stream.write_all(auth_response.into_bytes().as_slice()) {
+							Err(e) => return Err(Error::Io(e)),
+							_ => {}
+						};
+						match self.stream.write(vec![0x0d, 0x0a].as_slice()) {
+							Err(e) => return Err(Error::Io(e)),
+							_ => {}
+						};
+					} else if line.starts_with(format!("{}{} ", TAG_PREFIX, self.tag).as_bytes()) {
+						match parse_response(vec![String::from_utf8(line).unwrap()]) {
+							Ok(_) => return Ok(()),
+							Err(e) => return Err(e)
+						};
+					} else {
+						let mut lines = match self.read_response() {
+							Ok(l) => l,
+							Err(e) => return Err(e)
+						};
+						lines.insert(0, String::from_utf8(line).unwrap());
+						match parse_response(lines.clone()) {
+							Ok(_) => return Ok(()),
+							Err(e) => return Err(e)
+						};
+					}
 				}
 			},
 			Err(e) => Err(e)
@@ -279,7 +291,6 @@ impl<T: Read+Write> Client<T> {
 				print!("{}", String::from_utf8_lossy(byte_buffer));
 				line_buffer.push(byte_buffer[0]);
 		}
-		println!("{}", String::from_utf8(line_buffer.clone()).unwrap());
 		Ok(line_buffer)
 	}
 
