@@ -60,47 +60,52 @@ impl<T: Read+Write> Client<T> {
 		}
 	}
 
+	/// Authenticate will authenticate with the server, using the authenticator given.
 	pub fn authenticate<A: Authenticator>(&mut self, auth_type: &str, authenticator: A) -> Result<()> {
 		match self.run_command(&format!("AUTHENTICATE {}", auth_type).to_string()) {
-			Ok(_) => {
-				loop {
-					let line = match self.readline() {
-						Ok(l) => l,
-						Err(e) => return Err(e)
-					};
-					if line.starts_with(b"+") {
-						let data = match parse_authenticate_response(String::from_utf8(line).unwrap()) {
-							Ok(d) => d,
-							Err(e) => return Err(e)
-						};
-						let auth_response = authenticator.process(data);
-						match self.stream.write_all(auth_response.into_bytes().as_slice()) {
-							Err(e) => return Err(Error::Io(e)),
-							_ => {}
-						};
-						match self.stream.write(vec![0x0d, 0x0a].as_slice()) {
-							Err(e) => return Err(Error::Io(e)),
-							_ => {}
-						};
-					} else if line.starts_with(format!("{}{} ", TAG_PREFIX, self.tag).as_bytes()) {
-						match parse_response(vec![String::from_utf8(line).unwrap()]) {
-							Ok(_) => return Ok(()),
-							Err(e) => return Err(e)
-						};
-					} else {
-						let mut lines = match self.read_response() {
-							Ok(l) => l,
-							Err(e) => return Err(e)
-						};
-						lines.insert(0, String::from_utf8(line).unwrap());
-						match parse_response(lines.clone()) {
-							Ok(_) => return Ok(()),
-							Err(e) => return Err(e)
-						};
-					}
-				}
-			},
+			Ok(_) => self.do_auth_handshake(authenticator),
 			Err(e) => Err(e)
+		}
+	}
+
+	/// This func does the handshake process once the authenticate command is made.
+	fn do_auth_handshake<A: Authenticator>(&mut self, authenticator: A) -> Result<()> {
+		// TODO Clean up this code
+		loop {
+			let line = match self.readline() {
+				Ok(l) => l,
+				Err(e) => return Err(e)
+			};
+			if line.starts_with(b"+") {
+				let data = match parse_authenticate_response(String::from_utf8(line).unwrap()) {
+					Ok(d) => d,
+					Err(e) => return Err(e)
+				};
+				let auth_response = authenticator.process(data);
+				match self.stream.write_all(auth_response.into_bytes().as_slice()) {
+					Err(e) => return Err(Error::Io(e)),
+					_ => {}
+				};
+				match self.stream.write(vec![0x0d, 0x0a].as_slice()) {
+					Err(e) => return Err(Error::Io(e)),
+					_ => {}
+				};
+			} else if line.starts_with(format!("{}{} ", TAG_PREFIX, self.tag).as_bytes()) {
+				match parse_response(vec![String::from_utf8(line).unwrap()]) {
+					Ok(_) => return Ok(()),
+					Err(e) => return Err(e)
+				};
+			} else {
+				let mut lines = match self.read_response() {
+					Ok(l) => l,
+					Err(e) => return Err(e)
+				};
+				lines.insert(0, String::from_utf8(line).unwrap());
+				match parse_response(lines.clone()) {
+					Ok(_) => return Ok(()),
+					Err(e) => return Err(e)
+				};
+			}
 		}
 	}
 
