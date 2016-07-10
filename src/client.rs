@@ -215,6 +215,10 @@ impl<T: Read+Write> Client<T> {
 		self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
 	}
 
+	pub fn uid_store(&mut self, uid_set: &str, query: &str) -> Result<Vec<String>> {
+		self.run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
+	}
+
 	/// Copy copies the specified message to the end of the specified destination mailbox.
 	pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
 		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
@@ -568,16 +572,30 @@ mod tests {
 
 	#[test]
 	fn store() {
+		generic_store(false);
+	}
+
+	#[test]
+	fn uid_store() {
+		generic_store(true);
+	}
+
+	fn generic_store(uid: bool) {
 		let response = b"* 2 FETCH (FLAGS (\\Deleted \\Seen))\r\n\
 			* 3 FETCH (FLAGS (\\Deleted))\r\n\
 			* 4 FETCH (FLAGS (\\Deleted \\Flagged \\Seen))\r\n\
 			a1 OK STORE completed\r\n".to_vec();
 		let sequence_set = "2:4";
 		let query = "+FLAGS (\\Deleted)";
-		let command = format!("a1 STORE {} {}\r\n", sequence_set, query);
+		let uid_cmd = if uid { " UID " } else { " " };
+		let command = format!("a1{}STORE {} {}\r\n", uid_cmd, sequence_set, query);
 		let mock_stream = MockStream::new(response);
 		let mut client = Client::new(mock_stream);
-		client.store(sequence_set, query).unwrap();
+		if uid {
+			client.uid_store(sequence_set, query).unwrap();
+		} else {
+			client.store(sequence_set, query).unwrap();
+		}
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid store command");
 	}
 }
