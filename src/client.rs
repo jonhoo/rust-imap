@@ -33,14 +33,10 @@ impl Client<TcpStream> {
 	/// This will upgrade a regular TCP connection to use SSL.
 	pub fn secure(mut self, ssl_context: SslContext) -> Result<Client<SslStream<TcpStream>>> {
 		// TODO This needs to be tested
-		match self.run_command_and_check_ok("STARTTLS") {
-			Err(e) => return Err(e),
-			_ => {}
-		};
-		match SslStream::connect(&ssl_context, self.stream) {
-			Ok(s) => Ok(Client::new(s)),
-			Err(e) => Err(Error::Ssl(e))
-		}
+		try!(self.run_command_and_check_ok("STARTTLS"));
+		SslStream::connect(&ssl_context, self.stream)
+			.map(|s| Client::new(s))
+			.map_err(|e| Error::Ssl(e))
 	}
 }
 
@@ -75,49 +71,37 @@ impl<T: Read+Write> Client<T> {
 
 	/// Authenticate will authenticate with the server, using the authenticator given.
 	pub fn authenticate<A: Authenticator>(&mut self, auth_type: &str, authenticator: A) -> Result<()> {
-		match self.run_command(&format!("AUTHENTICATE {}", auth_type).to_string()) {
-			Ok(_) => self.do_auth_handshake(authenticator),
-			Err(e) => Err(e)
-		}
+		try!(self.run_command(&format!("AUTHENTICATE {}", auth_type).to_string()));
+		self.do_auth_handshake(authenticator)
 	}
 
 	/// This func does the handshake process once the authenticate command is made.
 	fn do_auth_handshake<A: Authenticator>(&mut self, authenticator: A) -> Result<()> {
 		// TODO Clean up this code
 		loop {
-			let line = match self.readline() {
-				Ok(l) => l,
-				Err(e) => return Err(e)
-			};
+			let line = try!(self.readline());
+
 			if line.starts_with(b"+") {
-				let data = match parse_authenticate_response(String::from_utf8(line).unwrap()) {
-					Ok(d) => d,
-					Err(e) => return Err(e)
-				};
+				let data = try!(parse_authenticate_response(String::from_utf8(line).unwrap()));
 				let auth_response = authenticator.process(data);
-				match self.stream.write_all(auth_response.into_bytes().as_slice()) {
-					Err(e) => return Err(Error::Io(e)),
-					_ => {}
-				};
-				match self.stream.write(vec![0x0d, 0x0a].as_slice()) {
-					Err(e) => return Err(Error::Io(e)),
-					_ => {}
-				};
+
+				if let Err(e) = self.stream.write_all(auth_response.into_bytes().as_slice()) {
+					return Err(Error::Io(e));
+				}
+
+				if let Err(e) = self.stream.write(vec![0x0d, 0x0a].as_slice()) {
+					return Err(Error::Io(e));
+				}
+
 			} else if line.starts_with(format!("{}{} ", TAG_PREFIX, self.tag).as_bytes()) {
-				match parse_response(vec![String::from_utf8(line).unwrap()]) {
-					Ok(_) => return Ok(()),
-					Err(e) => return Err(e)
-				};
+				try!(parse_response(vec![String::from_utf8(line).unwrap()]));
+				return Ok(());
+
 			} else {
-				let mut lines = match self.read_response() {
-					Ok(l) => l,
-					Err(e) => return Err(e)
-				};
+				let mut lines = try!(self.read_response());
 				lines.insert(0, String::from_utf8(line).unwrap());
-				match parse_response(lines.clone()) {
-					Ok(_) => return Ok(()),
-					Err(e) => return Err(e)
-				};
+				try!(parse_response(lines.clone()));
+				return Ok(());
 			}
 		}
 	}
@@ -129,18 +113,18 @@ impl<T: Read+Write> Client<T> {
 
 	/// Selects a mailbox
 	pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-		match self.run_command_and_read_response(&format!("SELECT {}", mailbox_name).to_string()) {
-			Ok(lines) => parse_select_or_examine(lines),
-			Err(e) => Err(e)
-		}
+		let lines = try!(
+			self.run_command_and_read_response(&format!("SELECT {}", mailbox_name).to_string())
+		);
+		parse_select_or_examine(lines)
 	}
 
 	/// Examine is identical to Select, but the selected mailbox is identified as read-only
 	pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-		match self.run_command_and_read_response(&format!("EXAMINE {}", mailbox_name).to_string()) {
-			Ok(lines) => parse_select_or_examine(lines),
-			Err(e) => Err(e)
-		}
+		let lines = try!(
+			self.run_command_and_read_response(&format!("EXAMINE {}", mailbox_name).to_string())
+		);
+		parse_select_or_examine(lines)
 	}
 
 	/// Fetch retreives data associated with a message in the mailbox.
@@ -187,10 +171,10 @@ impl<T: Read+Write> Client<T> {
 
 	/// Capability requests a listing of capabilities that the server supports.
 	pub fn capability(&mut self) -> Result<Vec<String>> {
-		match self.run_command_and_read_response(&format!("CAPABILITY").to_string()) {
-			Ok(lines) => parse_capability(lines),
-			Err(e) => Err(e)
-		}
+		let lines = try!(
+			self.run_command_and_read_response(&format!("CAPABILITY").to_string())
+		);
+		parse_capability(lines)
 	}
 
 	/// Expunge permanently removes all messages that have the \Deleted flag set from the currently
@@ -234,35 +218,30 @@ impl<T: Read+Write> Client<T> {
 
 	/// Runs a command and checks if it returns OK.
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
-		match self.run_command_and_read_response(command) {
-			Ok(lines) => parse_response_ok(lines),
-			Err(e) => Err(e)
-		}
+		let lines = try!(self.run_command_and_read_response(command));
+		parse_response_ok(lines)
 	}
 
 	// Run a command and parse the status response.
 	pub fn run_command_and_parse(&mut self, command: &str) -> Result<Vec<String>> {
-		match self.run_command_and_read_response(command) {
-			Ok(lines) => parse_response(lines),
-			Err(e) => Err(e)
-		}
+		let lines = try!(self.run_command_and_read_response(command));
+		parse_response(lines)
 	}
 
 	/// Runs any command passed to it.
 	pub fn run_command(&mut self, untagged_command: &str) -> Result<()> {
 		let command = self.create_command(untagged_command.to_string());
 
-		match self.stream.write_fmt(format_args!("{}", &*command)) {
-			Ok(_) => Ok(()),
-			Err(_) => Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write"))),
+		if let Err(_) = self.stream.write_fmt(format_args!("{}", &*command)) {
+			return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write")));
 		}
+
+		return Ok(());
 	}
 
 	pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<String>> {
-		match self.run_command(untagged_command) {
-			Ok(_) => self.read_response(),
-			Err(e) => Err(e)
-		}
+		try!(self.run_command(untagged_command));
+		self.read_response()
 	}
 
 	fn read_response(&mut self) -> Result<Vec<String>> {
@@ -271,15 +250,11 @@ impl<T: Read+Write> Client<T> {
 		let mut lines: Vec<String> = Vec::new();
 
 		while !found_tag_line {
-			match self.readline() {
-				Ok(raw_data) => {
-					let line = String::from_utf8(raw_data).unwrap();
-					lines.push(line.clone());
-					if (&*line).starts_with(&*start_str) {
-						found_tag_line = true;
-					}
-				},
-				Err(err) => return Err(err)
+			let raw_data = try!(self.readline());
+			let line = String::from_utf8(raw_data).unwrap();
+			lines.push(line.clone());
+			if (&*line).starts_with(&*start_str) {
+				found_tag_line = true;
 			}
 		}
 
@@ -287,10 +262,8 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn read_greeting(&mut self) -> Result<()> {
-		match self.readline() {
-			Ok(_) => Ok(()),
-			Err(err) => Err(err)
-		}
+		try!(self.readline());
+		Ok(())
 	}
 
 	fn readline(&mut self) -> Result<Vec<u8>> {
@@ -301,13 +274,12 @@ impl<T: Read+Write> Client<T> {
 
 		let mut line_buffer: Vec<u8> = Vec::new();
 		while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != lf && line_buffer[line_buffer.len()-2] != cr) {
-				let byte_buffer: &mut [u8] = &mut [0];
-				match self.stream.read(byte_buffer) {
-					Ok(_) => {},
-					Err(_) => return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to read line"))),
-				}
-				print!("{}", String::from_utf8_lossy(byte_buffer));
-				line_buffer.push(byte_buffer[0]);
+			let byte_buffer: &mut [u8] = &mut [0];
+			if let Err(_) = self.stream.read(byte_buffer) {
+				return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to read line")));
+			}
+			print!("{}", String::from_utf8_lossy(byte_buffer));
+			line_buffer.push(byte_buffer[0]);
 		}
 		Ok(line_buffer)
 	}
