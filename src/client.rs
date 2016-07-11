@@ -208,8 +208,12 @@ impl<T: Read+Write> Client<T> {
 		self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name).to_string())
 	}
 
+	pub fn uid_copy(&mut self, uid_set: &str, mailbox_name: &str) -> Result<()> {
+		self.run_command_and_check_ok(&format!("UID COPY {} {}", uid_set, mailbox_name))
+	}
+
 	/// The LIST command returns a subset of names from the complete set
-    /// of all names available to the client.
+	/// of all names available to the client.
 	pub fn list(&mut self, reference_name: &str, mailbox_search_pattern: &str) -> Result<Vec<String>> {
 		self.run_command_and_parse(&format!("LIST {} {}", reference_name, mailbox_search_pattern))
 	}
@@ -569,5 +573,31 @@ mod tests {
 			client.store(sequence_set, query).unwrap();
 		}
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid store command");
+	}
+
+	#[test]
+	fn copy() {
+		generic_copy(false)
+	}
+
+	#[test]
+	fn uid_copy() {
+		generic_copy(true)
+	}
+
+	fn generic_copy(uid: bool) {
+		let response = b"a1 OK COPY completed\r\n".to_vec();
+		let sequence_set = "2:4";
+		let mailbox = "MEETING";
+		let uid_cmd = if uid { " UID " } else { " " };
+		let command = format!("a1{}COPY {} {}\r\n", uid_cmd, sequence_set, mailbox);
+		let mock_stream = MockStream::new(response);
+		let mut client = Client::new(mock_stream);
+		if uid {
+			client.uid_copy(sequence_set, mailbox).unwrap();
+		} else {
+			client.copy(sequence_set, mailbox).unwrap();
+		}
+		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid copy command");
 	}
 }
