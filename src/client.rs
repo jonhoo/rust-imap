@@ -132,6 +132,10 @@ impl<T: Read+Write> Client<T> {
 		self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query).to_string())
 	}
 
+	pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<String>> {
+		self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query).to_string())
+	}
+
 	/// Noop always succeeds, and it does nothing.
 	pub fn noop(&mut self) -> Result<()> {
 		self.run_command_and_check_ok("NOOP")
@@ -388,13 +392,27 @@ mod tests {
 
 	#[test]
 	fn fetch() {
+		generic_fetch(false)
+	}
+
+	#[test]
+	fn uid_fetch() {
+		generic_fetch(true)
+	}
+
+	fn generic_fetch(uid: bool) {
 		let response = b"a1 OK FETCH completed\r\n".to_vec();
 		let sequence_set = "1";
 		let query = "BODY[]";
-		let command = format!("a1 FETCH {} {}\r\n", sequence_set, query);
+		let uid_cmd = if uid { " UID " } else { " " };
+		let command = format!("a1{}FETCH {} {}\r\n", uid_cmd, sequence_set, query);
 		let mock_stream = MockStream::new(response);
 		let mut client = Client::new(mock_stream);
-		client.fetch(sequence_set, query).unwrap();
+		if uid {
+			client.uid_fetch(sequence_set, query).unwrap();
+		} else {
+			client.fetch(sequence_set, query).unwrap();
+		}
 		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid fetch command");
 	}
 
