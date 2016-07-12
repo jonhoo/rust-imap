@@ -391,32 +391,6 @@ mod tests {
 	}
 
 	#[test]
-	fn fetch() {
-		generic_fetch(false)
-	}
-
-	#[test]
-	fn uid_fetch() {
-		generic_fetch(true)
-	}
-
-	fn generic_fetch(uid: bool) {
-		let response = b"a1 OK FETCH completed\r\n".to_vec();
-		let sequence_set = "1";
-		let query = "BODY[]";
-		let uid_cmd = if uid { " UID " } else { " " };
-		let command = format!("a1{}FETCH {} {}\r\n", uid_cmd, sequence_set, query);
-		let mock_stream = MockStream::new(response);
-		let mut client = Client::new(mock_stream);
-		if uid {
-			client.uid_fetch(sequence_set, query).unwrap();
-		} else {
-			client.fetch(sequence_set, query).unwrap();
-		}
-		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid fetch command");
-	}
-
-	#[test]
 	fn subscribe() {
 		let response = b"a1 OK SUBSCRIBE completed\r\n".to_vec();
 		let mailbox = "INBOX";
@@ -566,56 +540,91 @@ mod tests {
 
 	#[test]
 	fn store() {
-		generic_store(false);
+		generic_store(" ", |mut c, set, query| c.store(set, query));
 	}
 
 	#[test]
 	fn uid_store() {
-		generic_store(true);
+		generic_store(" UID ", |mut c, set, query| c.uid_store(set, query));
 	}
 
-	fn generic_store(uid: bool) {
-		let response = b"* 2 FETCH (FLAGS (\\Deleted \\Seen))\r\n\
+	fn generic_store<F, T, E>(prefix: &str, op: F)
+		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E> {
+
+		let res = "* 2 FETCH (FLAGS (\\Deleted \\Seen))\r\n\
 			* 3 FETCH (FLAGS (\\Deleted))\r\n\
 			* 4 FETCH (FLAGS (\\Deleted \\Flagged \\Seen))\r\n\
-			a1 OK STORE completed\r\n".to_vec();
-		let sequence_set = "2:4";
-		let query = "+FLAGS (\\Deleted)";
-		let uid_cmd = if uid { " UID " } else { " " };
-		let command = format!("a1{}STORE {} {}\r\n", uid_cmd, sequence_set, query);
-		let mock_stream = MockStream::new(response);
-		let mut client = Client::new(mock_stream);
-		if uid {
-			client.uid_store(sequence_set, query).unwrap();
-		} else {
-			client.store(sequence_set, query).unwrap();
-		}
-		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid store command");
+			a1 OK STORE completed\r\n";
+
+		generic_with_uid(
+			res,
+			"STORE",
+			"2.4",
+			"+FLAGS (\\Deleted)",
+			prefix,
+			op,
+		);
 	}
 
 	#[test]
 	fn copy() {
-		generic_copy(false)
+		generic_copy(" ", |mut c, set, query| c.copy(set, query))
 	}
 
 	#[test]
 	fn uid_copy() {
-		generic_copy(true)
+		generic_copy(" UID ", |mut c, set, query| c.uid_copy(set, query))
 	}
 
-	fn generic_copy(uid: bool) {
-		let response = b"a1 OK COPY completed\r\n".to_vec();
-		let sequence_set = "2:4";
-		let mailbox = "MEETING";
-		let uid_cmd = if uid { " UID " } else { " " };
-		let command = format!("a1{}COPY {} {}\r\n", uid_cmd, sequence_set, mailbox);
-		let mock_stream = MockStream::new(response);
-		let mut client = Client::new(mock_stream);
-		if uid {
-			client.uid_copy(sequence_set, mailbox).unwrap();
-		} else {
-			client.copy(sequence_set, mailbox).unwrap();
-		}
-		assert!(client.stream.written_buf == command.as_bytes().to_vec(), "Invalid copy command");
+	fn generic_copy<F, T, E>(prefix: &str, op: F)
+		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E> {
+
+		generic_with_uid(
+			"OK COPY completed\r\n",
+			"COPY",
+			"2:4",
+			"MEETING",
+			prefix,
+			op,
+		);
+	}
+
+	#[test]
+	fn fetch() {
+		generic_fetch(" ", |mut c, seq, query| c.fetch(seq, query))
+	}
+
+	#[test]
+	fn uid_fetch() {
+		generic_fetch(" UID ", |mut c, seq, query| c.uid_fetch(seq, query))
+	}
+
+	fn generic_fetch<F, T, E>(prefix: &str, op: F)
+		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E> {
+
+		generic_with_uid(
+			"OK FETCH completed\r\n",
+			"FETCH",
+			"1",
+			"BODY[]",
+			prefix,
+			op
+		);
+	}
+
+	fn generic_with_uid<F, T, E>(
+		res: &str,
+		cmd: &str,
+		seq: &str,
+		query: &str,
+		prefix: &str,
+		op: F) where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E>,
+	{
+
+		let resp = format!("a1 {}\r\n", res).as_bytes().to_vec();
+		let line = format!("a1{}{} {} {}\r\n", prefix, cmd, seq, query);
+		let mut client = Client::new(MockStream::new(resp));
+		let _ = op(&mut client, seq, query);
+		assert!(client.stream.written_buf == line.as_bytes().to_vec(), "Invalid command");
 	}
 }
