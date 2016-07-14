@@ -9,11 +9,14 @@ use super::error::{Error, Result};
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
+const CR: u8 = 0x0d;
+const LF: u8 = 0x0a;
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
 pub struct Client<T> {
 	stream: T,
-	tag: u32
+	tag: u32,
+	pub debug: bool
 }
 
 impl Client<TcpStream> {
@@ -65,7 +68,8 @@ impl<T: Read+Write> Client<T> {
 	pub fn new(stream: T) -> Client<T> {
 		Client{
 			stream: stream,
-			tag: INITIAL_TAG
+			tag: INITIAL_TAG,
+			debug: false
 		}
 	}
 
@@ -85,14 +89,7 @@ impl<T: Read+Write> Client<T> {
 				let data = try!(parse_authenticate_response(String::from_utf8(line).unwrap()));
 				let auth_response = authenticator.process(data);
 
-				if let Err(e) = self.stream.write_all(auth_response.into_bytes().as_slice()) {
-					return Err(Error::Io(e));
-				}
-
-				if let Err(e) = self.stream.write(vec![0x0d, 0x0a].as_slice()) {
-					return Err(Error::Io(e));
-				}
-
+				try!(self.write_line(auth_response.into_bytes().as_slice()))
 			} else if line.starts_with(format!("{}{} ", TAG_PREFIX, self.tag).as_bytes()) {
 				try!(parse_response(vec![String::from_utf8(line).unwrap()]));
 				return Ok(());
@@ -248,12 +245,7 @@ impl<T: Read+Write> Client<T> {
 	/// Runs any command passed to it.
 	pub fn run_command(&mut self, untagged_command: &str) -> Result<()> {
 		let command = self.create_command(untagged_command.to_string());
-
-		if let Err(_) = self.stream.write_fmt(format_args!("{}", &*command)) {
-			return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write")));
-		}
-
-		return Ok(());
+		self.write_line(command.into_bytes().as_slice())
 	}
 
 	pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<String>> {
@@ -284,26 +276,42 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn readline(&mut self) -> Result<Vec<u8>> {
-		//Carriage return
-		let cr = 0x0d;
-		//Line Feed
-		let lf = 0x0a;
-
 		let mut line_buffer: Vec<u8> = Vec::new();
-		while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != lf && line_buffer[line_buffer.len()-2] != cr) {
+		while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != LF && line_buffer[line_buffer.len()-2] != CR) {
 			let byte_buffer: &mut [u8] = &mut [0];
 			if let Err(_) = self.stream.read(byte_buffer) {
 				return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to read line")));
 			}
 			line_buffer.push(byte_buffer[0]);
 		}
+
+		if self.debug {
+			let mut line = line_buffer.clone();
+			// Remove CRLF
+			line.truncate(line_buffer.len()-2);
+			print!("S: {}\n", String::from_utf8(line).unwrap());
+		}
+
 		Ok(line_buffer)
 	}
 
 	fn create_command(&mut self, command: String) -> String {
 		self.tag += 1;
-		let command = format!("{}{} {}\r\n", TAG_PREFIX, self.tag, command);
+		let command = format!("{}{} {}", TAG_PREFIX, self.tag, command);
 		return command;
+	}
+
+	fn write_line(&mut self, buf: &[u8]) -> Result<()> {
+		if let Err(_) = self.stream.write_all(buf) {
+			return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write buf")));
+		}
+		if let Err(_) = self.stream.write_all(&[CR, LF]) {
+			return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write CRLF")));
+		}
+		if self.debug {
+			print!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
+		}
+		Ok(())
 	}
 }
 
@@ -346,11 +354,11 @@ mod tests {
 		let mock_stream = MockStream::new(Vec::new());
 		let mut imap_stream = Client::new(mock_stream);
 
-		let expected_command = format!("a1 {}\r\n", base_command);
+		let expected_command = format!("a1 {}", base_command);
 		let command = imap_stream.create_command(String::from(base_command));
 		assert!(command == expected_command, "expected command doesn't equal actual command");
 
-		let expected_command2 = format!("a2 {}\r\n", base_command);
+		let expected_command2 = format!("a2 {}", base_command);
 		let command2 = imap_stream.create_command(String::from(base_command));
 		assert!(command2 == expected_command2, "expected command doesn't equal actual command");
 	}
