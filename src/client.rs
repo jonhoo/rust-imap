@@ -295,7 +295,6 @@ impl<T: Read+Write> Client<T> {
 			if let Err(_) = self.stream.read(byte_buffer) {
 				return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to read line")));
 			}
-			print!("{}", String::from_utf8_lossy(byte_buffer));
 			line_buffer.push(byte_buffer[0]);
 		}
 		Ok(line_buffer)
