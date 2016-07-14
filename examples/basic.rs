@@ -6,6 +6,7 @@ use imap::client::Client;
 
 // To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
 // See: https://support.google.com/accounts/answer/6010255?hl=en
+// Look at the gmail_oauth2.rs example on how to connect to a gmail server securely.
 fn main() {
 	let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()).unwrap();
 
