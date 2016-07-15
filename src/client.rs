@@ -1,6 +1,6 @@
 use std::net::{TcpStream, ToSocketAddrs};
 use openssl::ssl::{SslContext, SslStream};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 
 use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
@@ -279,9 +279,7 @@ impl<T: Read+Write> Client<T> {
 		let mut line_buffer: Vec<u8> = Vec::new();
 		while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != LF && line_buffer[line_buffer.len()-2] != CR) {
 			let byte_buffer: &mut [u8] = &mut [0];
-			if let Err(_) = self.stream.read(byte_buffer) {
-				return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to read line")));
-			}
+			try!(self.stream.read(byte_buffer));
 			line_buffer.push(byte_buffer[0]);
 		}
 
@@ -302,12 +300,8 @@ impl<T: Read+Write> Client<T> {
 	}
 
 	fn write_line(&mut self, buf: &[u8]) -> Result<()> {
-		if let Err(_) = self.stream.write_all(buf) {
-			return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write buf")));
-		}
-		if let Err(_) = self.stream.write_all(&[CR, LF]) {
-			return Err(Error::Io(io::Error::new(io::ErrorKind::Other, "Failed to write CRLF")));
-		}
+		try!(self.stream.write_all(buf));
+		try!(self.stream.write_all(&[CR, LF]));
 		if self.debug {
 			print!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
 		}
