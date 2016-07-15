@@ -1,6 +1,7 @@
 sudo: false
 language: rust
 rust:
+- 1.9.0
 - stable
 - beta
 before_install:
