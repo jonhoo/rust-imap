@@ -7,7 +7,7 @@ pub fn parse_authenticate_response(line: String) -> Result<String> {
     let authenticate_regex = Regex::new("^+(.*)\r\n").unwrap();
 
     for cap in authenticate_regex.captures_iter(line.as_str()) {
-        let data = cap.at(1).unwrap_or("");
+        let data = cap.get(1).map(|x|x.as_str()).unwrap_or("");
         return Ok(String::from(data));
     }
 
@@ -26,7 +26,7 @@ pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
     for line in lines.iter() {
         if capability_regex.is_match(line) {
             let cap = capability_regex.captures(line).unwrap();
-            let capabilities_str = cap.at(1).unwrap();
+            let capabilities_str = cap.get(1).unwrap().as_str();
             return Ok(capabilities_str.split(' ').map(|x| x.to_string()).collect());
         }
     }
@@ -49,7 +49,7 @@ pub fn parse_response(lines: Vec<String>) -> Result<Vec<String>> {
     };
 
     for cap in regex.captures_iter(last_line) {
-        let response_type = cap.at(2).unwrap_or("");
+        let response_type = cap.get(2).map(|x|x.as_str()).unwrap_or("");
         match response_type {
             "OK" => return Ok(lines.clone()),
             "BAD" => return Err(Error::BadResponse(lines.clone())),
@@ -87,25 +87,25 @@ pub fn parse_select_or_examine(lines: Vec<String>) -> Result<Mailbox> {
     for line in lines.iter() {
         if exists_regex.is_match(line) {
             let cap = exists_regex.captures(line).unwrap();
-            mailbox.exists = cap.at(1).unwrap().parse::<u32>().unwrap();
+            mailbox.exists = cap.get(1).unwrap().as_str().parse::<u32>().unwrap();
         } else if recent_regex.is_match(line) {
             let cap = recent_regex.captures(line).unwrap();
-            mailbox.recent = cap.at(1).unwrap().parse::<u32>().unwrap();
+            mailbox.recent = cap.get(1).unwrap().as_str().parse::<u32>().unwrap();
         } else if flags_regex.is_match(line) {
             let cap = flags_regex.captures(line).unwrap();
-            mailbox.flags = cap.at(1).unwrap().to_string();
+            mailbox.flags = cap.get(1).unwrap().as_str().to_string();
         } else if unseen_regex.is_match(line) {
             let cap = unseen_regex.captures(line).unwrap();
-            mailbox.unseen = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
+            mailbox.unseen = Some(cap.get(1).unwrap().as_str().parse::<u32>().unwrap());
         } else if uid_validity_regex.is_match(line) {
             let cap = uid_validity_regex.captures(line).unwrap();
-            mailbox.uid_validity = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
+            mailbox.uid_validity = Some(cap.get(1).unwrap().as_str().parse::<u32>().unwrap());
         } else if uid_next_regex.is_match(line) {
             let cap = uid_next_regex.captures(line).unwrap();
-            mailbox.uid_next = Some(cap.at(1).unwrap().parse::<u32>().unwrap());
+            mailbox.uid_next = Some(cap.get(1).unwrap().as_str().parse::<u32>().unwrap());
         } else if permanent_flags_regex.is_match(line) {
             let cap = permanent_flags_regex.captures(line).unwrap();
-            mailbox.permanent_flags = Some(cap.at(1).unwrap().to_string());
+            mailbox.permanent_flags = Some(cap.get(1).unwrap().as_str().to_string());
         }
     }
 
