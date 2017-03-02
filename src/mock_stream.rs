@@ -1,4 +1,5 @@
 use std::io::{Read, Result, Write, Error, ErrorKind};
+use std::cmp::min;
 
 pub struct MockStream {
     read_buf: Vec<u8>,
@@ -53,15 +54,5 @@ impl Write for MockStream {
 
     fn flush(&mut self) -> Result<()> {
         Ok(())
-    }
-}
-
-fn min(a: usize, b: usize) -> usize {
-    if a < b {
-        a
-    } else if b < a {
-        b
-    } else {
-        a
     }
 }

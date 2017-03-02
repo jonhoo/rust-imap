@@ -2,8 +2,9 @@ use std::io::Error as IoError;
 use std::result;
 use std::fmt;
 use std::error::Error as StdError;
+use std::net::TcpStream;
 
-use openssl::ssl::error::SslError;
+use openssl::ssl::HandshakeError as SslError;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -13,7 +14,7 @@ pub enum Error {
     /// An `io::Error` that occurred while trying to read or write to a network stream.
     Io(IoError),
     /// An error from the `openssl` library.
-    Ssl(SslError),
+    Ssl(SslError<TcpStream>),
     /// A BAD response from the IMAP server.
     BadResponse(Vec<String>),
     /// A NO response from the IMAP server.
@@ -28,8 +29,8 @@ impl From<IoError> for Error {
     }
 }
 
-impl From<SslError> for Error {
-    fn from(err: SslError) -> Error {
+impl From<SslError<TcpStream>> for Error {
+    fn from(err: SslError<TcpStream>) -> Error {
         Error::Ssl(err)
     }
 }

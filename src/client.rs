@@ -314,6 +314,7 @@ mod tests {
 	use super::*;
 	use super::super::mock_stream::MockStream;
 	use super::super::mailbox::Mailbox;
+	use super::super::error::Result;
 
 	#[test]
 	fn read_response() {
@@ -549,8 +550,8 @@ mod tests {
 		generic_store(" UID ", |mut c, set, query| c.uid_store(set, query));
 	}
 
-	fn generic_store<F, T, E>(prefix: &str, op: F)
-		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E> {
+	fn generic_store<F, T>(prefix: &str, op: F)
+		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T> {
 
 		let res = "* 2 FETCH (FLAGS (\\Deleted \\Seen))\r\n\
 			* 3 FETCH (FLAGS (\\Deleted))\r\n\
@@ -577,8 +578,8 @@ mod tests {
 		generic_copy(" UID ", |mut c, set, query| c.uid_copy(set, query))
 	}
 
-	fn generic_copy<F, T, E>(prefix: &str, op: F)
-		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E> {
+	fn generic_copy<F, T>(prefix: &str, op: F)
+		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T> {
 
 		generic_with_uid(
 			"OK COPY completed\r\n",
@@ -600,8 +601,8 @@ mod tests {
 		generic_fetch(" UID ", |mut c, seq, query| c.uid_fetch(seq, query))
 	}
 
-	fn generic_fetch<F, T, E>(prefix: &str, op: F)
-		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E> {
+	fn generic_fetch<F, T>(prefix: &str, op: F)
+		where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T> {
 
 		generic_with_uid(
 			"OK FETCH completed\r\n",
@@ -613,13 +614,13 @@ mod tests {
 		);
 	}
 
-	fn generic_with_uid<F, T, E>(
+	fn generic_with_uid<F, T>(
 		res: &str,
 		cmd: &str,
 		seq: &str,
 		query: &str,
 		prefix: &str,
-		op: F) where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T, E>,
+		op: F) where F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
 	{
 
 		let resp = format!("a1 {}\r\n", res).as_bytes().to_vec();
