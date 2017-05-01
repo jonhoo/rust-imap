@@ -1,5 +1,5 @@
 use std::net::{TcpStream, ToSocketAddrs};
-use openssl::ssl::{SslContext, SslStream};
+use openssl::ssl::{SslConnector, SslStream};
 use std::io::{self, Read, Write};
 use std::time::Duration;
 
@@ -178,21 +178,23 @@ impl Client<TcpStream> {
 	}
 
 	/// This will upgrade a regular TCP connection to use SSL.
-	pub fn secure(mut self, ssl_context: SslContext) -> Result<Client<SslStream<TcpStream>>> {
+    ///
+    /// Use the domain parameter for openssl's SNI and hostname verification.
+	pub fn secure(mut self, domain: &str,ssl_connector: SslConnector) -> Result<Client<SslStream<TcpStream>>> {
 		// TODO This needs to be tested
-		try!(self.run_command_and_check_ok("STARTTLS"));
-		SslStream::connect(&ssl_context, self.stream)
-			.map(|s| Client::new(s))
-			.map_err(|e| Error::Ssl(e))
+		self.run_command_and_check_ok("STARTTLS")?;
+		SslConnector::connect(&ssl_connector,domain, self.stream)
+			.map(Client::new)
+			.map_err(Error::Ssl)
 	}
 }
 
 impl Client<SslStream<TcpStream>> {
 	/// Creates a client with an SSL wrapper.
-	pub fn secure_connect<A: ToSocketAddrs>(addr: A, ssl_context: SslContext) -> Result<Client<SslStream<TcpStream>>> {
+	pub fn secure_connect<A: ToSocketAddrs>(addr: A, domain: &str,ssl_connector: SslConnector) -> Result<Client<SslStream<TcpStream>>> {
 		match TcpStream::connect(addr) {
 			Ok(stream) => {
-				let ssl_stream = match SslStream::connect(&ssl_context, stream) {
+				let ssl_stream = match SslConnector::connect(&ssl_connector, domain,stream) {
 					Ok(s) => s,
 					Err(e) => return Err(Error::Ssl(e))
 				};

@@ -16,7 +16,7 @@ name = "imap"
 path = "src/lib.rs"
 
 [dependencies]
-openssl = "0.8"
+openssl = "0.9"
 regex = "0.2"
 
 [dev-dependencies]

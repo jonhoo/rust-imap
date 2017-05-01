@@ -2,7 +2,7 @@ extern crate imap;
 extern crate openssl;
 extern crate base64;
 
-use openssl::ssl::{SslContext, SslMethod};
+use openssl::ssl::{SslConnectorBuilder, SslMethod};
 use base64::{encode};
 use imap::client::Client;
 use imap::authenticator::Authenticator;
@@ -24,7 +24,7 @@ fn main() {
         user: String::from("sombody@gmail.com"),
         access_token: String::from("<access_token>")
     };
-    let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993), SslContext::new(SslMethod::Sslv23).unwrap()).unwrap();
+    let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993),"imap.gmail.com", SslConnectorBuilder::new(SslMethod::tls()).unwrap().build()).unwrap();
 
     imap_socket.authenticate("XOAUTH2", gmail_auth).unwrap();
 
