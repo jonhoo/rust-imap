@@ -24,7 +24,7 @@ fn main() {
         user: String::from("sombody@gmail.com"),
         access_token: String::from("<access_token>")
     };
-    let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993),"imap.gmail.com", SslConnectorBuilder::new(SslMethod::tls()).unwrap().build()).unwrap();
+    let mut imap_socket = Client::secure_connect(("imap.gmail.com", 993), "imap.gmail.com", SslConnectorBuilder::new(SslMethod::tls()).unwrap().build()).unwrap();
 
     imap_socket.authenticate("XOAUTH2", gmail_auth).unwrap();
 
