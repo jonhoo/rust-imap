@@ -382,6 +382,18 @@ impl<T: Read+Write> Client<T> {
 	    IdleHandle::new(self)
 	}
 
+        /// The APPEND command adds a mail to a mailbox.
+	pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<Vec<String>> {
+		try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
+		let line = try!(self.readline());
+		if !line.starts_with(b"+") {
+			return Err(Error::Append);
+		}
+		try!(self.stream.write_all(content));
+		try!(self.stream.write_all(b"\r\n"));
+		self.read_response()
+	}
+
 	/// Runs a command and checks if it returns OK.
 	pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
 		let lines = try!(self.run_command_and_read_response(command));

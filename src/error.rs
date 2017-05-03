@@ -20,7 +20,9 @@ pub enum Error {
     /// A NO response from the IMAP server.
     NoResponse(Vec<String>),
     // Error parsing a server response.
-    Parse(ParseError)
+    Parse(ParseError),
+    // Error appending a mail
+    Append
 }
 
 impl From<IoError> for Error {
@@ -53,6 +55,7 @@ impl StdError for Error {
             Error::Parse(ref e) => e.description(),
             Error::BadResponse(_) => "Bad Response",
             Error::NoResponse(_) => "No Response",
+            Error::Append => "Could not append mail to mailbox"
         }
     }
 
