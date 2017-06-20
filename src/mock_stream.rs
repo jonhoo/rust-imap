@@ -5,7 +5,8 @@ pub struct MockStream {
     read_buf: Vec<u8>,
     read_pos: usize,
     pub written_buf: Vec<u8>,
-    err_on_read: bool
+    err_on_read: bool,
+    read_delay: usize
 }
 
 impl MockStream {
@@ -14,7 +15,8 @@ impl MockStream {
             read_buf: read_buf,
             read_pos: 0,
             written_buf: Vec::new(),
-            err_on_read: false
+            err_on_read: false,
+            read_delay: 0
         }
     }
 
@@ -23,13 +25,28 @@ impl MockStream {
             read_buf: Vec::new(),
             read_pos: 0,
             written_buf: Vec::new(),
-            err_on_read: true
+            err_on_read: true,
+            read_delay: 0
+        }
+    }
+
+    pub fn new_read_delay(read_buf: Vec<u8>) -> MockStream {
+        MockStream{
+            read_buf: read_buf,
+            read_pos: 0,
+            written_buf: Vec::new(),
+            err_on_read: false,
+            read_delay: 1,
         }
     }
 }
 
 impl Read for MockStream {
     fn read(&mut self, buf: &mut[u8]) -> Result<usize> {
+        if self.read_delay > 0 {
+            self.read_delay -= 1;
+            return Ok(0)
+        }
         if self.err_on_read {
             return Err(Error::new(ErrorKind::Other, "MockStream Error"))
         }

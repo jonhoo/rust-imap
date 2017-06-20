@@ -443,8 +443,10 @@ impl<T: Read+Write> Client<T> {
 		let mut line_buffer: Vec<u8> = Vec::new();
 		while line_buffer.len() < 2 || (line_buffer[line_buffer.len()-1] != LF && line_buffer[line_buffer.len()-2] != CR) {
 			let byte_buffer: &mut [u8] = &mut [0];
-			try!(self.stream.read(byte_buffer));
-			line_buffer.push(byte_buffer[0]);
+			let n = try!(self.stream.read(byte_buffer));
+			if n > 0 {
+				line_buffer.push(byte_buffer[0]);
+			}
 		}
 
 		if self.debug {
@@ -490,12 +492,23 @@ mod tests {
 		assert!(expected_response == actual_response, "expected response doesn't equal actual");
 	}
 
+
 	#[test]
 	fn read_greeting() {
 		let greeting = "* OK Dovecot ready.\r\n";
 		let mock_stream = MockStream::new(greeting.as_bytes().to_vec());
 		let mut client = Client::new(mock_stream);
 		client.read_greeting().unwrap();
+	}
+
+	#[test]
+	fn readline_delay_read() {
+		let greeting = "* OK Dovecot ready.\r\n";
+		let expected_response: String = greeting.to_string();
+		let mock_stream = MockStream::new_read_delay(greeting.as_bytes().to_vec());
+		let mut client = Client::new(mock_stream);
+		let actual_response = String::from_utf8(client.readline().unwrap()).unwrap();
+		assert_eq!(expected_response, actual_response);
 	}
 
 	#[test]
