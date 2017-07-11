@@ -22,7 +22,7 @@ pub enum Error {
     // Error parsing a server response.
     Parse(ParseError),
     // Error appending a mail
-    Append
+    Append,
 }
 
 impl From<IoError> for Error {
@@ -55,7 +55,7 @@ impl StdError for Error {
             Error::Parse(ref e) => e.description(),
             Error::BadResponse(_) => "Bad Response",
             Error::NoResponse(_) => "No Response",
-            Error::Append => "Could not append mail to mailbox"
+            Error::Append => "Could not append mail to mailbox",
         }
     }
 
@@ -75,7 +75,7 @@ pub enum ParseError {
     // Error parsing the cabability response.
     Capability(Vec<String>),
     // Authentication errors.
-    Authentication(String)
+    Authentication(String),
 }
 
 impl fmt::Display for ParseError {
@@ -91,13 +91,13 @@ impl StdError for ParseError {
         match *self {
             ParseError::StatusResponse(_) => "Unable to parse status response",
             ParseError::Capability(_) => "Unable to parse capability response",
-            ParseError::Authentication(_) => "Unable to parse authentication response"
+            ParseError::Authentication(_) => "Unable to parse authentication response",
         }
     }
 
     fn cause(&self) -> Option<&StdError> {
         match *self {
-            _ => None
+            _ => None,
         }
     }
 }

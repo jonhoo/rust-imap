@@ -7,7 +7,7 @@ pub fn parse_authenticate_response(line: String) -> Result<String> {
     let authenticate_regex = Regex::new("^+(.*)\r\n").unwrap();
 
     for cap in authenticate_regex.captures_iter(line.as_str()) {
-        let data = cap.get(1).map(|x|x.as_str()).unwrap_or("");
+        let data = cap.get(1).map(|x| x.as_str()).unwrap_or("");
         return Ok(String::from(data));
     }
 
@@ -20,7 +20,7 @@ pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
     //Check Ok
     match parse_response_ok(lines.clone()) {
         Ok(_) => (),
-        Err(e) => return Err(e)
+        Err(e) => return Err(e),
     };
 
     for line in lines.iter() {
@@ -37,7 +37,7 @@ pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
 pub fn parse_response_ok(lines: Vec<String>) -> Result<()> {
     match parse_response(lines) {
         Ok(_) => Ok(()),
-        Err(e) => return Err(e)
+        Err(e) => return Err(e),
     }
 }
 
@@ -45,11 +45,11 @@ pub fn parse_response(lines: Vec<String>) -> Result<Vec<String>> {
     let regex = Regex::new(r"^([a-zA-Z0-9]+) (OK|NO|BAD)(.*)").unwrap();
     let last_line = match lines.last() {
         Some(l) => l,
-        None => return Err(Error::Parse(ParseError::StatusResponse(lines.clone())))
+        None => return Err(Error::Parse(ParseError::StatusResponse(lines.clone()))),
     };
 
     for cap in regex.captures_iter(last_line) {
-        let response_type = cap.get(2).map(|x|x.as_str()).unwrap_or("");
+        let response_type = cap.get(2).map(|x| x.as_str()).unwrap_or("");
         match response_type {
             "OK" => return Ok(lines.clone()),
             "BAD" => return Err(Error::BadResponse(lines.clone())),
@@ -79,7 +79,7 @@ pub fn parse_select_or_examine(lines: Vec<String>) -> Result<Mailbox> {
     //Check Ok
     match parse_response_ok(lines.clone()) {
         Ok(_) => (),
-        Err(e) => return Err(e)
+        Err(e) => return Err(e),
     };
 
     let mut mailbox = Mailbox::default();
@@ -118,22 +118,41 @@ mod tests {
 
     #[test]
     fn parse_capability_test() {
-        let expected_capabilities = vec![String::from("IMAP4rev1"), String::from("STARTTLS"), String::from("AUTH=GSSAPI"), String::from("LOGINDISABLED")];
-        let lines = vec![String::from("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"), String::from("a1 OK CAPABILITY completed\r\n")];
+        let expected_capabilities = vec![
+            String::from("IMAP4rev1"),
+            String::from("STARTTLS"),
+            String::from("AUTH=GSSAPI"),
+            String::from("LOGINDISABLED"),
+        ];
+        let lines = vec![
+            String::from(
+                "* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n",
+            ),
+            String::from("a1 OK CAPABILITY completed\r\n"),
+        ];
         let capabilities = parse_capability(lines).unwrap();
-        assert!(capabilities == expected_capabilities, "Unexpected capabilities parse response");
+        assert!(
+            capabilities == expected_capabilities,
+            "Unexpected capabilities parse response"
+        );
     }
 
     #[test]
     #[should_panic]
     fn parse_capability_invalid_test() {
-        let lines = vec![String::from("* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"), String::from("a1 OK CAPABILITY completed\r\n")];
+        let lines = vec![
+            String::from("* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"),
+            String::from("a1 OK CAPABILITY completed\r\n"),
+        ];
         parse_capability(lines).unwrap();
     }
 
     #[test]
     fn parse_response_test() {
-        let lines = vec![String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"), String::from("a2 OK List completed.\r\n")];
+        let lines = vec![
+            String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"),
+            String::from("a2 OK List completed.\r\n"),
+        ];
         let expected_lines = lines.clone();
         let actual_lines = parse_response(lines).unwrap();
         assert!(expected_lines == actual_lines, "Unexpected parse response");
@@ -142,7 +161,10 @@ mod tests {
     #[test]
     #[should_panic]
     fn parse_response_invalid_test() {
-        let lines = vec![String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"), String::from("a2 BAD broken.\r\n")];
+        let lines = vec![
+            String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"),
+            String::from("a2 BAD broken.\r\n"),
+        ];
         parse_response(lines).unwrap();
     }
 }
