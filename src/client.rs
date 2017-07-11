@@ -236,9 +236,7 @@ impl<T: Read + Write> Client<T> {
         auth_type: &str,
         authenticator: A,
     ) -> Result<()> {
-        try!(self.run_command(
-            &format!("AUTHENTICATE {}", auth_type).to_string()
-        ));
+        try!(self.run_command(&format!("AUTHENTICATE {}", auth_type)));
         self.do_auth_handshake(authenticator)
     }
 
@@ -270,13 +268,13 @@ impl<T: Read + Write> Client<T> {
 
     /// Log in to the IMAP server.
     pub fn login(&mut self, username: &str, password: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("LOGIN {} {}", username, password).to_string())
+        self.run_command_and_check_ok(&format!("LOGIN {} {}", username, password))
     }
 
     /// Selects a mailbox
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         let lines = try!(self.run_command_and_read_response(
-            &format!("SELECT {}", mailbox_name).to_string()
+            &format!("SELECT {}", mailbox_name)
         ));
         parse_select_or_examine(lines)
     }
@@ -284,18 +282,18 @@ impl<T: Read + Write> Client<T> {
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         let lines = try!(self.run_command_and_read_response(
-            &format!("EXAMINE {}", mailbox_name).to_string()
+            &format!("EXAMINE {}", mailbox_name)
         ));
         parse_select_or_examine(lines)
     }
 
     /// Fetch retreives data associated with a message in the mailbox.
     pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<String>> {
-        self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query).to_string())
+        self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
     }
 
     pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<String>> {
-        self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query).to_string())
+        self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
     }
 
     /// Noop always succeeds, and it does nothing.
@@ -310,12 +308,12 @@ impl<T: Read + Write> Client<T> {
 
     /// Create creates a mailbox with the given name.
     pub fn create(&mut self, mailbox_name: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("CREATE {}", mailbox_name).to_string())
+        self.run_command_and_check_ok(&format!("CREATE {}", mailbox_name))
     }
 
     /// Delete permanently removes the mailbox with the given name.
     pub fn delete(&mut self, mailbox_name: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("DELETE {}", mailbox_name).to_string())
+        self.run_command_and_check_ok(&format!("DELETE {}", mailbox_name))
     }
 
     /// Rename changes the name of a mailbox.
@@ -324,26 +322,24 @@ impl<T: Read + Write> Client<T> {
             "RENAME {} {}",
             current_mailbox_name,
             new_mailbox_name
-        ).to_string())
+        ))
     }
 
     /// Subscribe adds the specified mailbox name to the server's set of "active" or "subscribed"
     /// mailboxes as returned by the LSUB command.
     pub fn subscribe(&mut self, mailbox: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("SUBSCRIBE {}", mailbox).to_string())
+        self.run_command_and_check_ok(&format!("SUBSCRIBE {}", mailbox))
     }
 
     /// Unsubscribe removes the specified mailbox name from the server's set of
     /// "active" or "subscribed mailboxes as returned by the LSUB command.
     pub fn unsubscribe(&mut self, mailbox: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", mailbox).to_string())
+        self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", mailbox))
     }
 
     /// Capability requests a listing of capabilities that the server supports.
     pub fn capability(&mut self) -> Result<Vec<String>> {
-        let lines = try!(self.run_command_and_read_response(
-            &format!("CAPABILITY").to_string()
-        ));
+        let lines = try!(self.run_command_and_read_response(&format!("CAPABILITY")));
         parse_capability(lines)
     }
 
@@ -375,8 +371,7 @@ impl<T: Read + Write> Client<T> {
 
     /// Copy copies the specified message to the end of the specified destination mailbox.
     pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name)
-            .to_string())
+        self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name))
     }
 
     pub fn uid_copy(&mut self, uid_set: &str, mailbox_name: &str) -> Result<()> {
