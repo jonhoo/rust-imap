@@ -1,5 +1,13 @@
 sudo: false
 language: rust
+cache: cargo
+# necessary for `travis-cargo coveralls --no-sudo`
+addons:
+  apt:
+    packages:
+      - libcurl4-openssl-dev
+      - libelf-dev
+      - libdw-dev
 rust:
 - stable
 - beta
@@ -13,12 +21,6 @@ script:
   travis-cargo test &&
   travis-cargo bench &&
   travis-cargo --only stable doc
-addons:
-  apt:
-    packages:
-    - libcurl4-openssl-dev
-    - libelf-dev
-    - libdw-dev
 after_success:
 - travis-cargo --only stable doc-upload
 - travis-cargo coveralls --exclude-pattern=/target --no-sudo
