@@ -6,45 +6,52 @@ pub struct MockStream {
     read_pos: usize,
     pub written_buf: Vec<u8>,
     err_on_read: bool,
+    eof_on_read: bool,
     read_delay: usize,
 }
 
-impl MockStream {
-    pub fn new(read_buf: Vec<u8>) -> MockStream {
-        MockStream {
-            read_buf: read_buf,
-            read_pos: 0,
-            written_buf: Vec::new(),
-            err_on_read: false,
-            read_delay: 0,
-        }
-    }
-
-    pub fn new_err() -> MockStream {
+impl Default for MockStream {
+    fn default() -> Self {
         MockStream {
             read_buf: Vec::new(),
             read_pos: 0,
             written_buf: Vec::new(),
-            err_on_read: true,
+            err_on_read: false,
+            eof_on_read: false,
             read_delay: 0,
         }
     }
+}
 
-    pub fn new_read_delay(read_buf: Vec<u8>) -> MockStream {
-        MockStream {
-            read_buf: read_buf,
-            read_pos: 0,
-            written_buf: Vec::new(),
-            err_on_read: false,
-            read_delay: 1,
-        }
+impl MockStream {
+    pub fn new(read_buf: Vec<u8>) -> MockStream {
+        MockStream::default().with_buf(read_buf)
+    }
+
+    pub fn with_buf(mut self, read_buf: Vec<u8>) -> MockStream {
+        self.read_buf = read_buf;
+        self
+    }
+
+    pub fn with_eof(mut self) -> MockStream {
+        self.eof_on_read = true;
+        self
+    }
+
+    pub fn with_err(mut self) -> MockStream {
+        self.err_on_read = true;
+        self
+    }
+
+    pub fn with_delay(mut self) -> MockStream {
+        self.read_delay = 1;
+        self
     }
 }
 
 impl Read for MockStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if self.read_delay > 0 {
-            self.read_delay -= 1;
+        if self.eof_on_read {
             return Ok(0);
         }
         if self.err_on_read {
@@ -53,7 +60,11 @@ impl Read for MockStream {
         if self.read_pos >= self.read_buf.len() {
             return Err(Error::new(ErrorKind::UnexpectedEof, "EOF"));
         }
-        let write_len = min(buf.len(), self.read_buf.len() - self.read_pos);
+        let mut write_len = min(buf.len(), self.read_buf.len() - self.read_pos);
+        if self.read_delay > 0 {
+            self.read_delay -= 1;
+            write_len = min(write_len, 1);
+        }
         let max_pos = self.read_pos + write_len;
         for x in self.read_pos..max_pos {
             buf[x - self.read_pos] = self.read_buf[x];

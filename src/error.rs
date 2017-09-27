@@ -5,6 +5,7 @@ use std::error::Error as StdError;
 use std::net::TcpStream;
 
 use openssl::ssl::HandshakeError as SslError;
+use bufstream::IntoInnerError as BufError;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -19,6 +20,8 @@ pub enum Error {
     BadResponse(Vec<String>),
     /// A NO response from the IMAP server.
     NoResponse(Vec<String>),
+    /// The connection was terminated unexpectedly.
+    ConnectionLost,
     // Error parsing a server response.
     Parse(ParseError),
     // Error appending a mail
@@ -28,6 +31,12 @@ pub enum Error {
 impl From<IoError> for Error {
     fn from(err: IoError) -> Error {
         Error::Io(err)
+    }
+}
+
+impl<T> From<BufError<T>> for Error {
+    fn from(err: BufError<T>) -> Error {
+        Error::Io(err.into())
     }
 }
 
@@ -55,6 +64,7 @@ impl StdError for Error {
             Error::Parse(ref e) => e.description(),
             Error::BadResponse(_) => "Bad Response",
             Error::NoResponse(_) => "No Response",
+            Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
         }
     }

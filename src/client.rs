@@ -2,6 +2,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use openssl::ssl::{SslConnector, SslStream};
 use std::io::{self, Read, Write};
 use std::time::Duration;
+use bufstream::BufStream;
 
 use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
@@ -15,8 +16,8 @@ const CR: u8 = 0x0d;
 const LF: u8 = 0x0a;
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
-pub struct Client<T> {
-    stream: T,
+pub struct Client<T: Read + Write> {
+    stream: BufStream<T>,
     tag: u32,
     pub debug: bool,
 }
@@ -121,7 +122,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        try!(self.client.stream.set_read_timeout(Some(self.keepalive)));
+        try!(self.client.stream.get_mut().set_read_timeout(Some(self.keepalive)));
         match self.wait() {
             Err(Error::Io(ref e))
                 if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock => {
@@ -131,7 +132,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
                 self.wait_keepalive()
             }
             r => {
-                try!(self.client.stream.set_read_timeout(None));
+                try!(self.client.stream.get_mut().set_read_timeout(None));
                 r
             }
         }
@@ -139,9 +140,9 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
     pub fn wait_timeout(&mut self, timeout: Duration) -> Result<()> {
-        try!(self.client.stream.set_read_timeout(Some(timeout)));
+        try!(self.client.stream.get_mut().set_read_timeout(Some(timeout)));
         let res = self.wait();
-        try!(self.client.stream.set_read_timeout(None));
+        try!(self.client.stream.get_mut().set_read_timeout(None));
         res
     }
 }
@@ -191,7 +192,7 @@ impl Client<TcpStream> {
     ) -> Result<Client<SslStream<TcpStream>>> {
         // TODO This needs to be tested
         self.run_command_and_check_ok("STARTTLS")?;
-        SslConnector::connect(&ssl_connector, domain, self.stream)
+        SslConnector::connect(&ssl_connector, domain, try!(self.stream.into_inner()))
             .map(Client::new)
             .map_err(Error::Ssl)
     }
@@ -224,7 +225,7 @@ impl<T: Read + Write> Client<T> {
     /// Creates a new client with the underlying stream.
     pub fn new(stream: T) -> Client<T> {
         Client {
-            stream: stream,
+            stream: BufStream::new(stream),
             tag: INITIAL_TAG,
             debug: false,
         }
@@ -428,6 +429,7 @@ impl<T: Read + Write> Client<T> {
         }
         try!(self.stream.write_all(content));
         try!(self.stream.write_all(b"\r\n"));
+        try!(self.stream.flush());
         self.read_response()
     }
 
@@ -477,22 +479,17 @@ impl<T: Read + Write> Client<T> {
     }
 
     fn readline(&mut self) -> Result<Vec<u8>> {
+        use std::io::BufRead;
         let mut line_buffer: Vec<u8> = Vec::new();
-        while line_buffer.len() < 2 ||
-            (line_buffer[line_buffer.len() - 1] != LF && line_buffer[line_buffer.len() - 2] != CR)
-        {
-            let byte_buffer: &mut [u8] = &mut [0];
-            let n = try!(self.stream.read(byte_buffer));
-            if n > 0 {
-                line_buffer.push(byte_buffer[0]);
-            }
+        if try!(self.stream.read_until(LF, &mut line_buffer)) == 0 {
+            return Err(Error::ConnectionLost);
         }
 
         if self.debug {
-            let mut line = line_buffer.clone();
             // Remove CRLF
-            line.truncate(line_buffer.len() - 2);
-            print!("S: {}\n", String::from_utf8(line).unwrap());
+            let len = line_buffer.len();
+            let line = &line_buffer[..(len - 2)];
+            print!("S: {}\n", String::from_utf8_lossy(line));
         }
 
         Ok(line_buffer)
@@ -507,6 +504,7 @@ impl<T: Read + Write> Client<T> {
     fn write_line(&mut self, buf: &[u8]) -> Result<()> {
         try!(self.stream.write_all(buf));
         try!(self.stream.write_all(&[CR, LF]));
+        try!(self.stream.flush());
         if self.debug {
             print!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
         }
@@ -547,17 +545,27 @@ mod tests {
     fn readline_delay_read() {
         let greeting = "* OK Dovecot ready.\r\n";
         let expected_response: String = greeting.to_string();
-        let mock_stream = MockStream::new_read_delay(greeting.as_bytes().to_vec());
+        let mock_stream = MockStream::default().with_buf(greeting.as_bytes().to_vec()).with_delay();
         let mut client = Client::new(mock_stream);
         let actual_response = String::from_utf8(client.readline().unwrap()).unwrap();
         assert_eq!(expected_response, actual_response);
     }
 
     #[test]
+    fn readline_eof() {
+        let mock_stream = MockStream::default().with_eof();
+        let mut client = Client::new(mock_stream);
+        if let Err(Error::ConnectionLost) = client.readline() {
+        } else {
+            unreachable!("EOF read did not return connection lost");
+        }
+    }
+
+    #[test]
     #[should_panic]
     fn readline_err() {
         // TODO Check the error test
-        let mock_stream = MockStream::new_err();
+        let mock_stream = MockStream::default().with_err();
         let mut client = Client::new(mock_stream);
         client.readline().unwrap();
     }
@@ -565,7 +573,7 @@ mod tests {
     #[test]
     fn create_command() {
         let base_command = "CHECK";
-        let mock_stream = MockStream::new(Vec::new());
+        let mock_stream = MockStream::default();
         let mut imap_stream = Client::new(mock_stream);
 
         let expected_command = format!("a1 {}", base_command);
@@ -593,7 +601,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.login(username, password).unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid login command"
         );
     }
@@ -606,7 +614,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.logout().unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid logout command"
         );
     }
@@ -627,7 +635,7 @@ mod tests {
             .rename(current_mailbox_name, new_mailbox_name)
             .unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid rename command"
         );
     }
@@ -641,7 +649,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.subscribe(mailbox).unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid subscribe command"
         );
     }
@@ -655,7 +663,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.unsubscribe(mailbox).unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid unsubscribe command"
         );
     }
@@ -667,7 +675,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.expunge().unwrap();
         assert!(
-            client.stream.written_buf == b"a1 EXPUNGE\r\n".to_vec(),
+            client.stream.get_ref().written_buf == b"a1 EXPUNGE\r\n".to_vec(),
             "Invalid expunge command"
         );
     }
@@ -679,7 +687,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.check().unwrap();
         assert!(
-            client.stream.written_buf == b"a1 CHECK\r\n".to_vec(),
+            client.stream.get_ref().written_buf == b"a1 CHECK\r\n".to_vec(),
             "Invalid check command"
         );
     }
@@ -710,7 +718,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         let mailbox = client.examine(mailbox_name).unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid examine command"
         );
         assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
@@ -744,7 +752,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         let mailbox = client.select(mailbox_name).unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid select command"
         );
         assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
@@ -760,7 +768,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         let capabilities = client.capability().unwrap();
         assert!(
-            client.stream.written_buf == b"a1 CAPABILITY\r\n".to_vec(),
+            client.stream.get_ref().written_buf == b"a1 CAPABILITY\r\n".to_vec(),
             "Invalid capability command"
         );
         assert!(
@@ -778,7 +786,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.create(mailbox_name).unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid create command"
         );
     }
@@ -792,7 +800,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.delete(mailbox_name).unwrap();
         assert!(
-            client.stream.written_buf == command.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid delete command"
         );
     }
@@ -804,7 +812,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.noop().unwrap();
         assert!(
-            client.stream.written_buf == b"a1 NOOP\r\n".to_vec(),
+            client.stream.get_ref().written_buf == b"a1 NOOP\r\n".to_vec(),
             "Invalid noop command"
         );
     }
@@ -816,7 +824,7 @@ mod tests {
         let mut client = Client::new(mock_stream);
         client.close().unwrap();
         assert!(
-            client.stream.written_buf == b"a1 CLOSE\r\n".to_vec(),
+            client.stream.get_ref().written_buf == b"a1 CLOSE\r\n".to_vec(),
             "Invalid close command"
         );
     }
@@ -897,7 +905,7 @@ mod tests {
         let mut client = Client::new(MockStream::new(resp));
         let _ = op(&mut client, seq, query);
         assert!(
-            client.stream.written_buf == line.as_bytes().to_vec(),
+            client.stream.get_ref().written_buf == line.as_bytes().to_vec(),
             "Invalid command"
         );
     }
