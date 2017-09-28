@@ -8,7 +8,7 @@ IMAP Client for Rust
 [![Coverage Status](https://coveralls.io/repos/github/mattnenterprise/rust-imap/badge.svg?branch=master)](https://coveralls.io/github/mattnenterprise/rust-imap?branch=master)
 
 
-[Documentation](http://mattnenterprise.github.io/rust-imap)
+[Documentation](https://docs.rs/imap/)
 
 ### Usage
 Here is a basic example of using the client. See the examples directory for more examples.

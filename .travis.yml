@@ -19,8 +19,6 @@ script:
 - |
   travis-cargo build &&
   travis-cargo test &&
-  travis-cargo bench &&
-  travis-cargo --only stable doc
+  travis-cargo bench
 after_success:
-- travis-cargo --only stable doc-upload
 - travis-cargo coveralls --exclude-pattern=/target --no-sudo
