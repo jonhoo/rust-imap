@@ -17,11 +17,9 @@ fn main() {
     imap_socket.login("username", "password").unwrap();
 
     match imap_socket.capability() {
-        Ok(capabilities) => {
-            for capability in capabilities.iter() {
-                println!("{}", capability);
-            }
-        }
+        Ok(capabilities) => for capability in capabilities.iter() {
+            println!("{}", capability);
+        },
         Err(e) => println!("Error parsing capability: {}", e),
     };
 
@@ -33,11 +31,9 @@ fn main() {
     };
 
     match imap_socket.fetch("2", "body[text]") {
-        Ok(lines) => {
-            for line in lines.iter() {
-                print!("{}", line);
-            }
-        }
+        Ok(lines) => for line in lines.iter() {
+            print!("{}", line);
+        },
         Err(e) => println!("Error Fetching email 2: {}", e),
     };
 

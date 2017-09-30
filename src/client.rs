@@ -6,8 +6,8 @@ use bufstream::BufStream;
 
 use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
-use super::parse::{parse_response_ok, parse_capability, parse_select_or_examine, parse_response,
-                   parse_authenticate_response};
+use super::parse::{parse_authenticate_response, parse_capability, parse_response,
+                   parse_response_ok, parse_select_or_examine};
 use super::error::{Error, Result};
 
 static TAG_PREFIX: &'static str = "a";
@@ -101,7 +101,8 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     fn wait_inner(&mut self) -> Result<()> {
         match self.client.readline().map(|_| ()) {
             Err(Error::Io(ref e))
-                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock => {
+                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
+            {
                 // we need to refresh the IDLE connection
                 try!(self.terminate());
                 try!(self.init());
@@ -264,7 +265,6 @@ impl<T: Read + Write> Client<T> {
             } else if line.starts_with(format!("{}{} ", TAG_PREFIX, self.tag).as_bytes()) {
                 try!(parse_response(vec![String::from_utf8(line).unwrap()]));
                 return Ok(());
-
             } else {
                 let mut lines = try!(self.read_response());
                 lines.insert(0, String::from_utf8(line).unwrap());
@@ -281,17 +281,13 @@ impl<T: Read + Write> Client<T> {
 
     /// Selects a mailbox
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(self.run_command_and_read_response(
-            &format!("SELECT {}", mailbox_name)
-        ));
+        let lines = try!(self.run_command_and_read_response(&format!("SELECT {}", mailbox_name)));
         parse_select_or_examine(lines)
     }
 
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(self.run_command_and_read_response(
-            &format!("EXAMINE {}", mailbox_name)
-        ));
+        let lines = try!(self.run_command_and_read_response(&format!("EXAMINE {}", mailbox_name)));
         parse_select_or_examine(lines)
     }
 
@@ -427,9 +423,7 @@ impl<T: Read + Write> Client<T> {
 
     /// The APPEND command adds a mail to a mailbox.
     pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<Vec<String>> {
-        try!(self.run_command(
-            &format!("APPEND \"{}\" {{{}}}", folder, content.len())
-        ));
+        try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
         let line = try!(self.readline());
         if !line.starts_with(b"+") {
             return Err(Error::Append);
@@ -552,7 +546,9 @@ mod tests {
     fn readline_delay_read() {
         let greeting = "* OK Dovecot ready.\r\n";
         let expected_response: String = greeting.to_string();
-        let mock_stream = MockStream::default().with_buf(greeting.as_bytes().to_vec()).with_delay();
+        let mock_stream = MockStream::default()
+            .with_buf(greeting.as_bytes().to_vec())
+            .with_delay();
         let mut client = Client::new(mock_stream);
         let actual_response = String::from_utf8(client.readline().unwrap()).unwrap();
         assert_eq!(expected_response, actual_response);
@@ -850,7 +846,6 @@ mod tests {
     where
         F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
     {
-
         let res = "* 2 FETCH (FLAGS (\\Deleted \\Seen))\r\n\
                    * 3 FETCH (FLAGS (\\Deleted))\r\n\
                    * 4 FETCH (FLAGS (\\Deleted \\Flagged \\Seen))\r\n\
@@ -873,7 +868,6 @@ mod tests {
     where
         F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
     {
-
         generic_with_uid(
             "OK COPY completed\r\n",
             "COPY",
@@ -898,7 +892,6 @@ mod tests {
     where
         F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
     {
-
         generic_with_uid("OK FETCH completed\r\n", "FETCH", "1", "BODY[]", prefix, op);
     }
 
@@ -906,7 +899,6 @@ mod tests {
     where
         F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
     {
-
         let resp = format!("a1 {}\r\n", res).as_bytes().to_vec();
         let line = format!("a1{}{} {} {}\r\n", prefix, cmd, seq, query);
         let mut client = Client::new(MockStream::new(resp));

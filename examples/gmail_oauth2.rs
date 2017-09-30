@@ -1,6 +1,6 @@
+extern crate base64;
 extern crate imap;
 extern crate openssl;
-extern crate base64;
 
 use openssl::ssl::{SslConnectorBuilder, SslMethod};
 use base64::encode;
@@ -44,11 +44,9 @@ fn main() {
     };
 
     match imap_socket.fetch("2", "body[text]") {
-        Ok(lines) => {
-            for line in lines.iter() {
-                print!("{}", line);
-            }
-        }
+        Ok(lines) => for line in lines.iter() {
+            print!("{}", line);
+        },
         Err(e) => println!("Error Fetching email 2: {}", e),
     };
 

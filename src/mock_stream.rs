@@ -1,4 +1,4 @@
-use std::io::{Read, Result, Write, Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::cmp::min;
 
 pub struct MockStream {
