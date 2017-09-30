@@ -31,6 +31,7 @@ pub struct Client<T: Read + Write> {
 pub struct IdleHandle<'a, T: Read + Write + 'a> {
     client: &'a mut Client<T>,
     keepalive: Duration,
+    done: bool,
 }
 
 /// Must be implemented for a transport in order for a `Client` using that transport to support
@@ -52,6 +53,7 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
         let mut h = IdleHandle {
             client: client,
             keepalive: Duration::from_secs(29 * 60),
+            done: false,
         };
         try!(h.init());
         Ok(h)
@@ -78,23 +80,40 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
             return Err(Error::BadResponse(vec![line]));
         }
 
+        self.done = false;
         Ok(())
     }
 
     fn terminate(&mut self) -> Result<()> {
-        try!(self.client.write_line(b"DONE"));
-        let lines = try!(self.client.read_response());
-        parse_response_ok(lines)
+        if !self.done {
+            self.done = true;
+            try!(self.client.write_line(b"DONE"));
+            let lines = try!(self.client.read_response());
+            parse_response_ok(lines)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Internal helper that doesn't consume self.
+    ///
+    /// This is necessary so that we can keep using the inner `Client` in `wait_keepalive`.
+    fn wait_inner(&mut self) -> Result<()> {
+        match self.client.readline().map(|_| ()) {
+            Err(Error::Io(ref e))
+                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock => {
+                // we need to refresh the IDLE connection
+                try!(self.terminate());
+                try!(self.init());
+                self.wait_inner()
+            }
+            r => r,
+        }
     }
 
     /// Block until the selected mailbox changes.
-    pub fn wait(&mut self) -> Result<()> {
-        self.client.readline().map(|_| ())
-    }
-
-    /// Cancel the IDLE handle prematurely.
-    pub fn cancel(self) {
-        // causes Drop to be called
+    pub fn wait(mut self) -> Result<()> {
+        self.wait_inner()
     }
 }
 
@@ -114,7 +133,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
     /// `set_keepalive`.
     ///
     /// This is the recommended method to use for waiting.
-    pub fn wait_keepalive(&mut self) -> Result<()> {
+    pub fn wait_keepalive(self) -> Result<()> {
         // The server MAY consider a client inactive if it has an IDLE command
         // running, and if such a server has an inactivity timeout it MAY log
         // the client off implicitly at the end of its timeout period.  Because
@@ -122,35 +141,23 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        try!(self.client.stream.get_mut().set_read_timeout(Some(self.keepalive)));
-        match self.wait() {
-            Err(Error::Io(ref e))
-                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock => {
-                // we need to refresh the IDLE connection
-                try!(self.terminate());
-                try!(self.init());
-                self.wait_keepalive()
-            }
-            r => {
-                try!(self.client.stream.get_mut().set_read_timeout(None));
-                r
-            }
-        }
+        let keepalive = self.keepalive;
+        self.wait_timeout(keepalive)
     }
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
-    pub fn wait_timeout(&mut self, timeout: Duration) -> Result<()> {
+    pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
         try!(self.client.stream.get_mut().set_read_timeout(Some(timeout)));
-        let res = self.wait();
-        try!(self.client.stream.get_mut().set_read_timeout(None));
+        let res = self.wait_inner();
+        self.client.stream.get_mut().set_read_timeout(None).is_ok();
         res
     }
 }
 
 impl<'a, T: Read + Write + 'a> Drop for IdleHandle<'a, T> {
     fn drop(&mut self) {
-        self.terminate()
-            .expect("IDLE connection did not terminate cleanly");
+        // we don't want to panic here if we can't terminate the Idle
+        self.terminate().is_ok();
     }
 }
 
