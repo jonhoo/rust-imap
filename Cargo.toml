@@ -1,15 +1,24 @@
 [package]
 
 name = "imap"
-version = "0.4.0"
-authors = ["Matt McCoy <mattnenterprise@yahoo.com>"]
+version = "0.4.1"
+authors = ["Matt McCoy <mattnenterprise@yahoo.com>",
+           "Jon Gjengset <jon@thesquareplanet.com>"]
 documentation = "https://docs.rs/imap/"
 repository = "https://github.com/mattnenterprise/rust-imap"
 homepage = "https://github.com/mattnenterprise/rust-imap"
 description = "IMAP client for Rust"
 readme = "README.md"
 license = "Apache-2.0/MIT"
-keywords = ["imap"]
+
+keywords = ["email", "imap"]
+categories = ["email", "network-programming"]
+
+[badges]
+travis-ci = { repository = "mattnenterprise/rust-imap" }
+appveyor = { repository = "mattnenterprise/rust-imap", branch = "master", service = "github" }
+coveralls = { repository = "mattnenterprise/rust-imap", branch = "master", service = "github" }
+maintenance = { status = "passively-maintained" }
 
 [lib]
 name = "imap"
