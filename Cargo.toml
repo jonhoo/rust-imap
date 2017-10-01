@@ -30,4 +30,4 @@ regex = "0.2"
 bufstream = "0.1"
 
 [dev-dependencies]
-base64 = "0.2"
+base64 = "0.7"
