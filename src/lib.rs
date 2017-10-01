@@ -4,7 +4,7 @@
 //! imap is a IMAP client for Rust.
 
 extern crate bufstream;
-extern crate openssl;
+extern crate native_tls;
 extern crate regex;
 
 pub mod authenticator;

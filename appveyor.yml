@@ -1,94 +1,67 @@
+# inspired by https://github.com/starkat99/appveyor-rust/blob/master/appveyor.yml
+
 environment:
-
-  global:
-    RUST_VERSION: stable
-    CRATE_NAME: imap
-    SSL_CERT_FILE: "C:\\OpenSSL\\cacert.pem"
-
   matrix:
 
-    # MinGW
-    - TARGET: i686-pc-windows-gnu
-      BITS: 32
-      MSYS2: 1
-      OPENSSL_VERSION: 1_1_0f
-    - TARGET: x86_64-pc-windows-gnu
-      BITS: 64
-      MSYS2: 1
-      OPENSSL_VERSION: 1_0_2L
+### MSVC Toolchains ###
 
-    # MSVC
-    - TARGET: i686-pc-windows-msvc
-      BITS: 32
-      OPENSSL_VERSION: 1_0_2L
-      OPENSSL_DIR: C:\OpenSSL
-    - TARGET: x86_64-pc-windows-msvc
-      BITS: 64
-      OPENSSL_VERSION: 1_1_0f
-      OPENSSL_DIR: C:\OpenSSL
+  # Stable 64-bit MSVC
+    - channel: stable
+      target: x86_64-pc-windows-msvc
+  # Stable 32-bit MSVC
+    - channel: stable
+      target: i686-pc-windows-msvc
+  # Beta 64-bit MSVC
+    - channel: beta
+      target: x86_64-pc-windows-msvc
+  # Beta 32-bit MSVC
+    - channel: beta
+      target: i686-pc-windows-msvc
 
-    # MinGW beta
-    - TARGET: i686-pc-windows-gnu
-      BITS: 32
-      MSYS2: 1
-      OPENSSL_VERSION: 1_1_0f
-      RUST_VERSION: beta
-    - TARGET: x86_64-pc-windows-gnu
-      BITS: 64
-      MSYS2: 1
-      OPENSSL_VERSION: 1_0_2L
-      RUST_VERSION: beta
+### GNU Toolchains ###
 
-    # MSVC beta
-    - TARGET: i686-pc-windows-msvc
-      BITS: 32
-      MSYS2: 1
-      OPENSSL_VERSION: 1_0_2L
-      OPENSSL_DIR: C:\OpenSSL
-      RUST_VERSION: beta
-    - TARGET: x86_64-pc-windows-msvc
-      BITS: 64
-      OPENSSL_VERSION: 1_1_0f
-      OPENSSL_DIR: C:\OpenSSL
-      RUST_VERSION: beta
+  # Stable 64-bit GNU
+    - channel: stable
+      target: x86_64-pc-windows-gnu
+  # Stable 32-bit GNU
+    - channel: stable
+      target: i686-pc-windows-gnu
+  # Beta 64-bit GNU
+    - channel: beta
+      target: x86_64-pc-windows-gnu
+  # Beta 32-bit GNU
+    - channel: beta
+      target: i686-pc-windows-gnu
+
+### MinGW Toolchains ###
+
+  # Stable 64-bit MinGW
+    - channel: stable
+      target: x86_64-pc-windows-msvc
+      MSYS_BITS: 64
+  # Stable 32-bit MinGW
+    - channel: stable
+      target: i686-pc-windows-msvc
+      MSYS_BITS: 32
+  # Beta 64-bit MinGW
+    - channel: beta
+      target: x86_64-pc-windows-msvc
+      MSYS_BITS: 64
+  # Beta 32-bit MinGW
+    - channel: beta
+      target: i686-pc-windows-msvc
+      MSYS_BITS: 32
 
 install:
-   # install OpenSSL
-  - ps: Start-FileDownload "http://slproweb.com/download/Win${env:BITS}OpenSSL-${env:OPENSSL_VERSION}.exe"
-  - Win%BITS%OpenSSL-%OPENSSL_VERSION%.exe /SILENT /VERYSILENT /SP- /DIR="C:\OpenSSL"
-  - appveyor DownloadFile https://curl.haxx.se/ca/cacert.pem -FileName C:\OpenSSL\cacert.pem
-
   # install Rust
-  - curl -sSf -o rustup-init.exe https://win.rustup.rs/
-  - rustup-init.exe -y --default-host %TARGET% --default-toolchain %RUST_VERSION%
-  - set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
-  - if defined MSYS2 set PATH=C:\msys64\mingw%BITS%\bin;%PATH%
-  - rustc -Vv
-  - cargo -V
-
-  - curl -sSf -o rustup-init.exe https://win.rustup.rs/
-  - rustup-init.exe -y --default-host %TARGET%
-  - set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
-  - if defined MSYS2 set PATH=C:\msys64\mingw%BITS%\bin;%PATH%
-  - rustc -V
-  - cargo -V
-
-test_script:
-  # we don't run the "test phase" when doing deploys
-  - if [%APPVEYOR_REPO_TAG%]==[false] (
-      cargo build --target %TARGET% &&
-      cargo build --target %TARGET% --release &&
-      cargo test --target %TARGET% &&
-      cargo test --target %TARGET% --release
-    )
-
-cache:
-  - C:\Users\appveyor\.cargo\registry
-  - target
-
-notifications:
-  - provider: Email
-    on_build_success: false
+  - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
+  - rustup-init -yv --default-toolchain %channel% --default-host %target%
+  - set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+  - rustc -vV
+  - cargo -vV
 
 # Building is done in the test phase, so we disable Appveyor's build phase.
 build: false
+
+test_script:
+  - cargo test

@@ -25,7 +25,7 @@ name = "imap"
 path = "src/lib.rs"
 
 [dependencies]
-openssl = "0.9"
+native-tls = "0.1"
 regex = "0.2"
 bufstream = "0.1"
 

@@ -1,8 +1,8 @@
 extern crate base64;
 extern crate imap;
-extern crate openssl;
+extern crate native_tls;
 
-use openssl::ssl::{SslConnectorBuilder, SslMethod};
+use native_tls::TlsConnector;
 use base64::encode;
 use imap::client::Client;
 use imap::authenticator::Authenticator;
@@ -33,7 +33,7 @@ fn main() {
     let domain = "imap.gmail.com";
     let port = 993;
     let socket_addr = (domain, port);
-    let ssl_connector = SslConnectorBuilder::new(SslMethod::tls()).unwrap().build();
+    let ssl_connector = TlsConnector::builder().unwrap().build().unwrap();
     let mut imap_socket = Client::secure_connect(socket_addr, domain, ssl_connector).unwrap();
 
     imap_socket.authenticate("XOAUTH2", gmail_auth).unwrap();

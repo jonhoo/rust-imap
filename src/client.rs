@@ -1,5 +1,5 @@
 use std::net::{TcpStream, ToSocketAddrs};
-use openssl::ssl::{SslConnector, SslStream};
+use native_tls::{TlsConnector, TlsStream};
 use std::io::{self, Read, Write};
 use std::time::Duration;
 use bufstream::BufStream;
@@ -168,7 +168,7 @@ impl<'a> SetReadTimeout for TcpStream {
     }
 }
 
-impl<'a> SetReadTimeout for SslStream<TcpStream> {
+impl<'a> SetReadTimeout for TlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.get_ref()
             .set_read_timeout(timeout)
@@ -196,28 +196,28 @@ impl Client<TcpStream> {
     pub fn secure(
         mut self,
         domain: &str,
-        ssl_connector: SslConnector,
-    ) -> Result<Client<SslStream<TcpStream>>> {
+        ssl_connector: TlsConnector,
+    ) -> Result<Client<TlsStream<TcpStream>>> {
         // TODO This needs to be tested
         self.run_command_and_check_ok("STARTTLS")?;
-        SslConnector::connect(&ssl_connector, domain, try!(self.stream.into_inner()))
+        TlsConnector::connect(&ssl_connector, domain, try!(self.stream.into_inner()))
             .map(Client::new)
-            .map_err(Error::Ssl)
+            .map_err(Error::TlsHandshake)
     }
 }
 
-impl Client<SslStream<TcpStream>> {
+impl Client<TlsStream<TcpStream>> {
     /// Creates a client with an SSL wrapper.
     pub fn secure_connect<A: ToSocketAddrs>(
         addr: A,
         domain: &str,
-        ssl_connector: SslConnector,
-    ) -> Result<Client<SslStream<TcpStream>>> {
+        ssl_connector: TlsConnector,
+    ) -> Result<Client<TlsStream<TcpStream>>> {
         match TcpStream::connect(addr) {
             Ok(stream) => {
-                let ssl_stream = match SslConnector::connect(&ssl_connector, domain, stream) {
+                let ssl_stream = match TlsConnector::connect(&ssl_connector, domain, stream) {
                     Ok(s) => s,
-                    Err(e) => return Err(Error::Ssl(e)),
+                    Err(e) => return Err(Error::TlsHandshake(e)),
                 };
                 let mut socket = Client::new(ssl_stream);
 
