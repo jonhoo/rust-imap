@@ -9,6 +9,7 @@ addons:
       - libelf-dev
       - libdw-dev
 rust:
+- 1.20.0
 - stable
 - beta
 before_install:
