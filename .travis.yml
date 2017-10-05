@@ -6,6 +6,10 @@ addons:
     packages:
       - libssl-dev
 
+os:
+- linux
+- osx
+
 rust:
 - stable
 - beta
