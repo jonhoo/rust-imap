@@ -2,9 +2,11 @@ rust-imap
 ================
 IMAP Client for Rust
 
+[![Number of Crate Downloads](https://img.shields.io/crates/d/imap.svg)](https://crates.io/crates/imap)
+[![Crate Version](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
+[![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
 [![Build Status](https://travis-ci.org/mattnenterprise/rust-imap.svg)](https://travis-ci.org/mattnenterprise/rust-imap)
 [![Build Status](https://ci.appveyor.com/api/projects/status/github/mattnenterprise/rust-imap?svg=true)](https://ci.appveyor.com/api/projects/status/github/mattnenterprise/rust-imap)
-[![crates.io](http://meritbadge.herokuapp.com/imap)](https://crates.io/crates/imap)
 [![Coverage Status](https://coveralls.io/repos/github/mattnenterprise/rust-imap/badge.svg?branch=master)](https://coveralls.io/github/mattnenterprise/rust-imap?branch=master)
 
 
