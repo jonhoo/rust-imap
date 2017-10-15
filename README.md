@@ -16,9 +16,9 @@ IMAP Client for Rust
 Here is a basic example of using the client. See the examples directory for more examples.
 ```rust
 extern crate imap;
-extern crate openssl;
+extern crate native_tls;
 
-use openssl::ssl::{SslConnectorBuilder, SslMethod};
+use native_tls::TlsConnector;
 use imap::client::Client;
 
 // To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
@@ -28,7 +28,7 @@ fn main() {
     let domain = "imap.gmail.com";
     let port = 993;
     let socket_addr = (domain, port);
-    let ssl_connector = SslConnectorBuilder::new(SslMethod::tls()).unwrap().build();
+    let ssl_connector = TlsConnector::builder().unwrap().build().unwrap();
     let mut imap_socket = Client::secure_connect(socket_addr, domain, ssl_connector).unwrap();
 
     imap_socket.login("username", "password").unwrap();
