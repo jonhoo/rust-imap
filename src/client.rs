@@ -16,6 +16,7 @@ const CR: u8 = 0x0d;
 const LF: u8 = 0x0a;
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
+#[derive(Debug)]
 pub struct Client<T: Read + Write> {
     stream: BufStream<T>,
     tag: u32,
@@ -28,6 +29,7 @@ pub struct Client<T: Read + Write> {
 /// 2177](https://tools.ietf.org/html/rfc2177).
 ///
 /// As long a the handle is active, the mailbox cannot be otherwise accessed.
+#[derive(Debug)]
 pub struct IdleHandle<'a, T: Read + Write + 'a> {
     client: &'a mut Client<T>,
     keepalive: Duration,
