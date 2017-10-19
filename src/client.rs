@@ -8,7 +8,7 @@ use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
 use super::parse::{parse_authenticate_response, parse_capability, parse_response,
                    parse_response_ok, parse_select_or_examine};
-use super::error::{Error, Result};
+use super::error::{Error, Result, ParseError};
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -464,7 +464,7 @@ impl<T: Read + Write> Client<T> {
 
         while !found_tag_line {
             let raw_data = try!(self.readline());
-            let line = String::from_utf8(raw_data).unwrap();
+            let line = String::from_utf8(raw_data).map_err(|err| Error::Parse(ParseError::DataNotUtf8(err)))?;
             lines.push(line.clone());
             if (&*line).starts_with(&*start_str) {
                 found_tag_line = true;

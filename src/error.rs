@@ -3,6 +3,7 @@ use std::result;
 use std::fmt;
 use std::error::Error as StdError;
 use std::net::TcpStream;
+use std::string::FromUtf8Error;
 
 use native_tls::HandshakeError as TlsHandshakeError;
 use native_tls::Error as TlsError;
@@ -85,6 +86,7 @@ impl StdError for Error {
             Error::Io(ref e) => Some(e),
             Error::Tls(ref e) => Some(e),
             Error::TlsHandshake(ref e) => Some(e),
+            Error::Parse(ParseError::DataNotUtf8(ref e)) => Some(e),
             _ => None,
         }
     }
@@ -98,6 +100,7 @@ pub enum ParseError {
     Capability(Vec<String>),
     // Authentication errors.
     Authentication(String),
+    DataNotUtf8(FromUtf8Error),
 }
 
 impl fmt::Display for ParseError {
@@ -114,6 +117,7 @@ impl StdError for ParseError {
             ParseError::StatusResponse(_) => "Unable to parse status response",
             ParseError::Capability(_) => "Unable to parse capability response",
             ParseError::Authentication(_) => "Unable to parse authentication response",
+            ParseError::DataNotUtf8(_) => "Unable to parse data as UTF-8 text",
         }
     }
 
