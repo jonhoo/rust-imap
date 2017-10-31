@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Mailbox {
     pub flags: String,
     pub exists: u32,
