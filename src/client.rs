@@ -706,13 +706,13 @@ mod tests {
     #[test]
     fn examine() {
         let response = b"* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n\
-			* OK [PERMANENTFLAGS ()] Read-only mailbox.\r\n\
-			* 1 EXISTS\r\n\
-			* 1 RECENT\r\n\
-			* OK [UNSEEN 1] First unseen.\r\n\
-			* OK [UIDVALIDITY 1257842737] UIDs valid\r\n\
-			* OK [UIDNEXT 2] Predicted next UID\r\n\
-			a1 OK [READ-ONLY] Select completed.\r\n"
+            * OK [PERMANENTFLAGS ()] Read-only mailbox.\r\n\
+            * 1 EXISTS\r\n\
+            * 1 RECENT\r\n\
+            * OK [UNSEEN 1] First unseen.\r\n\
+            * OK [UIDVALIDITY 1257842737] UIDs valid\r\n\
+            * OK [UIDNEXT 2] Predicted next UID\r\n\
+            a1 OK [READ-ONLY] Select completed.\r\n"
             .to_vec();
         let expected_mailbox = Mailbox {
             flags: String::from("(\\Answered \\Flagged \\Deleted \\Seen \\Draft)"),
@@ -738,13 +738,13 @@ mod tests {
     #[test]
     fn select() {
         let response = b"* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n\
-			* OK [PERMANENTFLAGS (\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)] Read-only mailbox.\r\n\
-			* 1 EXISTS\r\n\
-			* 1 RECENT\r\n\
-			* OK [UNSEEN 1] First unseen.\r\n\
-			* OK [UIDVALIDITY 1257842737] UIDs valid\r\n\
-			* OK [UIDNEXT 2] Predicted next UID\r\n\
-			a1 OK [READ-ONLY] Select completed.\r\n"
+            * OK [PERMANENTFLAGS (\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)] Read-only mailbox.\r\n\
+            * 1 EXISTS\r\n\
+            * 1 RECENT\r\n\
+            * OK [UNSEEN 1] First unseen.\r\n\
+            * OK [UIDVALIDITY 1257842737] UIDs valid\r\n\
+            * OK [UIDNEXT 2] Predicted next UID\r\n\
+            a1 OK [READ-ONLY] Select completed.\r\n"
             .to_vec();
         let expected_mailbox = Mailbox {
             flags: String::from("(\\Answered \\Flagged \\Deleted \\Seen \\Draft)"),
@@ -772,7 +772,7 @@ mod tests {
     #[test]
     fn capability() {
         let response = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
-			a1 OK CAPABILITY completed\r\n"
+            a1 OK CAPABILITY completed\r\n"
             .to_vec();
         let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
         let mock_stream = MockStream::new(response);
