@@ -17,7 +17,7 @@ const LF: u8 = 0x0a;
 
 macro_rules! quote {
     ($x: expr) => (
-        format!("\"{}\"", $x.replace("\\", "\\\\").replace("\"", "\\\""))
+        format!("\"{}\"", $x.replace(r"\", r"\\").replace("\"", "\\\""))
     )
 }
 
