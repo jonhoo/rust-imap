@@ -8,7 +8,7 @@ use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
 use super::parse::{parse_authenticate_response, parse_capability, parse_response,
                    parse_response_ok, parse_select_or_examine};
-use super::error::{Error, Result, ParseError, ValidateError};
+use super::error::{Error, ParseError, Result, ValidateError};
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -304,13 +304,17 @@ impl<T: Read + Write> Client<T> {
 
     /// Selects a mailbox
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?)));
+        let lines = try!(
+            self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
+        );
         parse_select_or_examine(lines)
     }
 
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?)));
+        let lines = try!(
+            self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
+        );
         parse_select_or_examine(lines)
     }
 
@@ -487,7 +491,8 @@ impl<T: Read + Write> Client<T> {
 
         while !found_tag_line {
             let raw_data = try!(self.readline());
-            let line = String::from_utf8(raw_data).map_err(|err| Error::Parse(ParseError::DataNotUtf8(err)))?;
+            let line = String::from_utf8(raw_data)
+                .map_err(|err| Error::Parse(ParseError::DataNotUtf8(err)))?;
             lines.push(line.clone());
             if (&*line).starts_with(&*start_str) {
                 found_tag_line = true;
@@ -753,7 +758,8 @@ mod tests {
     #[test]
     fn select() {
         let response = b"* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n\
-            * OK [PERMANENTFLAGS (\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)] Read-only mailbox.\r\n\
+            * OK [PERMANENTFLAGS (\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)] \
+              Read-only mailbox.\r\n\
             * 1 EXISTS\r\n\
             * 1 RECENT\r\n\
             * OK [UNSEEN 1] First unseen.\r\n\
@@ -857,12 +863,12 @@ mod tests {
 
     #[test]
     fn store() {
-        generic_store(" ", |mut c, set, query| c.store(set, query));
+        generic_store(" ", |c, set, query| c.store(set, query));
     }
 
     #[test]
     fn uid_store() {
-        generic_store(" UID ", |mut c, set, query| c.uid_store(set, query));
+        generic_store(" UID ", |c, set, query| c.uid_store(set, query));
     }
 
     fn generic_store<F, T>(prefix: &str, op: F)
@@ -879,12 +885,12 @@ mod tests {
 
     #[test]
     fn copy() {
-        generic_copy(" ", |mut c, set, query| c.copy(set, query))
+        generic_copy(" ", |c, set, query| c.copy(set, query))
     }
 
     #[test]
     fn uid_copy() {
-        generic_copy(" UID ", |mut c, set, query| c.uid_copy(set, query))
+        generic_copy(" UID ", |c, set, query| c.uid_copy(set, query))
     }
 
     fn generic_copy<F, T>(prefix: &str, op: F)
@@ -903,12 +909,12 @@ mod tests {
 
     #[test]
     fn fetch() {
-        generic_fetch(" ", |mut c, seq, query| c.fetch(seq, query))
+        generic_fetch(" ", |c, seq, query| c.fetch(seq, query))
     }
 
     #[test]
     fn uid_fetch() {
-        generic_fetch(" UID ", |mut c, seq, query| c.uid_fetch(seq, query))
+        generic_fetch(" UID ", |c, seq, query| c.uid_fetch(seq, query))
     }
 
     fn generic_fetch<F, T>(prefix: &str, op: F)
@@ -944,8 +950,10 @@ mod tests {
 
     #[test]
     fn validate_random() {
-        assert_eq!("\"~iCQ_k;>[&\\\"sVCvUW`e<<P!wJ\"",
-                   &validate_str("~iCQ_k;>[&\"sVCvUW`e<<P!wJ").unwrap());
+        assert_eq!(
+            "\"~iCQ_k;>[&\\\"sVCvUW`e<<P!wJ\"",
+            &validate_str("~iCQ_k;>[&\"sVCvUW`e<<P!wJ").unwrap()
+        );
     }
 
     #[test]

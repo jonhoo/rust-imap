@@ -125,9 +125,7 @@ mod tests {
             String::from("LOGINDISABLED"),
         ];
         let lines = vec![
-            String::from(
-                "* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n",
-            ),
+            String::from("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"),
             String::from("a1 OK CAPABILITY completed\r\n"),
         ];
         let capabilities = parse_capability(lines).unwrap();
