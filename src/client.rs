@@ -8,7 +8,7 @@ use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
 use super::parse::{parse_authenticate_response, parse_capability, parse_response,
                    parse_response_ok, parse_select_or_examine};
-use super::error::{Error, Result, ParseError};
+use super::error::{Error, Result, ParseError, ValidateError};
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -19,6 +19,17 @@ macro_rules! quote {
     ($x: expr) => (
         format!("\"{}\"", $x.replace(r"\", r"\\").replace("\"", "\\\""))
     )
+}
+
+fn validate_str(value: &str) -> Result<String> {
+    let quoted = quote!(value);
+    if let Some(_) = quoted.find("\n") {
+        return Err(Error::Validate(ValidateError('\n')));
+    }
+    if let Some(_) = quoted.find("\r") {
+        return Err(Error::Validate(ValidateError('\r')));
+    }
+    Ok(quoted)
 }
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
@@ -284,18 +295,22 @@ impl<T: Read + Write> Client<T> {
 
     /// Log in to the IMAP server.
     pub fn login(&mut self, username: &str, password: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("LOGIN {} {}", quote!(username), quote!(password)))
+        self.run_command_and_check_ok(&format!(
+            "LOGIN {} {}",
+            validate_str(username)?,
+            validate_str(password)?
+        ))
     }
 
     /// Selects a mailbox
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(self.run_command_and_read_response(&format!("SELECT {}", quote!(mailbox_name))));
+        let lines = try!(self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?)));
         parse_select_or_examine(lines)
     }
 
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(self.run_command_and_read_response(&format!("EXAMINE {}", quote!(mailbox_name))));
+        let lines = try!(self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?)));
         parse_select_or_examine(lines)
     }
 
@@ -320,12 +335,12 @@ impl<T: Read + Write> Client<T> {
 
     /// Create creates a mailbox with the given name.
     pub fn create(&mut self, mailbox_name: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("CREATE {}", quote!(mailbox_name)))
+        self.run_command_and_check_ok(&format!("CREATE {}", validate_str(mailbox_name)?))
     }
 
     /// Delete permanently removes the mailbox with the given name.
     pub fn delete(&mut self, mailbox_name: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("DELETE {}", quote!(mailbox_name)))
+        self.run_command_and_check_ok(&format!("DELETE {}", validate_str(mailbox_name)?))
     }
 
     /// Rename changes the name of a mailbox.
@@ -925,5 +940,38 @@ mod tests {
     #[test]
     fn quote_dquote() {
         assert_eq!("\"test\\\"text\"", quote!("test\"text"));
+    }
+
+    #[test]
+    fn validate_random() {
+        assert_eq!("\"~iCQ_k;>[&\\\"sVCvUW`e<<P!wJ\"",
+                   &validate_str("~iCQ_k;>[&\"sVCvUW`e<<P!wJ").unwrap());
+    }
+
+    #[test]
+    fn validate_newline() {
+        if let Err(ref e) = validate_str("test\nstring") {
+            if let &Error::Validate(ref ve) = e {
+                if ve.0 == '\n' {
+                    return;
+                }
+            }
+            panic!("Wrong error: {:?}", e);
+        }
+        panic!("No error");
+    }
+
+    #[test]
+    #[allow(unreachable_patterns)]
+    fn validate_carriage_return() {
+        if let Err(ref e) = validate_str("test\rstring") {
+            if let &Error::Validate(ref ve) = e {
+                if ve.0 == '\r' {
+                    return;
+                }
+            }
+            panic!("Wrong error: {:?}", e);
+        }
+        panic!("No error");
     }
 }
