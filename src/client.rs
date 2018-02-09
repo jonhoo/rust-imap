@@ -3,11 +3,12 @@ use native_tls::{TlsConnector, TlsStream};
 use std::io::{self, Read, Write};
 use std::time::Duration;
 use bufstream::BufStream;
+use nom::IResult;
 
-use super::mailbox::Mailbox;
+use super::types::*;
 use super::authenticator::Authenticator;
-use super::parse::{parse_authenticate_response, parse_capability, parse_response,
-                   parse_response_ok, parse_select_or_examine};
+use super::parse::{parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox,
+                   parse_names};
 use super::error::{Error, ParseError, Result, ValidateError};
 
 static TAG_PREFIX: &'static str = "a";
@@ -88,27 +89,23 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
         //
         //   a) if there's an error, or
         //   b) *after* we send DONE
-        let tag = format!("{}{} ", TAG_PREFIX, self.client.tag);
-        let raw_data = try!(self.client.readline());
-        let line = String::from_utf8(raw_data).unwrap();
-        if line.starts_with(&tag) {
-            try!(parse_response(vec![line]));
-            // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
-            unreachable!();
-        } else if !line.starts_with("+") {
-            return Err(Error::BadResponse(vec![line]));
+        let mut v = Vec::new();
+        try!(self.client.readline(&mut v));
+        if v.starts_with(b"+") {
+            self.done = false;
+            return Ok(());
         }
 
-        self.done = false;
-        Ok(())
+        self.client.read_response_onto(&mut v)?;
+        // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
+        unreachable!();
     }
 
     fn terminate(&mut self) -> Result<()> {
         if !self.done {
             self.done = true;
             try!(self.client.write_line(b"DONE"));
-            let lines = try!(self.client.read_response());
-            parse_response_ok(lines)
+            self.client.read_response().map(|_| ())
         } else {
             Ok(())
         }
@@ -118,7 +115,8 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     ///
     /// This is necessary so that we can keep using the inner `Client` in `wait_keepalive`.
     fn wait_inner(&mut self) -> Result<()> {
-        match self.client.readline().map(|_| ()) {
+        let mut v = Vec::new();
+        match self.client.readline(&mut v).map(|_| ()) {
             Err(Error::Io(ref e))
                 if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
             {
@@ -272,7 +270,8 @@ impl<T: Read + Write> Client<T> {
     fn do_auth_handshake<A: Authenticator>(&mut self, authenticator: A) -> Result<()> {
         // TODO Clean up this code
         loop {
-            let line = try!(self.readline());
+            let mut line = Vec::new();
+            try!(self.readline(&mut line));
 
             if line.starts_with(b"+") {
                 let data = try!(parse_authenticate_response(
@@ -281,14 +280,8 @@ impl<T: Read + Write> Client<T> {
                 let auth_response = authenticator.process(data);
 
                 try!(self.write_line(auth_response.into_bytes().as_slice()))
-            } else if line.starts_with(format!("{}{} ", TAG_PREFIX, self.tag).as_bytes()) {
-                try!(parse_response(vec![String::from_utf8(line).unwrap()]));
-                return Ok(());
             } else {
-                let mut lines = try!(self.read_response());
-                lines.insert(0, String::from_utf8(line).unwrap());
-                try!(parse_response(lines.clone()));
-                return Ok(());
+                return self.read_response_onto(&mut line).map(|_| ());
             }
         }
     }
@@ -304,27 +297,25 @@ impl<T: Read + Write> Client<T> {
 
     /// Selects a mailbox
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(
-            self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
-        );
-        parse_select_or_examine(lines)
+        self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
+            .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        let lines = try!(
-            self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
-        );
-        parse_select_or_examine(lines)
+        self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
+            .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
     /// Fetch retreives data associated with a message in the mailbox.
-    pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<String>> {
+    pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
+            .and_then(|lines| parse_fetches(lines))
     }
 
-    pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<String>> {
+    pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
+            .and_then(|lines| parse_fetches(lines))
     }
 
     /// Noop always succeeds, and it does nothing.
@@ -369,9 +360,9 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Capability requests a listing of capabilities that the server supports.
-    pub fn capability(&mut self) -> Result<Vec<String>> {
-        let lines = try!(self.run_command_and_read_response(&format!("CAPABILITY")));
-        parse_capability(lines)
+    pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
+        self.run_command_and_read_response(&format!("CAPABILITY"))
+            .and_then(|lines| parse_capabilities(lines))
     }
 
     /// Expunge permanently removes all messages that have the \Deleted flag set from the currently
@@ -392,12 +383,14 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Store alters data associated with a message in the mailbox.
-    pub fn store(&mut self, sequence_set: &str, query: &str) -> Result<Vec<String>> {
+    pub fn store(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
+            .and_then(|lines| parse_fetches(lines))
     }
 
-    pub fn uid_store(&mut self, uid_set: &str, query: &str) -> Result<Vec<String>> {
+    pub fn uid_store(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
+            .and_then(|lines| parse_fetches(lines))
     }
 
     /// Copy copies the specified message to the end of the specified destination mailbox.
@@ -415,12 +408,12 @@ impl<T: Read + Write> Client<T> {
         &mut self,
         reference_name: &str,
         mailbox_search_pattern: &str,
-    ) -> Result<Vec<String>> {
-        self.run_command_and_parse(&format!(
+    ) -> ZeroCopyResult<Vec<Name>> {
+        self.run_command_and_read_response(&format!(
             "LIST {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        ))
+        )).and_then(|lines| parse_names(lines))
     }
 
     /// The LSUB command returns a subset of names from the set of names
@@ -429,17 +422,21 @@ impl<T: Read + Write> Client<T> {
         &mut self,
         reference_name: &str,
         mailbox_search_pattern: &str,
-    ) -> Result<Vec<String>> {
-        self.run_command_and_parse(&format!(
+    ) -> ZeroCopyResult<Vec<Name>> {
+        self.run_command_and_read_response(&format!(
             "LSUB {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        ))
+        )).and_then(|lines| parse_names(lines))
     }
 
     /// The STATUS command requests the status of the indicated mailbox.
-    pub fn status(&mut self, mailbox_name: &str, status_data_items: &str) -> Result<Vec<String>> {
-        self.run_command_and_parse(&format!("STATUS {} {}", mailbox_name, status_data_items))
+    pub fn status(&mut self, mailbox_name: &str, status_data_items: &str) -> Result<Mailbox> {
+        self.run_command_and_read_response(&format!(
+            "STATUS {} {}",
+            validate_str(mailbox_name)?,
+            status_data_items
+        )).and_then(|lines| parse_mailbox(&lines[..]))
     }
 
     /// Returns a handle that can be used to block until the state of the currently selected
@@ -449,28 +446,24 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// The APPEND command adds a mail to a mailbox.
-    pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<Vec<String>> {
-        try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
-        let line = try!(self.readline());
-        if !line.starts_with(b"+") {
+    pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<()> {
+        try!(self.run_command(
+            &format!("APPEND \"{}\" {{{}}}", folder, content.len())
+        ));
+        let mut v = Vec::new();
+        try!(self.readline(&mut v));
+        if !v.starts_with(b"+") {
             return Err(Error::Append);
         }
         try!(self.stream.write_all(content));
         try!(self.stream.write_all(b"\r\n"));
         try!(self.stream.flush());
-        self.read_response()
+        self.read_response().map(|_| ())
     }
 
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
-        let lines = try!(self.run_command_and_read_response(command));
-        parse_response_ok(lines)
-    }
-
-    // Run a command and parse the status response.
-    pub fn run_command_and_parse(&mut self, command: &str) -> Result<Vec<String>> {
-        let lines = try!(self.run_command_and_read_response(command));
-        parse_response(lines)
+        self.run_command_and_read_response(command).map(|_| ())
     }
 
     /// Runs any command passed to it.
@@ -479,49 +472,110 @@ impl<T: Read + Write> Client<T> {
         self.write_line(command.into_bytes().as_slice())
     }
 
-    pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<String>> {
+    pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
         try!(self.run_command(untagged_command));
         self.read_response()
     }
 
-    fn read_response(&mut self) -> Result<Vec<String>> {
-        let mut found_tag_line = false;
-        let start_str = format!("{}{} ", TAG_PREFIX, self.tag);
-        let mut lines: Vec<String> = Vec::new();
+    fn read_response(&mut self) -> Result<Vec<u8>> {
+        let mut v = Vec::new();
+        self.read_response_onto(&mut v)?;
+        Ok(v)
+    }
 
-        while !found_tag_line {
-            let raw_data = try!(self.readline());
-            let line = String::from_utf8(raw_data)
-                .map_err(|err| Error::Parse(ParseError::DataNotUtf8(err)))?;
-            lines.push(line.clone());
-            if (&*line).starts_with(&*start_str) {
-                found_tag_line = true;
+    fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<()> {
+        let mut continue_from = None;
+        let mut try_first = !data.is_empty();
+        let match_tag = format!("{}{}", TAG_PREFIX, self.tag);
+        loop {
+            let line_start = if try_first {
+                try_first = false;
+                0
+            } else {
+                let start_new = data.len();
+                try!(self.readline(data));
+                continue_from.take().unwrap_or(start_new)
+            };
+
+            let break_with = {
+                use imap_proto::{parse_response, Response, Status};
+                let line = &data[line_start..];
+
+                match parse_response(line) {
+                    IResult::Done(
+                        _,
+                        Response::Done {
+                            tag,
+                            status,
+                            information,
+                            ..
+                        },
+                    ) => {
+                        assert_eq!(tag.as_bytes(), match_tag.as_bytes());
+                        Some(match status {
+                            Status::Bad | Status::No => {
+                                Err((status, information.map(|s| s.to_string())))
+                            }
+                            Status::Ok => Ok(()),
+                            status => Err((status, None)),
+                        })
+                    }
+                    IResult::Done(..) => None,
+                    IResult::Incomplete(..) => {
+                        continue_from = Some(line_start);
+                        None
+                    }
+                    _ => Some(Err((Status::Bye, None))),
+                }
+            };
+
+            match break_with {
+                Some(Ok(_)) => {
+                    data.truncate(line_start);
+                    break Ok(());
+                }
+                Some(Err((status, expl))) => {
+                    use imap_proto::Status;
+                    match status {
+                        Status::Bad => {
+                            break Err(Error::BadResponse(
+                                expl.unwrap_or("no explanation given".to_string()),
+                            ))
+                        }
+                        Status::No => {
+                            break Err(Error::NoResponse(
+                                expl.unwrap_or("no explanation given".to_string()),
+                            ))
+                        }
+                        _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
+                    }
+                }
+                None => {}
             }
         }
-
-        Ok(lines)
     }
 
     fn read_greeting(&mut self) -> Result<()> {
-        try!(self.readline());
+        let mut v = Vec::new();
+        try!(self.readline(&mut v));
         Ok(())
     }
 
-    fn readline(&mut self) -> Result<Vec<u8>> {
+    fn readline(&mut self, into: &mut Vec<u8>) -> Result<usize> {
         use std::io::BufRead;
-        let mut line_buffer: Vec<u8> = Vec::new();
-        if try!(self.stream.read_until(LF, &mut line_buffer)) == 0 {
+        let read = try!(self.stream.read_until(LF, into));
+        if read == 0 {
             return Err(Error::ConnectionLost);
         }
 
         if self.debug {
             // Remove CRLF
-            let len = line_buffer.len();
-            let line = &line_buffer[..(len - 2)];
+            let len = into.len();
+            let line = &into[(len - read - 2)..(len - 2)];
             print!("S: {}\n", String::from_utf8_lossy(line));
         }
 
-        Ok(line_buffer)
+        Ok(read)
     }
 
     fn create_command(&mut self, command: String) -> String {
@@ -545,20 +599,27 @@ impl<T: Read + Write> Client<T> {
 mod tests {
     use super::*;
     use super::super::mock_stream::MockStream;
-    use super::super::mailbox::Mailbox;
     use super::super::error::Result;
 
     #[test]
     fn read_response() {
         let response = "a0 OK Logged in.\r\n";
-        let expected_response: Vec<String> = vec![response.to_string()];
         let mock_stream = MockStream::new(response.as_bytes().to_vec());
         let mut client = Client::new(mock_stream);
         let actual_response = client.read_response().unwrap();
-        assert!(
-            expected_response == actual_response,
-            "expected response doesn't equal actual"
-        );
+        assert_eq!(Vec::<u8>::new(), actual_response);
+    }
+
+
+    #[test]
+    fn fetch_body() {
+        let response = "a0 OK Logged in.\r\n\
+                        * 2 FETCH (BODY[TEXT] {3}\r\nfoo)\r\n\
+                        a0 OK FETCH completed\r\n";
+        let mock_stream = MockStream::new(response.as_bytes().to_vec());
+        let mut client = Client::new(mock_stream);
+        client.read_response().unwrap();
+        client.read_response().unwrap();
     }
 
 
@@ -578,7 +639,9 @@ mod tests {
             .with_buf(greeting.as_bytes().to_vec())
             .with_delay();
         let mut client = Client::new(mock_stream);
-        let actual_response = String::from_utf8(client.readline().unwrap()).unwrap();
+        let mut v = Vec::new();
+        client.readline(&mut v).unwrap();
+        let actual_response = String::from_utf8(v).unwrap();
         assert_eq!(expected_response, actual_response);
     }
 
@@ -586,7 +649,8 @@ mod tests {
     fn readline_eof() {
         let mock_stream = MockStream::default().with_eof();
         let mut client = Client::new(mock_stream);
-        if let Err(Error::ConnectionLost) = client.readline() {
+        let mut v = Vec::new();
+        if let Err(Error::ConnectionLost) = client.readline(&mut v) {
         } else {
             unreachable!("EOF read did not return connection lost");
         }
@@ -598,7 +662,8 @@ mod tests {
         // TODO Check the error test
         let mock_stream = MockStream::default().with_err();
         let mut client = Client::new(mock_stream);
-        client.readline().unwrap();
+        let mut v = Vec::new();
+        client.readline(&mut v).unwrap();
     }
 
     #[test]
@@ -735,11 +800,17 @@ mod tests {
             a1 OK [READ-ONLY] Select completed.\r\n"
             .to_vec();
         let expected_mailbox = Mailbox {
-            flags: String::from("(\\Answered \\Flagged \\Deleted \\Seen \\Draft)"),
+            flags: vec![
+                "\\Answered".to_string(),
+                "\\Flagged".to_string(),
+                "\\Deleted".to_string(),
+                "\\Seen".to_string(),
+                "\\Draft".to_string(),
+            ],
             exists: 1,
             recent: 1,
             unseen: Some(1),
-            permanent_flags: Some(String::from("()")),
+            permanent_flags: vec![],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
         };
@@ -752,7 +823,7 @@ mod tests {
             client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid examine command"
         );
-        assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
+        assert_eq!(mailbox, expected_mailbox);
     }
 
     #[test]
@@ -768,13 +839,24 @@ mod tests {
             a1 OK [READ-ONLY] Select completed.\r\n"
             .to_vec();
         let expected_mailbox = Mailbox {
-            flags: String::from("(\\Answered \\Flagged \\Deleted \\Seen \\Draft)"),
+            flags: vec![
+                "\\Answered".to_string(),
+                "\\Flagged".to_string(),
+                "\\Deleted".to_string(),
+                "\\Seen".to_string(),
+                "\\Draft".to_string(),
+            ],
             exists: 1,
             recent: 1,
             unseen: Some(1),
-            permanent_flags: Some(String::from(
-                "(\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)",
-            )),
+            permanent_flags: vec![
+                "\\*".to_string(),
+                "\\Answered".to_string(),
+                "\\Flagged".to_string(),
+                "\\Deleted".to_string(),
+                "\\Draft".to_string(),
+                "\\Seen".to_string(),
+            ],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
         };
@@ -787,7 +869,7 @@ mod tests {
             client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid select command"
         );
-        assert!(mailbox == expected_mailbox, "Unexpected mailbox returned");
+        assert_eq!(mailbox, expected_mailbox);
     }
 
     #[test]
@@ -798,15 +880,15 @@ mod tests {
         let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
         let mock_stream = MockStream::new(response);
         let mut client = Client::new(mock_stream);
-        let capabilities = client.capability().unwrap();
+        let capabilities = client.capabilities().unwrap();
         assert!(
             client.stream.get_ref().written_buf == b"a1 CAPABILITY\r\n".to_vec(),
             "Invalid capability command"
         );
-        assert!(
-            capabilities == expected_capabilities,
-            "Unexpected capabilities response"
-        );
+        assert_eq!(capabilities.len(), 4);
+        for e in expected_capabilities {
+            assert!(capabilities.has(e));
+        }
     }
 
     #[test]

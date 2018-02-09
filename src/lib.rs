@@ -4,15 +4,19 @@
 //! imap is a IMAP client for Rust.
 
 extern crate bufstream;
+extern crate imap_proto;
 extern crate native_tls;
+extern crate nom;
 extern crate regex;
+
+mod types;
+mod parse;
 
 pub mod authenticator;
 pub mod client;
 pub mod error;
-pub mod mailbox;
 
-mod parse;
+pub use types::*;
 
 #[cfg(test)]
 mod mock_stream;

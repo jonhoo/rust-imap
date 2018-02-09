@@ -1,6 +1,8 @@
 use regex::Regex;
+use nom::IResult;
+use imap_proto::{self, Response};
 
-use super::mailbox::Mailbox;
+use super::types::*;
 use super::error::{Error, ParseError, Result};
 
 pub fn parse_authenticate_response(line: String) -> Result<String> {
@@ -14,102 +16,186 @@ pub fn parse_authenticate_response(line: String) -> Result<String> {
     Err(Error::Parse(ParseError::Authentication(line)))
 }
 
-pub fn parse_capability(lines: Vec<String>) -> Result<Vec<String>> {
-    let capability_regex = Regex::new(r"^\* CAPABILITY (.*)\r\n").unwrap();
+enum MapOrNot<T> {
+    Map(T),
+    Not(Response<'static>),
+}
 
-    //Check Ok
-    match parse_response_ok(lines.clone()) {
-        Ok(_) => (),
-        Err(e) => return Err(e),
-    };
+unsafe fn parse_many<T, F>(lines: Vec<u8>, mut map: F) -> ZeroCopyResult<Vec<T>>
+where
+    F: FnMut(Response<'static>) -> MapOrNot<T>,
+{
+    let f = |mut lines| {
+        let mut things = Vec::new();
+        loop {
+            match imap_proto::parse_response(lines) {
+                IResult::Done(rest, resp) => {
+                    lines = rest;
 
-    for line in lines.iter() {
-        if capability_regex.is_match(line) {
-            let cap = capability_regex.captures(line).unwrap();
-            let capabilities_str = cap.get(1).unwrap().as_str();
-            return Ok(capabilities_str.split(' ').map(|x| x.to_string()).collect());
+                    match map(resp) {
+                        MapOrNot::Map(t) => things.push(t),
+                        MapOrNot::Not(resp) => break Err(resp.into()),
+                    }
+
+                    if lines.is_empty() {
+                        break Ok(things);
+                    }
+                }
+                _ => {
+                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                }
+            }
         }
-    }
-
-    Err(Error::Parse(ParseError::Capability(lines)))
-}
-
-pub fn parse_response_ok(lines: Vec<String>) -> Result<()> {
-    match parse_response(lines) {
-        Ok(_) => Ok(()),
-        Err(e) => return Err(e),
-    }
-}
-
-pub fn parse_response(lines: Vec<String>) -> Result<Vec<String>> {
-    let regex = Regex::new(r"^([a-zA-Z0-9]+) (OK|NO|BAD)(.*)").unwrap();
-    let last_line = match lines.last() {
-        Some(l) => l,
-        None => return Err(Error::Parse(ParseError::StatusResponse(lines.clone()))),
     };
 
-    for cap in regex.captures_iter(last_line) {
-        let response_type = cap.get(2).map(|x| x.as_str()).unwrap_or("");
-        match response_type {
-            "OK" => return Ok(lines.clone()),
-            "BAD" => return Err(Error::BadResponse(lines.clone())),
-            "NO" => return Err(Error::NoResponse(lines.clone())),
-            _ => {}
+    ZeroCopy::new(lines, f)
+}
+
+pub fn parse_names(lines: Vec<u8>) -> ZeroCopyResult<Vec<Name>> {
+    use imap_proto::MailboxDatum;
+    let f = |resp| match resp {
+        // https://github.com/djc/imap-proto/issues/4
+        Response::MailboxData(MailboxDatum::List {
+            flags,
+            delimiter,
+            name,
+        }) |
+        Response::MailboxData(MailboxDatum::SubList {
+            flags,
+            delimiter,
+            name,
+        }) => MapOrNot::Map(Name {
+            attributes: flags,
+            delimiter,
+            name,
+        }),
+        resp => MapOrNot::Not(resp),
+    };
+
+    unsafe { parse_many(lines, f) }
+}
+
+pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
+    let f = |resp| match resp {
+        Response::Fetch(num, attrs) => {
+            let mut fetch = Fetch {
+                message: num,
+                flags: vec![],
+                uid: None,
+                rfc822: None,
+            };
+
+            for attr in attrs {
+                use imap_proto::AttributeValue;
+                match attr {
+                    AttributeValue::Flags(flags) => {
+                        fetch.flags.extend(flags);
+                    }
+                    AttributeValue::Uid(uid) => fetch.uid = Some(uid),
+                    AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
+                    _ => {}
+                }
+            }
+
+            MapOrNot::Map(fetch)
         }
-    }
-
-    Err(Error::Parse(ParseError::StatusResponse(lines.clone())))
-}
-
-pub fn parse_select_or_examine(lines: Vec<String>) -> Result<Mailbox> {
-    let exists_regex = Regex::new(r"^\* (\d+) EXISTS\r\n").unwrap();
-
-    let recent_regex = Regex::new(r"^\* (\d+) RECENT\r\n").unwrap();
-
-    let flags_regex = Regex::new(r"^\* FLAGS (.+)\r\n").unwrap();
-
-    let unseen_regex = Regex::new(r"^\* OK \[UNSEEN (\d+)\](.*)\r\n").unwrap();
-
-    let uid_validity_regex = Regex::new(r"^\* OK \[UIDVALIDITY (\d+)\](.*)\r\n").unwrap();
-
-    let uid_next_regex = Regex::new(r"^\* OK \[UIDNEXT (\d+)\](.*)\r\n").unwrap();
-
-    let permanent_flags_regex = Regex::new(r"^\* OK \[PERMANENTFLAGS (.+)\](.*)\r\n").unwrap();
-
-    //Check Ok
-    match parse_response_ok(lines.clone()) {
-        Ok(_) => (),
-        Err(e) => return Err(e),
+        resp => MapOrNot::Not(resp),
     };
 
+    unsafe { parse_many(lines, f) }
+}
+
+pub fn parse_capabilities(lines: Vec<u8>) -> ZeroCopyResult<Capabilities> {
+    let f = |mut lines| {
+        use std::collections::HashSet;
+        let mut caps = HashSet::new();
+        loop {
+            match imap_proto::parse_response(lines) {
+                IResult::Done(rest, Response::Capabilities(c)) => {
+                    lines = rest;
+                    caps.extend(c);
+
+                    if lines.is_empty() {
+                        break Ok(Capabilities(caps));
+                    }
+                }
+                IResult::Done(_, resp) => {
+                    break Err(resp.into());
+                }
+                _ => {
+                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                }
+            }
+        }
+    };
+
+    unsafe { ZeroCopy::new(lines, f) }
+}
+
+pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
     let mut mailbox = Mailbox::default();
 
-    for line in lines.iter() {
-        if exists_regex.is_match(line) {
-            let cap = exists_regex.captures(line).unwrap();
-            mailbox.exists = cap.get(1).unwrap().as_str().parse::<u32>().unwrap();
-        } else if recent_regex.is_match(line) {
-            let cap = recent_regex.captures(line).unwrap();
-            mailbox.recent = cap.get(1).unwrap().as_str().parse::<u32>().unwrap();
-        } else if flags_regex.is_match(line) {
-            let cap = flags_regex.captures(line).unwrap();
-            mailbox.flags = cap.get(1).unwrap().as_str().to_string();
-        } else if unseen_regex.is_match(line) {
-            let cap = unseen_regex.captures(line).unwrap();
-            mailbox.unseen = Some(cap.get(1).unwrap().as_str().parse::<u32>().unwrap());
-        } else if uid_validity_regex.is_match(line) {
-            let cap = uid_validity_regex.captures(line).unwrap();
-            mailbox.uid_validity = Some(cap.get(1).unwrap().as_str().parse::<u32>().unwrap());
-        } else if uid_next_regex.is_match(line) {
-            let cap = uid_next_regex.captures(line).unwrap();
-            mailbox.uid_next = Some(cap.get(1).unwrap().as_str().parse::<u32>().unwrap());
-        } else if permanent_flags_regex.is_match(line) {
-            let cap = permanent_flags_regex.captures(line).unwrap();
-            mailbox.permanent_flags = Some(cap.get(1).unwrap().as_str().to_string());
+    loop {
+        match imap_proto::parse_response(lines) {
+            IResult::Done(rest, Response::Data { status, code, .. }) => {
+                lines = rest;
+
+                if let imap_proto::Status::Ok = status {
+                } else {
+                    // how can this happen for a Response::Data?
+                    unreachable!();
+                }
+
+                use imap_proto::ResponseCode;
+                match code {
+                    Some(ResponseCode::UidValidity(uid)) => {
+                        mailbox.uid_validity = Some(uid);
+                    }
+                    Some(ResponseCode::UidNext(unext)) => {
+                        mailbox.uid_next = Some(unext);
+                    }
+                    Some(ResponseCode::Unseen(n)) => {
+                        mailbox.unseen = Some(n);
+                    }
+                    Some(ResponseCode::PermanentFlags(flags)) => {
+                        mailbox
+                            .permanent_flags
+                            .extend(flags.into_iter().map(|s| s.to_string()));
+                    }
+                    _ => {}
+                }
+            }
+            IResult::Done(rest, Response::MailboxData(m)) => {
+                lines = rest;
+
+                use imap_proto::MailboxDatum;
+                match m {
+                    MailboxDatum::Exists(e) => {
+                        mailbox.exists = e;
+                    }
+                    MailboxDatum::Recent(r) => {
+                        mailbox.recent = r;
+                    }
+                    MailboxDatum::Flags(flags) => {
+                        mailbox
+                            .flags
+                            .extend(flags.into_iter().map(|s| s.to_string()));
+                    }
+                    MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
+                }
+            }
+            IResult::Done(_, resp) => {
+                break Err(resp.into());
+            }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+
+        if lines.is_empty() {
+            break Ok(mailbox);
         }
     }
-
-    Ok(mailbox)
 }
 
 #[cfg(test)]
@@ -118,51 +204,46 @@ mod tests {
 
     #[test]
     fn parse_capability_test() {
-        let expected_capabilities = vec![
-            String::from("IMAP4rev1"),
-            String::from("STARTTLS"),
-            String::from("AUTH=GSSAPI"),
-            String::from("LOGINDISABLED"),
-        ];
-        let lines = vec![
-            String::from("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"),
-            String::from("a1 OK CAPABILITY completed\r\n"),
-        ];
-        let capabilities = parse_capability(lines).unwrap();
-        assert!(
-            capabilities == expected_capabilities,
-            "Unexpected capabilities parse response"
-        );
+        let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
+        let lines = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
+        let capabilities = parse_capabilities(lines.to_vec()).unwrap();
+        assert_eq!(capabilities.len(), 4);
+        for e in expected_capabilities {
+            assert!(capabilities.has(e));
+        }
     }
 
     #[test]
     #[should_panic]
     fn parse_capability_invalid_test() {
-        let lines = vec![
-            String::from("* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n"),
-            String::from("a1 OK CAPABILITY completed\r\n"),
-        ];
-        parse_capability(lines).unwrap();
+        let lines = b"* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
+        parse_capabilities(lines.to_vec()).unwrap();
     }
 
     #[test]
-    fn parse_response_test() {
-        let lines = vec![
-            String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"),
-            String::from("a2 OK List completed.\r\n"),
-        ];
-        let expected_lines = lines.clone();
-        let actual_lines = parse_response(lines).unwrap();
-        assert!(expected_lines == actual_lines, "Unexpected parse response");
+    fn parse_names_test() {
+        let lines = b"* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n";
+        let names = parse_names(lines.to_vec()).unwrap();
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[0].attributes(), &["\\HasNoChildren"]);
+        assert_eq!(names[0].delimiter(), ".");
+        assert_eq!(names[0].name(), "INBOX");
     }
 
     #[test]
-    #[should_panic]
-    fn parse_response_invalid_test() {
-        let lines = vec![
-            String::from("* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n"),
-            String::from("a2 BAD broken.\r\n"),
-        ];
-        parse_response(lines).unwrap();
+    fn parse_fetches_test() {
+        let lines = b"\
+                    * 24 FETCH (FLAGS (\\Seen) UID 4827943)\r\n\
+                    * 25 FETCH (FLAGS (\\Seen))\r\n";
+        let fetches = parse_fetches(lines.to_vec()).unwrap();
+        assert_eq!(fetches.len(), 2);
+        assert_eq!(fetches[0].message, 24);
+        assert_eq!(fetches[0].flags(), &["\\Seen"]);
+        assert_eq!(fetches[0].uid, Some(4827943));
+        assert_eq!(fetches[0].rfc822(), None);
+        assert_eq!(fetches[1].message, 25);
+        assert_eq!(fetches[1].flags(), &["\\Seen"]);
+        assert_eq!(fetches[1].uid, None);
+        assert_eq!(fetches[1].rfc822(), None);
     }
 }

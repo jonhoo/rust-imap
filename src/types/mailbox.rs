@@ -2,11 +2,11 @@ use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Mailbox {
-    pub flags: String,
+    pub flags: Vec<String>,
     pub exists: u32,
     pub recent: u32,
     pub unseen: Option<u32>,
-    pub permanent_flags: Option<String>,
+    pub permanent_flags: Vec<String>,
     pub uid_next: Option<u32>,
     pub uid_validity: Option<u32>,
 }
@@ -14,11 +14,11 @@ pub struct Mailbox {
 impl Default for Mailbox {
     fn default() -> Mailbox {
         Mailbox {
-            flags: "".to_string(),
+            flags: Vec::new(),
             exists: 0,
             recent: 0,
             unseen: None,
-            permanent_flags: None,
+            permanent_flags: Vec::new(),
             uid_next: None,
             uid_validity: None,
         }
@@ -29,7 +29,7 @@ impl fmt::Display for Mailbox {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "flags: {}, exists: {}, recent: {}, unseen: {:?}, permanent_flags: {:?},\
+            "flags: {:?}, exists: {}, recent: {}, unseen: {:?}, permanent_flags: {:?},\
              uid_next: {:?}, uid_validity: {:?}",
             self.flags,
             self.exists,

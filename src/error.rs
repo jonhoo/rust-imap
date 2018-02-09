@@ -5,6 +5,7 @@ use std::error::Error as StdError;
 use std::net::TcpStream;
 use std::string::FromUtf8Error;
 
+use imap_proto::Response;
 use native_tls::HandshakeError as TlsHandshakeError;
 use native_tls::Error as TlsError;
 use bufstream::IntoInnerError as BufError;
@@ -21,9 +22,9 @@ pub enum Error {
     /// An error from the `native_tls` library while managing the socket.
     Tls(TlsError),
     /// A BAD response from the IMAP server.
-    BadResponse(Vec<String>),
+    BadResponse(String),
     /// A NO response from the IMAP server.
-    NoResponse(Vec<String>),
+    NoResponse(String),
     /// The connection was terminated unexpectedly.
     ConnectionLost,
     // Error parsing a server response.
@@ -58,6 +59,12 @@ impl From<TlsError> for Error {
     }
 }
 
+impl<'a> From<Response<'a>> for Error {
+    fn from(err: Response<'a>) -> Error {
+        Error::Parse(ParseError::Unexpected(format!("{:?}", err)))
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -65,12 +72,9 @@ impl fmt::Display for Error {
             Error::Tls(ref e) => fmt::Display::fmt(e, f),
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             Error::Validate(ref e) => fmt::Display::fmt(e, f),
-            Error::BadResponse(ref data) => write!(
-                f,
-                "{}: {}",
-                &String::from(self.description()),
-                &data.join("\n")
-            ),
+            Error::NoResponse(ref data) | Error::BadResponse(ref data) => {
+                write!(f, "{}: {}", &String::from(self.description()), data)
+            }
             ref e => f.write_str(e.description()),
         }
     }
@@ -105,9 +109,9 @@ impl StdError for Error {
 #[derive(Debug)]
 pub enum ParseError {
     // Indicates an error parsing the status response. Such as OK, NO, and BAD.
-    StatusResponse(Vec<String>),
-    // Error parsing the cabability response.
-    Capability(Vec<String>),
+    Invalid(Vec<u8>),
+    // An unexpected response was encountered.
+    Unexpected(String),
     // Authentication errors.
     Authentication(String),
     DataNotUtf8(FromUtf8Error),
@@ -124,8 +128,8 @@ impl fmt::Display for ParseError {
 impl StdError for ParseError {
     fn description(&self) -> &str {
         match *self {
-            ParseError::StatusResponse(_) => "Unable to parse status response",
-            ParseError::Capability(_) => "Unable to parse capability response",
+            ParseError::Invalid(_) => "Unable to parse status response",
+            ParseError::Unexpected(_) => "Encountered unexpected parsed response",
             ParseError::Authentication(_) => "Unable to parse authentication response",
             ParseError::DataNotUtf8(_) => "Unable to parse data as UTF-8 text",
         }
