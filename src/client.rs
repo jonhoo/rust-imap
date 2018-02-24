@@ -571,7 +571,7 @@ impl<T: Read + Write> Client<T> {
         if self.debug {
             // Remove CRLF
             let len = into.len();
-            let line = &into[(len - read - 2)..(len - 2)];
+            let line = &into[(len - read)..(len - 2)];
             print!("S: {}\n", String::from_utf8_lossy(line));
         }
 
