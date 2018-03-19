@@ -213,11 +213,11 @@ impl Client<TcpStream> {
     pub fn secure(
         mut self,
         domain: &str,
-        ssl_connector: TlsConnector,
+        ssl_connector: &TlsConnector,
     ) -> Result<Client<TlsStream<TcpStream>>> {
         // TODO This needs to be tested
         self.run_command_and_check_ok("STARTTLS")?;
-        TlsConnector::connect(&ssl_connector, domain, try!(self.stream.into_inner()))
+        TlsConnector::connect(ssl_connector, domain, try!(self.stream.into_inner()))
             .map(Client::new)
             .map_err(Error::TlsHandshake)
     }
@@ -228,11 +228,11 @@ impl Client<TlsStream<TcpStream>> {
     pub fn secure_connect<A: ToSocketAddrs>(
         addr: A,
         domain: &str,
-        ssl_connector: TlsConnector,
+        ssl_connector: &TlsConnector,
     ) -> Result<Client<TlsStream<TcpStream>>> {
         match TcpStream::connect(addr) {
             Ok(stream) => {
-                let ssl_stream = match TlsConnector::connect(&ssl_connector, domain, stream) {
+                let ssl_stream = match TlsConnector::connect(ssl_connector, domain, stream) {
                     Ok(s) => s,
                     Err(e) => return Err(Error::TlsHandshake(e)),
                 };

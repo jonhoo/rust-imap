@@ -12,7 +12,7 @@ fn main() {
     let port = 993;
     let socket_addr = (domain, port);
     let ssl_connector = TlsConnector::builder().unwrap().build().unwrap();
-    let mut imap_socket = Client::secure_connect(socket_addr, domain, ssl_connector).unwrap();
+    let mut imap_socket = Client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
 
     imap_socket.login("username", "password").unwrap();
 
