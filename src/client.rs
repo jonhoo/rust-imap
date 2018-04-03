@@ -1,15 +1,15 @@
-use std::net::{TcpStream, ToSocketAddrs};
-use native_tls::{TlsConnector, TlsStream};
-use std::io::{self, Read, Write};
-use std::time::Duration;
 use bufstream::BufStream;
+use native_tls::{TlsConnector, TlsStream};
 use nom::IResult;
+use std::io::{self, Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
+use std::time::Duration;
 
-use super::types::*;
 use super::authenticator::Authenticator;
+use super::error::{Error, ParseError, Result, ValidateError};
 use super::parse::{parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox,
                    parse_names};
-use super::error::{Error, ParseError, Result, ValidateError};
+use super::types::*;
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -17,9 +17,9 @@ const CR: u8 = 0x0d;
 const LF: u8 = 0x0a;
 
 macro_rules! quote {
-    ($x: expr) => (
+    ($x:expr) => {
         format!("\"{}\"", $x.replace(r"\", r"\\").replace("\"", "\\\""))
-    )
+    };
 }
 
 fn validate_str(value: &str) -> Result<String> {
@@ -447,9 +447,7 @@ impl<T: Read + Write> Client<T> {
 
     /// The APPEND command adds a mail to a mailbox.
     pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<()> {
-        try!(self.run_command(
-            &format!("APPEND \"{}\" {{{}}}", folder, content.len())
-        ));
+        try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
         let mut v = Vec::new();
         try!(self.readline(&mut v));
         if !v.starts_with(b"+") {
@@ -538,14 +536,14 @@ impl<T: Read + Write> Client<T> {
                     use imap_proto::Status;
                     match status {
                         Status::Bad => {
-                            break Err(Error::BadResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
-                            ))
+                            break Err(Error::BadResponse(expl.unwrap_or(
+                                "no explanation given".to_string(),
+                            )))
                         }
                         Status::No => {
-                            break Err(Error::NoResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
-                            ))
+                            break Err(Error::NoResponse(expl.unwrap_or(
+                                "no explanation given".to_string(),
+                            )))
                         }
                         _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
                     }
@@ -597,9 +595,9 @@ impl<T: Read + Write> Client<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::mock_stream::MockStream;
     use super::super::error::Result;
+    use super::super::mock_stream::MockStream;
+    use super::*;
 
     #[test]
     fn read_response() {
@@ -609,7 +607,6 @@ mod tests {
         let actual_response = client.read_response().unwrap();
         assert_eq!(Vec::<u8>::new(), actual_response);
     }
-
 
     #[test]
     fn fetch_body() {
@@ -621,7 +618,6 @@ mod tests {
         client.read_response().unwrap();
         client.read_response().unwrap();
     }
-
 
     #[test]
     fn read_greeting() {

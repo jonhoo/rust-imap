@@ -9,8 +9,8 @@ extern crate native_tls;
 extern crate nom;
 extern crate regex;
 
-mod types;
 mod parse;
+mod types;
 
 pub mod authenticator;
 pub mod client;

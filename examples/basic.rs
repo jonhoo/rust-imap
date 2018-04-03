@@ -1,8 +1,8 @@
 extern crate imap;
 extern crate native_tls;
 
-use native_tls::TlsConnector;
 use imap::client::Client;
+use native_tls::TlsConnector;
 
 // To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
 // See: https://support.google.com/accounts/answer/6010255?hl=en

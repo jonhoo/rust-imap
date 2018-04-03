@@ -1,14 +1,14 @@
-use std::io::Error as IoError;
-use std::result;
-use std::fmt;
 use std::error::Error as StdError;
+use std::fmt;
+use std::io::Error as IoError;
 use std::net::TcpStream;
+use std::result;
 use std::string::FromUtf8Error;
 
-use imap_proto::Response;
-use native_tls::HandshakeError as TlsHandshakeError;
-use native_tls::Error as TlsError;
 use bufstream::IntoInnerError as BufError;
+use imap_proto::Response;
+use native_tls::Error as TlsError;
+use native_tls::HandshakeError as TlsHandshakeError;
 
 pub type Result<T> = result::Result<T, Error>;
 

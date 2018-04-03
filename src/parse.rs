@@ -1,9 +1,9 @@
-use regex::Regex;
-use nom::IResult;
 use imap_proto::{self, Response};
+use nom::IResult;
+use regex::Regex;
 
-use super::types::*;
 use super::error::{Error, ParseError, Result};
+use super::types::*;
 
 pub fn parse_authenticate_response(line: String) -> Result<String> {
     let authenticate_regex = Regex::new("^+(.*)\r\n").unwrap();
@@ -59,8 +59,8 @@ pub fn parse_names(lines: Vec<u8>) -> ZeroCopyResult<Vec<Name>> {
             flags,
             delimiter,
             name,
-        }) |
-        Response::MailboxData(MailboxDatum::SubList {
+        })
+        | Response::MailboxData(MailboxDatum::SubList {
             flags,
             delimiter,
             name,

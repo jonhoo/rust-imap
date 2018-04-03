@@ -1,5 +1,5 @@
-use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::cmp::min;
+use std::io::{Error, ErrorKind, Read, Result, Write};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MockStream {

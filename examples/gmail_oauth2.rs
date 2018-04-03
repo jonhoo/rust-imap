@@ -2,10 +2,10 @@ extern crate base64;
 extern crate imap;
 extern crate native_tls;
 
-use native_tls::TlsConnector;
 use base64::encode;
-use imap::client::Client;
 use imap::authenticator::Authenticator;
+use imap::client::Client;
+use native_tls::TlsConnector;
 
 struct GmailOAuth2 {
     user: String,
@@ -18,8 +18,7 @@ impl Authenticator for GmailOAuth2 {
         encode(
             format!(
                 "user={}\x01auth=Bearer {}\x01\x01",
-                self.user,
-                self.access_token
+                self.user, self.access_token
             ).as_bytes(),
         )
     }

@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::collections::hash_set::Iter;
 pub struct Capabilities(pub(crate) HashSet<&'static str>);
 
-use std::hash::Hash;
 use std::borrow::Borrow;
+use std::hash::Hash;
 impl Capabilities {
     pub fn has<S: ?Sized>(&self, s: &S) -> bool
     where
