@@ -20,7 +20,7 @@ matrix:
     - rust: nightly
 
 script:
- - cargo build
+ - cargo check --all-targets
  - cargo test
 
 after_success:

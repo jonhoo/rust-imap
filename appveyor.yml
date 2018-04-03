@@ -64,4 +64,5 @@ install:
 build: false
 
 test_script:
+  - cargo check --all-targets
   - cargo test
