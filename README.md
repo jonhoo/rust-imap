@@ -4,7 +4,7 @@
 # imap
 
 [![Crate Version](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
-[![Documentation](https://docs.rs/arccstr/badge.svg)](https://docs.rs/arccstr/)
+[![Documentation](https://docs.rs/imap/badge.svg)](https://docs.rs/imap/)
 [![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
 [![Build Status](https://travis-ci.org/mattnenterprise/rust-imap.svg)](https://travis-ci.org/mattnenterprise/rust-imap)
 [![Build Status](https://ci.appveyor.com/api/projects/status/github/mattnenterprise/rust-imap?svg=true)](https://ci.appveyor.com/api/projects/status/github/mattnenterprise/rust-imap)
@@ -28,7 +28,7 @@ fn main() {
     let port = 993;
     let socket_addr = (domain, port);
     let ssl_connector = native_tls::TlsConnector::builder().unwrap().build().unwrap();
-    let mut imap_socket = Client::secure_connect(socket_addr, domain, ssl_connector).unwrap();
+    let mut imap_socket = Client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
 
     imap_socket.login("username", "password").unwrap();
 
