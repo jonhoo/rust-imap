@@ -28,7 +28,7 @@ path = "src/lib.rs"
 native-tls = "0.1"
 regex = "0.2"
 bufstream = "0.1"
-imap-proto = "0.4"
+imap-proto = "0.4.1"
 nom = "3.2.1"
 
 [dev-dependencies]

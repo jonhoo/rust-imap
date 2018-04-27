@@ -82,6 +82,7 @@ pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
                 message: num,
                 flags: vec![],
                 uid: None,
+                rfc822_header: None,
                 rfc822: None,
             };
 
@@ -93,6 +94,7 @@ pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
                     }
                     AttributeValue::Uid(uid) => fetch.uid = Some(uid),
                     AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
+                    AttributeValue::Rfc822Header(rfc) => fetch.rfc822_header = rfc,
                     _ => {}
                 }
             }
