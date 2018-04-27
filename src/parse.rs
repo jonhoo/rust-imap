@@ -170,6 +170,9 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
 
                 use imap_proto::MailboxDatum;
                 match m {
+                    MailboxDatum::Status { .. } => {
+                        // TODO: we probably want to expose statuses too
+                    }
                     MailboxDatum::Exists(e) => {
                         mailbox.exists = e;
                     }

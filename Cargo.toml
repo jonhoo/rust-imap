@@ -1,7 +1,7 @@
 [package]
 
 name = "imap"
-version = "0.8.0"
+version = "0.8.1"
 authors = ["Matt McCoy <mattnenterprise@yahoo.com>",
            "Jon Gjengset <jon@thesquareplanet.com>"]
 documentation = "https://docs.rs/imap/"
@@ -28,7 +28,7 @@ path = "src/lib.rs"
 native-tls = "0.1"
 regex = "0.2"
 bufstream = "0.1"
-imap-proto = "0.3"
+imap-proto = "0.4"
 nom = "3.2.1"
 
 [dev-dependencies]
