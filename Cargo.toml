@@ -25,7 +25,7 @@ name = "imap"
 path = "src/lib.rs"
 
 [dependencies]
-native-tls = "0.1"
+native-tls = "0.2"
 regex = "0.2"
 bufstream = "0.1"
 imap-proto = "0.4.1"
