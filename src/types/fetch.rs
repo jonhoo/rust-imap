@@ -7,7 +7,7 @@ pub struct Fetch {
     pub uid: Option<u32>,
     pub(crate) rfc822_header: Option<&'static [u8]>,
     pub(crate) rfc822: Option<&'static [u8]>,
-    pub email: Option<&'static [u8]>,
+    pub(crate) email: Option<&'static [u8]>,
 }
 
 impl Fetch {
@@ -21,5 +21,9 @@ impl Fetch {
 
     pub fn rfc822<'a>(&'a self) -> Option<&'a [u8]> {
         self.rfc822
+    }
+
+    pub fn email<'a>(&'a self) -> Option<&'a [u8]> {
+        self.email
     }
 }
