@@ -75,7 +75,7 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
             keepalive: Duration::from_secs(29 * 60),
             done: false,
         };
-        try!(h.init());
+        h.init()?;
         Ok(h)
     }
 
@@ -83,14 +83,14 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
         // https://tools.ietf.org/html/rfc2177
         //
         // The IDLE command takes no arguments.
-        try!(self.client.run_command("IDLE"));
+        self.client.run_command("IDLE")?;
 
         // A tagged response will be sent either
         //
         //   a) if there's an error, or
         //   b) *after* we send DONE
         let mut v = Vec::new();
-        try!(self.client.readline(&mut v));
+        self.client.readline(&mut v)?;
         if v.starts_with(b"+") {
             self.done = false;
             return Ok(());
@@ -104,7 +104,7 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     fn terminate(&mut self) -> Result<()> {
         if !self.done {
             self.done = true;
-            try!(self.client.write_line(b"DONE"));
+            self.client.write_line(b"DONE")?;
             self.client.read_response().map(|_| ())
         } else {
             Ok(())
@@ -121,8 +121,8 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
                 if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
             {
                 // we need to refresh the IDLE connection
-                try!(self.terminate());
-                try!(self.init());
+                self.terminate()?;
+                self.init()?;
                 self.wait_inner()
             }
             r => r,
@@ -165,7 +165,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
     pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
-        try!(self.client.stream.get_mut().set_read_timeout(Some(timeout)));
+        self.client.stream.get_mut().set_read_timeout(Some(timeout))?;
         let res = self.wait_inner();
         self.client.stream.get_mut().set_read_timeout(None).is_ok();
         res
@@ -200,7 +200,7 @@ impl Client<TcpStream> {
             Ok(stream) => {
                 let mut socket = Client::new(stream);
 
-                try!(socket.read_greeting());
+                socket.read_greeting()?;
                 Ok(socket)
             }
             Err(e) => Err(Error::Io(e)),
@@ -217,7 +217,7 @@ impl Client<TcpStream> {
     ) -> Result<Client<TlsStream<TcpStream>>> {
         // TODO This needs to be tested
         self.run_command_and_check_ok("STARTTLS")?;
-        TlsConnector::connect(ssl_connector, domain, try!(self.stream.into_inner()))
+        TlsConnector::connect(ssl_connector, domain, self.stream.into_inner()?)
             .map(Client::new)
             .map_err(Error::TlsHandshake)
     }
@@ -238,7 +238,7 @@ impl Client<TlsStream<TcpStream>> {
                 };
                 let mut socket = Client::new(ssl_stream);
 
-                try!(socket.read_greeting());
+                socket.read_greeting()?;
                 Ok(socket)
             }
             Err(e) => Err(Error::Io(e)),
@@ -262,7 +262,7 @@ impl<T: Read + Write> Client<T> {
         auth_type: &str,
         authenticator: A,
     ) -> Result<()> {
-        try!(self.run_command(&format!("AUTHENTICATE {}", auth_type)));
+        self.run_command(&format!("AUTHENTICATE {}", auth_type))?;
         self.do_auth_handshake(authenticator)
     }
 
@@ -271,15 +271,15 @@ impl<T: Read + Write> Client<T> {
         // TODO Clean up this code
         loop {
             let mut line = Vec::new();
-            try!(self.readline(&mut line));
+            self.readline(&mut line)?;
 
             if line.starts_with(b"+") {
-                let data = try!(parse_authenticate_response(
+                let data = parse_authenticate_response(
                     String::from_utf8(line).unwrap()
-                ));
+                )?;
                 let auth_response = authenticator.process(data);
 
-                try!(self.write_line(auth_response.into_bytes().as_slice()))
+                self.write_line(auth_response.into_bytes().as_slice())?
             } else {
                 return self.read_response_onto(&mut line).map(|_| ());
             }
@@ -447,15 +447,15 @@ impl<T: Read + Write> Client<T> {
 
     /// The APPEND command adds a mail to a mailbox.
     pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<()> {
-        try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
+        self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len()))?;
         let mut v = Vec::new();
-        try!(self.readline(&mut v));
+        self.readline(&mut v)?;
         if !v.starts_with(b"+") {
             return Err(Error::Append);
         }
-        try!(self.stream.write_all(content));
-        try!(self.stream.write_all(b"\r\n"));
-        try!(self.stream.flush());
+        self.stream.write_all(content)?;
+        self.stream.write_all(b"\r\n")?;
+        self.stream.flush()?;
         self.read_response().map(|_| ())
     }
 
@@ -471,7 +471,7 @@ impl<T: Read + Write> Client<T> {
     }
 
     pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
-        try!(self.run_command(untagged_command));
+        self.run_command(untagged_command)?;
         self.read_response()
     }
 
@@ -491,7 +491,7 @@ impl<T: Read + Write> Client<T> {
                 0
             } else {
                 let start_new = data.len();
-                try!(self.readline(data));
+                self.readline(data)?;
                 continue_from.take().unwrap_or(start_new)
             };
 
@@ -555,13 +555,13 @@ impl<T: Read + Write> Client<T> {
 
     fn read_greeting(&mut self) -> Result<()> {
         let mut v = Vec::new();
-        try!(self.readline(&mut v));
+        self.readline(&mut v)?;
         Ok(())
     }
 
     fn readline(&mut self, into: &mut Vec<u8>) -> Result<usize> {
         use std::io::BufRead;
-        let read = try!(self.stream.read_until(LF, into));
+        let read = self.stream.read_until(LF, into)?;
         if read == 0 {
             return Err(Error::ConnectionLost);
         }
@@ -583,9 +583,9 @@ impl<T: Read + Write> Client<T> {
     }
 
     fn write_line(&mut self, buf: &[u8]) -> Result<()> {
-        try!(self.stream.write_all(buf));
-        try!(self.stream.write_all(&[CR, LF]));
-        try!(self.stream.flush());
+        self.stream.write_all(buf)?;
+        self.stream.write_all(&[CR, LF])?;
+        self.stream.flush()?;
         if self.debug {
             print!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
         }
