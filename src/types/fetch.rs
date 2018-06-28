@@ -7,6 +7,7 @@ pub struct Fetch {
     pub uid: Option<u32>,
     pub(crate) rfc822_header: Option<&'static [u8]>,
     pub(crate) rfc822: Option<&'static [u8]>,
+    pub email: Option<&'static [u8]>,
 }
 
 impl Fetch {
