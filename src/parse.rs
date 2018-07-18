@@ -25,9 +25,13 @@ unsafe fn parse_many<T, F>(lines: Vec<u8>, mut map: F) -> ZeroCopyResult<Vec<T>>
 where
     F: FnMut(Response<'static>) -> MapOrNot<T>,
 {
-    let f = |mut lines| {
+    let f = |mut lines: &'static [u8]| {
         let mut things = Vec::new();
         loop {
+            if lines.is_empty() {
+                break Ok(things);
+            }
+
             match imap_proto::parse_response(lines) {
                 IResult::Done(rest, resp) => {
                     lines = rest;
@@ -35,10 +39,6 @@ where
                     match map(resp) {
                         MapOrNot::Map(t) => things.push(t),
                         MapOrNot::Not(resp) => break Err(resp.into()),
-                    }
-
-                    if lines.is_empty() {
-                        break Ok(things);
                     }
                 }
                 _ => {
@@ -235,6 +235,13 @@ mod tests {
         assert_eq!(names[0].attributes(), &["\\HasNoChildren"]);
         assert_eq!(names[0].delimiter(), ".");
         assert_eq!(names[0].name(), "INBOX");
+    }
+
+    #[test]
+    fn parse_fetches_empty() {
+        let lines = b"";
+        let fetches = parse_fetches(lines.to_vec()).unwrap();
+        assert!(fetches.is_empty());
     }
 
     #[test]
