@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
-use super::parse::{parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox,
-                   parse_names};
+use super::parse::{
+    parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox, parse_names,
+};
 use super::types::*;
 
 static TAG_PREFIX: &'static str = "a";
@@ -165,7 +166,10 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
     pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
-        self.client.stream.get_mut().set_read_timeout(Some(timeout))?;
+        self.client
+            .stream
+            .get_mut()
+            .set_read_timeout(Some(timeout))?;
         let res = self.wait_inner();
         self.client.stream.get_mut().set_read_timeout(None).is_ok();
         res
@@ -274,9 +278,7 @@ impl<T: Read + Write> Client<T> {
             self.readline(&mut line)?;
 
             if line.starts_with(b"+") {
-                let data = parse_authenticate_response(
-                    String::from_utf8(line).unwrap()
-                )?;
+                let data = parse_authenticate_response(String::from_utf8(line).unwrap())?;
                 let auth_response = authenticator.process(data);
 
                 self.write_line(auth_response.into_bytes().as_slice())?
@@ -536,14 +538,14 @@ impl<T: Read + Write> Client<T> {
                     use imap_proto::Status;
                     match status {
                         Status::Bad => {
-                            break Err(Error::BadResponse(expl.unwrap_or(
-                                "no explanation given".to_string(),
-                            )))
+                            break Err(Error::BadResponse(
+                                expl.unwrap_or("no explanation given".to_string()),
+                            ))
                         }
                         Status::No => {
-                            break Err(Error::NoResponse(expl.unwrap_or(
-                                "no explanation given".to_string(),
-                            )))
+                            break Err(Error::NoResponse(
+                                expl.unwrap_or("no explanation given".to_string()),
+                            ))
                         }
                         _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
                     }

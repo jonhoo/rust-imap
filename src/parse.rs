@@ -96,7 +96,11 @@ pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
                     AttributeValue::Uid(uid) => fetch.uid = Some(uid),
                     AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
                     AttributeValue::Rfc822Header(rfc) => fetch.rfc822_header = rfc,
-                    AttributeValue::BodySection {section: _, index: _, data} => fetch.body = data,
+                    AttributeValue::BodySection {
+                        section: _,
+                        index: _,
+                        data,
+                    } => fetch.body = data,
                     _ => {}
                 }
             }

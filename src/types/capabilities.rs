@@ -1,7 +1,7 @@
 // Note that none of these fields are *actually* 'static.
 // Rather, they are tied to the lifetime of the `ZeroCopy` that contains this `Name`.
-use std::collections::HashSet;
 use std::collections::hash_set::Iter;
+use std::collections::HashSet;
 pub struct Capabilities(pub(crate) HashSet<&'static str>);
 
 use std::borrow::Borrow;
