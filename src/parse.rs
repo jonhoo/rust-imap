@@ -1,4 +1,4 @@
-use imap_proto::{self, Response};
+use imap_proto::{self, MailboxDatum, Response};
 use nom::IResult;
 use regex::Regex;
 
@@ -19,6 +19,8 @@ pub fn parse_authenticate_response(line: String) -> Result<String> {
 enum MapOrNot<T> {
     Map(T),
     Not(Response<'static>),
+    #[allow(dead_code)]
+    Ignore,
 }
 
 unsafe fn parse_many<T, F>(lines: Vec<u8>, mut map: F) -> ZeroCopyResult<Vec<T>>
@@ -38,7 +40,20 @@ where
 
                     match map(resp) {
                         MapOrNot::Map(t) => things.push(t),
-                        MapOrNot::Not(resp) => break Err(resp.into()),
+                        MapOrNot::Not(resp) => {
+                            // check if this is simply a unilateral server response
+                            // (see Section 7 of RFC 3501):
+                            match resp {
+                                Response::MailboxData(MailboxDatum::Recent { .. })
+                                | Response::MailboxData(MailboxDatum::Exists { .. })
+                                | Response::Fetch(..)
+                                | Response::Expunge(..) => {
+                                    continue;
+                                }
+                                resp => break Err(resp.into()),
+                            }
+                        }
+                        MapOrNot::Ignore => continue,
                     }
                 }
                 _ => {
@@ -263,5 +278,17 @@ mod tests {
         assert_eq!(fetches[1].flags(), &["\\Seen"]);
         assert_eq!(fetches[1].uid, None);
         assert_eq!(fetches[1].rfc822(), None);
+    }
+
+    #[test]
+    fn parse_fetches_w_unilateral() {
+        // https://github.com/mattnenterprise/rust-imap/issues/81
+        let lines = b"\
+            * 37 FETCH (UID 74)\r\n\
+            * 1 RECENT\r\n";
+        let fetches = parse_fetches(lines.to_vec()).unwrap();
+        assert_eq!(fetches.len(), 1);
+        assert_eq!(fetches[0].message, 37);
+        assert_eq!(fetches[0].uid, Some(74));
     }
 }

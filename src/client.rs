@@ -298,6 +298,12 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Selects a mailbox
+    ///
+    /// Note that the server *is* allowed to unilaterally send things to the client for messages in
+    /// a selected mailbox whose status has changed. See the note on [unilateral server responses
+    /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that if you use
+    /// [`Client::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
+    /// `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..]))
@@ -309,12 +315,21 @@ impl<T: Read + Write> Client<T> {
             .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
-    /// Fetch retreives data associated with a message in the mailbox.
+    /// Fetch retreives data associated with a set of messages in the mailbox.
+    ///
+    /// Note that the server *is* allowed to unilaterally include `FETCH` responses for other
+    /// messages in the selected mailbox whose status has changed. See the note on [unilateral
+    /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
             .and_then(|lines| parse_fetches(lines))
     }
 
+    /// Fetch retreives data associated with a set of messages by UID in the mailbox.
+    ///
+    /// Note that the server *is* allowed to unilaterally include `FETCH` responses for other
+    /// messages in the selected mailbox whose status has changed. See the note on [unilateral
+    /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
             .and_then(|lines| parse_fetches(lines))
@@ -472,6 +487,12 @@ impl<T: Read + Write> Client<T> {
         self.write_line(command.into_bytes().as_slice())
     }
 
+    /// Run a raw IMAP command and read back its response.
+    ///
+    /// Note that the server *is* allowed to unilaterally send things to the client for messages in
+    /// a selected mailbox whose status has changed. See the note on [unilateral server responses
+    /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that you *may* see
+    /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
         self.run_command(untagged_command)?;
         self.read_response()
