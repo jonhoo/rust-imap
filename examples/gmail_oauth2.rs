@@ -4,7 +4,7 @@ extern crate native_tls;
 
 use base64::encode;
 use imap::authenticator::Authenticator;
-use imap::client::Client;
+use imap::client::UnauthenticatedClient;
 use native_tls::TlsConnector;
 
 struct GmailOAuth2 {
@@ -33,9 +33,15 @@ fn main() {
     let port = 993;
     let socket_addr = (domain, port);
     let ssl_connector = TlsConnector::builder().build().unwrap();
-    let mut imap_socket = Client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
+    let unauth_client = UnauthenticatedClient::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
 
-    imap_socket.authenticate("XOAUTH2", gmail_auth).unwrap();
+    let mut imap_socket = match unauth_client.authenticate("XOAUTH2", gmail_auth) {
+        Ok(c) => c,
+        Err((e, _unauth_client)) => {
+            println!("error authenticating: {}", e);
+            return;
+        }
+    };
 
     match imap_socket.select("INBOX") {
         Ok(mailbox) => println!("{}", mailbox),
