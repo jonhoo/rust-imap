@@ -717,6 +717,12 @@ mod tests {
     use super::super::mock_stream::MockStream;
     use super::*;
 
+    macro_rules! mock_session {
+        ($s:expr) => {
+            Session { conn: Client::new($s).conn }
+        }
+    }
+
     #[test]
     fn read_response() {
         let response = "a0 OK Logged in.\r\n";
@@ -732,9 +738,9 @@ mod tests {
                         * 2 FETCH (BODY[TEXT] {3}\r\nfoo)\r\n\
                         a0 OK FETCH completed\r\n";
         let mock_stream = MockStream::new(response.as_bytes().to_vec());
-        let mut client = Client::new(mock_stream);
-        client.read_response().unwrap();
-        client.read_response().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.read_response().unwrap();
+        session.read_response().unwrap();
     }
 
     #[test]
@@ -808,10 +814,10 @@ mod tests {
         let password = "password";
         let command = format!("a1 LOGIN {} {}\r\n", quote!(username), quote!(password));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.login(username, password).unwrap();
+        let client = Client::new(mock_stream);
+        let session = client.login(username, password).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid login command"
         );
     }
@@ -821,10 +827,10 @@ mod tests {
         let response = b"a1 OK Logout completed.\r\n".to_vec();
         let command = format!("a1 LOGOUT\r\n");
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.logout().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.logout().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid logout command"
         );
     }
@@ -840,12 +846,12 @@ mod tests {
             quote!(new_mailbox_name)
         );
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client
+        let mut session = mock_session!(mock_stream);
+        session
             .rename(current_mailbox_name, new_mailbox_name)
             .unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid rename command"
         );
     }
@@ -856,10 +862,10 @@ mod tests {
         let mailbox = "INBOX";
         let command = format!("a1 SUBSCRIBE {}\r\n", quote!(mailbox));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.subscribe(mailbox).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.subscribe(mailbox).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid subscribe command"
         );
     }
@@ -870,10 +876,10 @@ mod tests {
         let mailbox = "INBOX";
         let command = format!("a1 UNSUBSCRIBE {}\r\n", quote!(mailbox));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.unsubscribe(mailbox).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.unsubscribe(mailbox).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid unsubscribe command"
         );
     }
@@ -882,10 +888,10 @@ mod tests {
     fn expunge() {
         let response = b"a1 OK EXPUNGE completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.expunge().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.expunge().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 EXPUNGE\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 EXPUNGE\r\n".to_vec(),
             "Invalid expunge command"
         );
     }
@@ -894,10 +900,10 @@ mod tests {
     fn check() {
         let response = b"a1 OK CHECK completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.check().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.check().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 CHECK\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 CHECK\r\n".to_vec(),
             "Invalid check command"
         );
     }
@@ -931,10 +937,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 EXAMINE {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        let mailbox = client.examine(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        let mailbox = session.examine(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid examine command"
         );
         assert_eq!(mailbox, expected_mailbox);
@@ -977,10 +983,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 SELECT {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        let mailbox = client.select(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        let mailbox = session.select(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid select command"
         );
         assert_eq!(mailbox, expected_mailbox);
@@ -993,10 +999,10 @@ mod tests {
             .to_vec();
         let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        let capabilities = client.capabilities().unwrap();
+        let mut session = mock_session!(mock_stream);
+        let capabilities = session.capabilities().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 CAPABILITY\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 CAPABILITY\r\n".to_vec(),
             "Invalid capability command"
         );
         assert_eq!(capabilities.len(), 4);
@@ -1011,10 +1017,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 CREATE {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.create(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.create(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid create command"
         );
     }
@@ -1025,10 +1031,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 DELETE {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.delete(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.delete(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid delete command"
         );
     }
@@ -1037,10 +1043,10 @@ mod tests {
     fn noop() {
         let response = b"a1 OK NOOP completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.noop().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.noop().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 NOOP\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 NOOP\r\n".to_vec(),
             "Invalid noop command"
         );
     }
@@ -1049,10 +1055,10 @@ mod tests {
     fn close() {
         let response = b"a1 OK CLOSE completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.close().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.close().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 CLOSE\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 CLOSE\r\n".to_vec(),
             "Invalid close command"
         );
     }
@@ -1069,7 +1075,7 @@ mod tests {
 
     fn generic_store<F, T>(prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         let res = "* 2 FETCH (FLAGS (\\Deleted \\Seen))\r\n\
                    * 3 FETCH (FLAGS (\\Deleted))\r\n\
@@ -1091,7 +1097,7 @@ mod tests {
 
     fn generic_copy<F, T>(prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         generic_with_uid(
             "OK COPY completed\r\n",
@@ -1115,21 +1121,21 @@ mod tests {
 
     fn generic_fetch<F, T>(prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         generic_with_uid("OK FETCH completed\r\n", "FETCH", "1", "BODY[]", prefix, op);
     }
 
     fn generic_with_uid<F, T>(res: &str, cmd: &str, seq: &str, query: &str, prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         let resp = format!("a1 {}\r\n", res).as_bytes().to_vec();
         let line = format!("a1{}{} {} {}\r\n", prefix, cmd, seq, query);
-        let mut client = Client::new(MockStream::new(resp));
-        let _ = op(&mut client, seq, query);
+        let mut session = mock_session!(MockStream::new(resp));
+        let _ = op(&mut session, seq, query);
         assert!(
-            client.stream.get_ref().written_buf == line.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == line.as_bytes().to_vec(),
             "Invalid command"
         );
     }
