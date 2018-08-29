@@ -286,11 +286,23 @@ impl Client<TcpStream> {
         ssl_connector: &TlsConnector,
     ) -> Result<Client<TlsStream<TcpStream>>> {
         // TODO This needs to be tested
-        // TODO(dario): adjust
         self.run_command_and_check_ok("STARTTLS")?;
         TlsConnector::connect(ssl_connector, domain, self.conn.stream.into_inner()?)
             .map(Client::new)
             .map_err(Error::TlsHandshake)
+    }
+}
+
+// as the pattern of returning the unauthenticated `Client` back with a login error is relatively
+// common, it's abstacted away into a macro here. Note that in theory we wouldn't need the second
+// parameter, and could just use the identifier `self` from the surrounding function, but being
+// explicit here seems a lot clearer.
+macro_rules! ok_or_unauth_client_err {
+    ($r:expr, $self:expr) => {
+        match $r {
+            Ok(o) => o,
+            Err(e) => return Err((e, $self))
+        }
     }
 }
 
@@ -307,18 +319,15 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Authenticate will authenticate with the server, using the authenticator given.
-    pub fn authenticate<A: Authenticator>(
+    pub fn authenticate<A: Authenticator> (
         mut self,
         auth_type: &str,
         authenticator: A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // explicit match block neccessary to convert error to tuple and not bind self too early
         // (see also comment on `login`)
-        // TODO(dario): macro as suggested in pull/84
-        match self.run_command(&format!("AUTHENTICATE {}", auth_type)) {
-            Ok(_) => self.do_auth_handshake(authenticator),
-            Err(e) => Err((e, self)),
-        }
+        ok_or_unauth_client_err!(self.run_command(&format!("AUTHENTICATE {}", auth_type)), self);
+        self.do_auth_handshake(authenticator)
     }
 
     /// This func does the handshake process once the authenticate command is made.
@@ -331,25 +340,17 @@ impl<T: Read + Write> Client<T> {
             let mut line = Vec::new();
             // explicit match blocks neccessary to convert error to tuple and not bind self too
             // early (see also comment on `login`)
-            if let Err(e) = self.readline(&mut line) {
-                return Err((e, self));
-            }
+            ok_or_unauth_client_err!(self.readline(&mut line), self);
 
             if line.starts_with(b"+") {
-                let data = match parse_authenticate_response(String::from_utf8(line).unwrap()) {
-                    Ok(l) => l,
-                    Err(e) => return Err((e, self)),
-                };
+                let data = ok_or_unauth_client_err!(
+                    parse_authenticate_response(String::from_utf8(line).unwrap()), self);
                 let auth_response = authenticator.process(data);
 
-                if let Err(e) = self.write_line(auth_response.into_bytes().as_slice()) {
-                    return Err((e, self));
-                }
+                ok_or_unauth_client_err!(self.write_line(auth_response.into_bytes().as_slice()), self);
             } else {
-                return match self.read_response_onto(&mut line) {
-                    Ok(()) => Ok(Session { conn: self.conn }),
-                    Err(e) => Err((e, self)),
-                }
+                ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
+                return Ok(Session { conn: self.conn });
             }
         }
     }
@@ -366,20 +367,11 @@ impl<T: Read + Write> Client<T> {
         // 2. we can't use `.map_err(|e| (e, self))` because that would capture self into the
         //    closure. this way borowck sees that self is only bound in the error case where we
         //    return anyways.
-        // TODO(dario): macro?
-        let u = match validate_str(username) {
-            Ok(u) => u,
-            Err(e) => return Err((e, self)),
-        };
-        let p = match validate_str(password) {
-            Ok(p) => p,
-            Err(e) => return Err((e, self)),
-        };
+        let u = ok_or_unauth_client_err!(validate_str(username), self);
+        let p = ok_or_unauth_client_err!(validate_str(password), self);
+        ok_or_unauth_client_err!(self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)), self);
 
-        match self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)) {
-            Ok(()) => Ok(Session { conn: self.conn }),
-            Err(e) => Err((e, self)),
-        }
+        Ok(Session { conn: self.conn })
     }
 }
 
