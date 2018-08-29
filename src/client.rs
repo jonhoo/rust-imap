@@ -4,6 +4,7 @@ use nom::IResult;
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
+use std::ops::{Deref,DerefMut};
 
 use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
@@ -36,23 +37,54 @@ fn validate_str(value: &str) -> Result<String> {
 
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
 #[derive(Debug)]
-pub struct Client<T: Read + Write> {
-    inner: InnerClient<T>,
+pub struct Session<T: Read + Write> {
+    conn: Connection<T>,
 }
 
 // TODO: desc
 #[derive(Debug)]
-pub struct UnauthenticatedClient<T: Read + Write> {
-    inner: InnerClient<T>,
+pub struct Client<T: Read + Write> {
+    conn: Connection<T>,
 }
 
 // TODO: docs
 #[derive(Debug)]
-struct InnerClient<T: Read + Write> {
+pub struct Connection<T: Read + Write> {
     stream: BufStream<T>,
     tag: u32,
     pub debug: bool,
 }
+
+// these instances are so we can make the self.inner stuff a little prettier
+// TODO(dario): docs
+impl<T: Read + Write> Deref for Client<T> {
+    type Target = Connection<T>;
+
+    fn deref(&self) -> &Connection<T> {
+        &self.conn
+    }
+}
+
+impl<T: Read + Write> DerefMut for Client<T> {
+    fn deref_mut(&mut self) -> &mut Connection<T> {
+        &mut self.conn
+    }
+}
+
+impl<T: Read + Write> Deref for Session<T> {
+    type Target = Connection<T>;
+
+    fn deref(&self) -> &Connection<T> {
+        &self.conn
+    }
+}
+
+impl<T: Read + Write> DerefMut for Session<T> {
+    fn deref_mut(&mut self) -> &mut Connection<T> {
+        &mut self.conn
+    }
+}
+
 
 /// `IdleHandle` allows a client to block waiting for changes to the remote mailbox.
 ///
@@ -62,12 +94,12 @@ struct InnerClient<T: Read + Write> {
 /// As long a the handle is active, the mailbox cannot be otherwise accessed.
 #[derive(Debug)]
 pub struct IdleHandle<'a, T: Read + Write + 'a> {
-    client: &'a mut Client<T>,
+    session: &'a mut Session<T>,
     keepalive: Duration,
     done: bool,
 }
 
-/// Must be implemented for a transport in order for a `Client` using that transport to support
+/// Must be implemented for a transport in order for a `Session` using that transport to support
 /// operations with timeouts.
 ///
 /// Examples of where this is useful is for `IdleHandle::wait_keepalive` and
@@ -82,9 +114,9 @@ pub trait SetReadTimeout {
 }
 
 impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
-    fn new(client: &'a mut Client<T>) -> Result<Self> {
+    fn new(session: &'a mut Session<T>) -> Result<Self> {
         let mut h = IdleHandle {
-            client: client,
+            session: session,
             keepalive: Duration::from_secs(29 * 60),
             done: false,
         };
@@ -96,20 +128,20 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
         // https://tools.ietf.org/html/rfc2177
         //
         // The IDLE command takes no arguments.
-        self.client.run_command("IDLE")?;
+        self.session.run_command("IDLE")?;
 
         // A tagged response will be sent either
         //
         //   a) if there's an error, or
         //   b) *after* we send DONE
         let mut v = Vec::new();
-        self.client.inner.readline(&mut v)?;
+        self.session.readline(&mut v)?;
         if v.starts_with(b"+") {
             self.done = false;
             return Ok(());
         }
 
-        self.client.inner.read_response_onto(&mut v)?;
+        self.session.read_response_onto(&mut v)?;
         // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
         unreachable!();
     }
@@ -117,8 +149,8 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     fn terminate(&mut self) -> Result<()> {
         if !self.done {
             self.done = true;
-            self.client.inner.write_line(b"DONE")?;
-            self.client.inner.read_response().map(|_| ())
+            self.session.write_line(b"DONE")?;
+            self.session.read_response().map(|_| ())
         } else {
             Ok(())
         }
@@ -126,10 +158,10 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Internal helper that doesn't consume self.
     ///
-    /// This is necessary so that we can keep using the inner `Client` in `wait_keepalive`.
+    /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
     fn wait_inner(&mut self) -> Result<()> {
         let mut v = Vec::new();
-        match self.client.inner.readline(&mut v).map(|_| ()) {
+        match self.session.readline(&mut v).map(|_| ()) {
             Err(Error::Io(ref e))
                 if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
             {
@@ -178,13 +210,12 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
     pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
-        self.client
-            .inner
+        self.session
             .stream
             .get_mut()
             .set_read_timeout(Some(timeout))?;
         let res = self.wait_inner();
-        self.client.inner.stream.get_mut().set_read_timeout(None).is_ok();
+        self.session.stream.get_mut().set_read_timeout(None).is_ok();
         res
     }
 }
@@ -210,20 +241,42 @@ impl<'a> SetReadTimeout for TlsStream<TcpStream> {
     }
 }
 
-impl UnauthenticatedClient<TcpStream> {
-    /// Creates a new client.
-    pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<UnauthenticatedClient<TcpStream>> {
-        match TcpStream::connect(addr) {
-            Ok(stream) => {
-                let mut socket = UnauthenticatedClient::new(stream);
+/// Creates a new client.
+pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
+    match TcpStream::connect(addr) {
+        Ok(stream) => {
+            let mut socket = Client::new(stream);
 
-                socket.inner.read_greeting()?;
-                Ok(socket)
-            }
-            Err(e) => Err(Error::Io(e)),
+            socket.read_greeting()?;
+            Ok(socket)
         }
+        Err(e) => Err(Error::Io(e)),
     }
+}
 
+/// Creates a client with an SSL wrapper.
+pub fn secure_connect<A: ToSocketAddrs>(
+    addr: A,
+    domain: &str,
+    ssl_connector: &TlsConnector,
+) -> Result<Client<TlsStream<TcpStream>>> {
+    match TcpStream::connect(addr) {
+        Ok(stream) => {
+            let ssl_stream = match TlsConnector::connect(ssl_connector, domain, stream) {
+                Ok(s) => s,
+                Err(e) => return Err(Error::TlsHandshake(e)),
+            };
+            let mut socket = Client::new(ssl_stream);
+
+            socket.read_greeting()?;
+            Ok(socket)
+        }
+        Err(e) => Err(Error::Io(e)),
+    }
+}
+
+
+impl Client<TcpStream> {
     /// This will upgrade a regular TCP connection to use SSL.
     ///
     /// Use the domain parameter for openssl's SNI and hostname verification.
@@ -231,43 +284,21 @@ impl UnauthenticatedClient<TcpStream> {
         mut self,
         domain: &str,
         ssl_connector: &TlsConnector,
-    ) -> Result<UnauthenticatedClient<TlsStream<TcpStream>>> {
+    ) -> Result<Client<TlsStream<TcpStream>>> {
         // TODO This needs to be tested
-        self.inner.run_command_and_check_ok("STARTTLS")?;
-        TlsConnector::connect(ssl_connector, domain, self.inner.stream.into_inner()?)
-            .map(UnauthenticatedClient::new)
+        // TODO(dario): adjust
+        self.run_command_and_check_ok("STARTTLS")?;
+        TlsConnector::connect(ssl_connector, domain, self.conn.stream.into_inner()?)
+            .map(Client::new)
             .map_err(Error::TlsHandshake)
     }
 }
 
-impl UnauthenticatedClient<TlsStream<TcpStream>> {
-    /// Creates a client with an SSL wrapper.
-    pub fn secure_connect<A: ToSocketAddrs>(
-        addr: A,
-        domain: &str,
-        ssl_connector: &TlsConnector,
-    ) -> Result<UnauthenticatedClient<TlsStream<TcpStream>>> {
-        match TcpStream::connect(addr) {
-            Ok(stream) => {
-                let ssl_stream = match TlsConnector::connect(ssl_connector, domain, stream) {
-                    Ok(s) => s,
-                    Err(e) => return Err(Error::TlsHandshake(e)),
-                };
-                let mut socket = UnauthenticatedClient::new(ssl_stream);
-
-                socket.inner.read_greeting()?;
-                Ok(socket)
-            }
-            Err(e) => Err(Error::Io(e)),
-        }
-    }
-}
-
-impl<T: Read + Write> UnauthenticatedClient<T> {
+impl<T: Read + Write> Client<T> {
     /// Creates a new client with the underlying stream.
-    pub fn new(stream: T) -> UnauthenticatedClient<T> {
-        UnauthenticatedClient {
-            inner: InnerClient {
+    pub fn new(stream: T) -> Client<T> {
+        Client {
+            conn: Connection {
                 stream: BufStream::new(stream),
                 tag: INITIAL_TAG,
                 debug: false,
@@ -280,10 +311,11 @@ impl<T: Read + Write> UnauthenticatedClient<T> {
         mut self,
         auth_type: &str,
         authenticator: A,
-    ) -> ::std::result::Result<Client<T>, (Error, UnauthenticatedClient<T>)> {
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // explicit match block neccessary to convert error to tuple and not bind self too early
         // (see also comment on `login`)
-        match self.inner.run_command(&format!("AUTHENTICATE {}", auth_type)) {
+        // TODO(dario): macro as suggested in pull/84
+        match self.run_command(&format!("AUTHENTICATE {}", auth_type)) {
             Ok(_) => self.do_auth_handshake(authenticator),
             Err(e) => Err((e, self)),
         }
@@ -293,13 +325,13 @@ impl<T: Read + Write> UnauthenticatedClient<T> {
     fn do_auth_handshake<A: Authenticator>(
         mut self,
         authenticator: A
-    ) -> ::std::result::Result<Client<T>, (Error, UnauthenticatedClient<T>)> {
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // TODO Clean up this code
         loop {
             let mut line = Vec::new();
             // explicit match blocks neccessary to convert error to tuple and not bind self too
             // early (see also comment on `login`)
-            if let Err(e) = self.inner.readline(&mut line) {
+            if let Err(e) = self.readline(&mut line) {
                 return Err((e, self));
             }
 
@@ -310,12 +342,12 @@ impl<T: Read + Write> UnauthenticatedClient<T> {
                 };
                 let auth_response = authenticator.process(data);
 
-                if let Err(e) = self.inner.write_line(auth_response.into_bytes().as_slice()) {
+                if let Err(e) = self.write_line(auth_response.into_bytes().as_slice()) {
                     return Err((e, self));
                 }
             } else {
-                return match self.inner.read_response_onto(&mut line) {
-                    Ok(()) => Ok(Client { inner: self.inner }),
+                return match self.read_response_onto(&mut line) {
+                    Ok(()) => Ok(Session { conn: self.conn }),
                     Err(e) => Err((e, self)),
                 }
             }
@@ -327,13 +359,14 @@ impl<T: Read + Write> UnauthenticatedClient<T> {
         mut self,
         username: &str,
         password: &str
-    ) -> ::std::result::Result<Client<T>, (Error, UnauthenticatedClient<T>)> {
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // note that we need the explicit match blocks here for two reasons:
         // 1. we need to convert the validate_str error type to our tuple of
-        //    (Error, UnauthenticatedClient)
+        //    (Error, Client)
         // 2. we can't use `.map_err(|e| (e, self))` because that would capture self into the
         //    closure. this way borowck sees that self is only bound in the error case where we
         //    return anyways.
+        // TODO(dario): macro?
         let u = match validate_str(username) {
             Ok(u) => u,
             Err(e) => return Err((e, self)),
@@ -343,14 +376,14 @@ impl<T: Read + Write> UnauthenticatedClient<T> {
             Err(e) => return Err((e, self)),
         };
 
-        match self.inner.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)) {
-            Ok(()) => Ok(Client { inner: self.inner }),
+        match self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)) {
+            Ok(()) => Ok(Session { conn: self.conn }),
             Err(e) => Err((e, self)),
         }
     }
 }
 
-impl <T: Read + Write> InnerClient<T> {
+impl <T: Read + Write> Connection<T> {
     fn read_greeting(&mut self) -> Result<()> {
         let mut v = Vec::new();
         self.readline(&mut v)?;
@@ -484,24 +517,22 @@ impl <T: Read + Write> InnerClient<T> {
 }
 
 
-impl <T: Read + Write> Client<T> {
+impl <T: Read + Write> Session<T> {
     /// Selects a mailbox
     ///
     /// Note that the server *is* allowed to unilaterally send things to the client for messages in
     /// a selected mailbox whose status has changed. See the note on [unilateral server responses
     /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that if you use
-    /// [`Client::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
+    /// [`Connection::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
     /// `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        self.inner
-            .run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
+        self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        self.inner
-            .run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
+        self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
@@ -511,8 +542,7 @@ impl <T: Read + Write> Client<T> {
     /// messages in the selected mailbox whose status has changed. See the note on [unilateral
     /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
-        self.inner
-            .run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
+        self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
             .and_then(|lines| parse_fetches(lines))
     }
 
@@ -522,39 +552,33 @@ impl <T: Read + Write> Client<T> {
     /// messages in the selected mailbox whose status has changed. See the note on [unilateral
     /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
-        self.inner
-            .run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
+        self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
             .and_then(|lines| parse_fetches(lines))
     }
 
     /// Noop always succeeds, and it does nothing.
     pub fn noop(&mut self) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok("NOOP")
+        self.run_command_and_check_ok("NOOP")
     }
 
     /// Logout informs the server that the client is done with the connection.
     pub fn logout(&mut self) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok("LOGOUT")
+        self.run_command_and_check_ok("LOGOUT")
     }
 
     /// Create creates a mailbox with the given name.
     pub fn create(&mut self, mailbox_name: &str) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok(&format!("CREATE {}", validate_str(mailbox_name)?))
+        self.run_command_and_check_ok(&format!("CREATE {}", validate_str(mailbox_name)?))
     }
 
     /// Delete permanently removes the mailbox with the given name.
     pub fn delete(&mut self, mailbox_name: &str) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok(&format!("DELETE {}", validate_str(mailbox_name)?))
+        self.run_command_and_check_ok(&format!("DELETE {}", validate_str(mailbox_name)?))
     }
 
     /// Rename changes the name of a mailbox.
     pub fn rename(&mut self, current_mailbox_name: &str, new_mailbox_name: &str) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok(&format!(
+        self.run_command_and_check_ok(&format!(
             "RENAME {} {}",
             quote!(current_mailbox_name),
             quote!(new_mailbox_name)
@@ -564,66 +588,56 @@ impl <T: Read + Write> Client<T> {
     /// Subscribe adds the specified mailbox name to the server's set of "active" or "subscribed"
     /// mailboxes as returned by the LSUB command.
     pub fn subscribe(&mut self, mailbox: &str) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok(&format!("SUBSCRIBE {}", quote!(mailbox)))
+        self.run_command_and_check_ok(&format!("SUBSCRIBE {}", quote!(mailbox)))
     }
 
     /// Unsubscribe removes the specified mailbox name from the server's set of
     /// "active" or "subscribed mailboxes as returned by the LSUB command.
     pub fn unsubscribe(&mut self, mailbox: &str) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok(&format!("UNSUBSCRIBE {}", quote!(mailbox)))
+        self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", quote!(mailbox)))
     }
 
     /// Capability requests a listing of capabilities that the server supports.
     pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
-        self.inner
-            .run_command_and_read_response(&format!("CAPABILITY"))
+        self.run_command_and_read_response(&format!("CAPABILITY"))
             .and_then(|lines| parse_capabilities(lines))
     }
 
     /// Expunge permanently removes all messages that have the \Deleted flag set from the currently
     /// selected mailbox.
     pub fn expunge(&mut self) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok("EXPUNGE")
+        self.run_command_and_check_ok("EXPUNGE")
     }
 
     /// Check requests a checkpoint of the currently selected mailbox.
     pub fn check(&mut self) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok("CHECK")
+        self.run_command_and_check_ok("CHECK")
     }
 
     /// Close permanently removes all messages that have the \Deleted flag set from the currently
     /// selected mailbox, and returns to the authenticated state from the selected state.
     pub fn close(&mut self) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok("CLOSE")
+        self.run_command_and_check_ok("CLOSE")
     }
 
     /// Store alters data associated with a message in the mailbox.
     pub fn store(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
-        self.inner
-            .run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
+        self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
             .and_then(|lines| parse_fetches(lines))
     }
 
     pub fn uid_store(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
-        self.inner
-            .run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
+        self.run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
             .and_then(|lines| parse_fetches(lines))
     }
 
     /// Copy copies the specified message to the end of the specified destination mailbox.
     pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name))
+        self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name))
     }
 
     pub fn uid_copy(&mut self, uid_set: &str, mailbox_name: &str) -> Result<()> {
-        self.inner
-            .run_command_and_check_ok(&format!("UID COPY {} {}", uid_set, mailbox_name))
+        self.run_command_and_check_ok(&format!("UID COPY {} {}", uid_set, mailbox_name))
     }
 
     /// The LIST command returns a subset of names from the complete set
@@ -633,8 +647,7 @@ impl <T: Read + Write> Client<T> {
         reference_name: &str,
         mailbox_search_pattern: &str,
     ) -> ZeroCopyResult<Vec<Name>> {
-        self.inner
-            .run_command_and_read_response(&format!(
+        self.run_command_and_read_response(&format!(
             "LIST {} {}",
             quote!(reference_name),
             mailbox_search_pattern
@@ -648,8 +661,7 @@ impl <T: Read + Write> Client<T> {
         reference_name: &str,
         mailbox_search_pattern: &str,
     ) -> ZeroCopyResult<Vec<Name>> {
-        self.inner
-            .run_command_and_read_response(&format!(
+        self.run_command_and_read_response(&format!(
             "LSUB {} {}",
             quote!(reference_name),
             mailbox_search_pattern
@@ -658,8 +670,7 @@ impl <T: Read + Write> Client<T> {
 
     /// The STATUS command requests the status of the indicated mailbox.
     pub fn status(&mut self, mailbox_name: &str, status_data_items: &str) -> Result<Mailbox> {
-        self.inner
-            .run_command_and_read_response(&format!(
+        self.run_command_and_read_response(&format!(
             "STATUS {} {}",
             validate_str(mailbox_name)?,
             status_data_items
@@ -674,28 +685,27 @@ impl <T: Read + Write> Client<T> {
 
     /// The APPEND command adds a mail to a mailbox.
     pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<()> {
-        self.inner
-            .run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len()))?;
+        self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len()))?;
         let mut v = Vec::new();
-        self.inner.readline(&mut v)?;
+        self.readline(&mut v)?;
         if !v.starts_with(b"+") {
             return Err(Error::Append);
         }
-        self.inner.stream.write_all(content)?;
-        self.inner.stream.write_all(b"\r\n")?;
-        self.inner.stream.flush()?;
-        self.inner.read_response().map(|_| ())
+        self.stream.write_all(content)?;
+        self.stream.write_all(b"\r\n")?;
+        self.stream.flush()?;
+        self.read_response().map(|_| ())
     }
 
-    // these are only here because they are public interface, the rest is in InnerClient
+    // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
-        self.inner.run_command_and_read_response(command).map(|_| (()))
+        self.run_command_and_read_response(command).map(|_| (()))
     }
 
     /// Runs any command passed to it.
     pub fn run_command(&mut self, untagged_command: &str) -> Result<()> {
-        self.inner.run_command(untagged_command)
+        self.conn.run_command(untagged_command)
     }
 
     /// Run a raw IMAP command and read back its response.
@@ -705,7 +715,7 @@ impl <T: Read + Write> Client<T> {
     /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that you *may* see
     /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
-        self.inner.run_command_and_read_response(untagged_command)
+        self.conn.run_command_and_read_response(untagged_command)
     }
 }
 
