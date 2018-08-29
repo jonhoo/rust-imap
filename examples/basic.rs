@@ -16,9 +16,9 @@ fn main() {
     let mut imap_session = match client.login("username", "password") {
         Ok(c) => c,
         Err((e, _unauth_client)) => {
-            println!("failed to login: {}", e);
+            eprintln!("failed to login: {}", e);
             return;
-        },
+        }
     };
 
     match imap_session.capabilities() {
