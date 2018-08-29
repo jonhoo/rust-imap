@@ -4,7 +4,6 @@ extern crate native_tls;
 
 use base64::encode;
 use imap::authenticator::Authenticator;
-use imap::client::UnauthenticatedClient;
 use native_tls::TlsConnector;
 
 struct GmailOAuth2 {
@@ -33,9 +32,9 @@ fn main() {
     let port = 993;
     let socket_addr = (domain, port);
     let ssl_connector = TlsConnector::builder().build().unwrap();
-    let unauth_client = UnauthenticatedClient::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
+    let client = imap::client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
 
-    let mut imap_socket = match unauth_client.authenticate("XOAUTH2", gmail_auth) {
+    let mut imap_session = match client.authenticate("XOAUTH2", gmail_auth) {
         Ok(c) => c,
         Err((e, _unauth_client)) => {
             println!("error authenticating: {}", e);
@@ -43,17 +42,17 @@ fn main() {
         }
     };
 
-    match imap_socket.select("INBOX") {
+    match imap_session.select("INBOX") {
         Ok(mailbox) => println!("{}", mailbox),
         Err(e) => println!("Error selecting INBOX: {}", e),
     };
 
-    match imap_socket.fetch("2", "body[text]") {
+    match imap_session.fetch("2", "body[text]") {
         Ok(msgs) => for msg in &msgs {
             print!("{:?}", msg);
         },
         Err(e) => println!("Error Fetching email 2: {}", e),
     };
 
-    imap_socket.logout().unwrap();
+    imap_session.logout().unwrap();
 }
