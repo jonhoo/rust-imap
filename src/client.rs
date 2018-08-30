@@ -35,19 +35,29 @@ fn validate_str(value: &str) -> Result<String> {
     Ok(quoted)
 }
 
-/// Stream to interface with the IMAP server. This interface is only for the command stream.
+/// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
+/// a succesful login attempt.
+///
+/// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
+/// primitives type.
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
 }
 
-// TODO: desc
+/// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
+/// connecting. A succesfull call to [`login`](struct.Client.html#method.login) will return a
+/// [`Session`](struct.Session.html) instance, providing the usual IMAP methods.
+///
+/// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
+/// primitives type.
 #[derive(Debug)]
 pub struct Client<T: Read + Write> {
     conn: Connection<T>,
 }
 
-// TODO: docs
+/// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
+/// login) use a `Connection` internally for the TCP stream primitives.
 #[derive(Debug)]
 pub struct Connection<T: Read + Write> {
     stream: BufStream<T>,
@@ -55,8 +65,8 @@ pub struct Connection<T: Read + Write> {
     pub debug: bool,
 }
 
-// these instances are so we can make the self.inner stuff a little prettier
-// TODO(dario): docs
+// `Deref` instances are so we can make use of the same underlying primitives in `Client` and
+// `Session`
 impl<T: Read + Write> Deref for Client<T> {
     type Target = Connection<T>;
 
@@ -241,7 +251,22 @@ impl<'a> SetReadTimeout for TlsStream<TcpStream> {
     }
 }
 
-/// Creates a new client.
+/// Creates a new client. The usual IMAP commands are part of the [`Session`](struct.Session.html)
+/// type, returned from a succesful call to [`Client::login`](struct.Client.html#method.login).
+/// ```rust,no_run
+/// # extern crate native_tls;
+/// # extern crate imap;
+/// # use std::io;
+/// # use native_tls::TlsConnector;
+/// # fn main() {
+/// // a plain, unencrypted TCP connection
+/// let client = imap::client::connect(("imap.example.org", 143)).unwrap();
+///
+/// // upgrade to SSL
+/// let ssl_connector = TlsConnector::builder().build().unwrap();
+/// let ssl_client = client.secure("imap.example.org", &ssl_connector);
+/// # }
+/// ```
 pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
     match TcpStream::connect(addr) {
         Ok(stream) => {
@@ -254,7 +279,22 @@ pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
     }
 }
 
-/// Creates a client with an SSL wrapper.
+/// Creates a `Client` with an SSL wrapper. The usual IMAP commands are part of the
+/// [`Session`](struct.Session.html) type, returned from a succesful call to
+/// [`Client::login`](struct.Client.html#method.login).
+/// ```rust,no_run
+/// # extern crate native_tls;
+/// # extern crate imap;
+/// # use std::io;
+/// # use native_tls::TlsConnector;
+/// # fn main() {
+/// let ssl_connector = TlsConnector::builder().build().unwrap();
+/// let ssl_client = imap::client::secure_connect(
+///     ("imap.example.org", 993),
+///     "imap.example.org",
+///     &ssl_connector).unwrap();
+/// # }
+/// ```
 pub fn secure_connect<A: ToSocketAddrs>(
     addr: A,
     domain: &str,
@@ -293,10 +333,13 @@ impl Client<TcpStream> {
     }
 }
 
-// as the pattern of returning the unauthenticated `Client` back with a login error is relatively
-// common, it's abstacted away into a macro here. Note that in theory we wouldn't need the second
-// parameter, and could just use the identifier `self` from the surrounding function, but being
-// explicit here seems a lot clearer.
+// As the pattern of returning the unauthenticated `Client` (a.k.a. `self`) back with a login error
+// is relatively common, it's abstacted away into a macro here.
+//
+// Note: 1) using `.map_err(|e| (e, self))` or similar here makes the closure own self, so we can't
+//          do that.
+//       2) in theory we wouldn't need the second parameter, and could just use the identifier
+//          `self` from the surrounding function, but being explicit here seems a lot cleaner.
 macro_rules! ok_or_unauth_client_err {
     ($r:expr, $self:expr) => {
         match $r {
@@ -324,8 +367,6 @@ impl<T: Read + Write> Client<T> {
         auth_type: &str,
         authenticator: A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
-        // explicit match block neccessary to convert error to tuple and not bind self too early
-        // (see also comment on `login`)
         ok_or_unauth_client_err!(self.run_command(&format!("AUTHENTICATE {}", auth_type)), self);
         self.do_auth_handshake(authenticator)
     }
@@ -355,7 +396,36 @@ impl<T: Read + Write> Client<T> {
         }
     }
 
-    /// Log in to the IMAP server.
+    /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
+    /// returned; on error the original `Client` instance is returned in addition to the error.
+    /// This is because `login` takes ownership of `self`, so in order to try again (e.g. after
+    /// prompting the user for credetials), ownership of the original `Client` needs to be
+    /// transferred back to the caller.
+    ///
+    /// ```rust,no_run
+    /// # extern crate imap;
+    /// # extern crate native_tls;
+    /// # use std::io;
+    /// # use native_tls::TlsConnector;
+    /// # fn main() {
+    /// # let ssl_connector = TlsConnector::builder().build().unwrap();
+    /// let ssl_client = imap::client::secure_connect(
+    ///     ("imap.example.org", 993),
+    ///     "imap.example.org",
+    ///     &ssl_connector).unwrap();
+    ///
+    /// // try to login
+    /// let session = match ssl_client.login("user", "pass") {
+    ///     Ok(s) => s,
+    ///     Err((e, orig_client)) => {
+    ///         eprintln!("error logging in: {}", e);
+    ///         // prompt user and try again with orig_client here
+    ///         return;
+    ///     }
+    /// };
+    ///
+    /// // use session for IMAP commands
+    /// # }
     pub fn login(
         mut self,
         username: &str,
@@ -372,139 +442,6 @@ impl<T: Read + Write> Client<T> {
         ok_or_unauth_client_err!(self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)), self);
 
         Ok(Session { conn: self.conn })
-    }
-}
-
-impl <T: Read + Write> Connection<T> {
-    fn read_greeting(&mut self) -> Result<()> {
-        let mut v = Vec::new();
-        self.readline(&mut v)?;
-        Ok(())
-    }
-
-    fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
-        self.run_command_and_read_response(command).map(|_| ())
-    }
-
-    fn run_command(&mut self, untagged_command: &str) -> Result<()> {
-        let command = self.create_command(untagged_command.to_string());
-        self.write_line(command.into_bytes().as_slice())
-    }
-
-    fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
-        self.run_command(untagged_command)?;
-        self.read_response()
-    }
-
-    fn read_response(&mut self) -> Result<Vec<u8>> {
-        let mut v = Vec::new();
-        self.read_response_onto(&mut v)?;
-        Ok(v)
-    }
-
-    fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<()> {
-        let mut continue_from = None;
-        let mut try_first = !data.is_empty();
-        let match_tag = format!("{}{}", TAG_PREFIX, self.tag);
-        loop {
-            let line_start = if try_first {
-                try_first = false;
-                0
-            } else {
-                let start_new = data.len();
-                self.readline(data)?;
-                continue_from.take().unwrap_or(start_new)
-            };
-
-            let break_with = {
-                use imap_proto::{parse_response, Response, Status};
-                let line = &data[line_start..];
-
-                match parse_response(line) {
-                    IResult::Done(
-                        _,
-                        Response::Done {
-                            tag,
-                            status,
-                            information,
-                            ..
-                        },
-                    ) => {
-                        assert_eq!(tag.as_bytes(), match_tag.as_bytes());
-                        Some(match status {
-                            Status::Bad | Status::No => {
-                                Err((status, information.map(|s| s.to_string())))
-                            }
-                            Status::Ok => Ok(()),
-                            status => Err((status, None)),
-                        })
-                    }
-                    IResult::Done(..) => None,
-                    IResult::Incomplete(..) => {
-                        continue_from = Some(line_start);
-                        None
-                    }
-                    _ => Some(Err((Status::Bye, None))),
-                }
-            };
-
-            match break_with {
-                Some(Ok(_)) => {
-                    data.truncate(line_start);
-                    break Ok(());
-                }
-                Some(Err((status, expl))) => {
-                    use imap_proto::Status;
-                    match status {
-                        Status::Bad => {
-                            break Err(Error::BadResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
-                            ))
-                        }
-                        Status::No => {
-                            break Err(Error::NoResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
-                            ))
-                        }
-                        _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
-                    }
-                }
-                None => {}
-            }
-        }
-    }
-
-    fn readline(&mut self, into: &mut Vec<u8>) -> Result<usize> {
-        use std::io::BufRead;
-        let read = self.stream.read_until(LF, into)?;
-        if read == 0 {
-            return Err(Error::ConnectionLost);
-        }
-
-        if self.debug {
-            // Remove CRLF
-            let len = into.len();
-            let line = &into[(len - read)..(len - 2)];
-            print!("S: {}\n", String::from_utf8_lossy(line));
-        }
-
-        Ok(read)
-    }
-
-    fn create_command(&mut self, command: String) -> String {
-        self.tag += 1;
-        let command = format!("{}{} {}", TAG_PREFIX, self.tag, command);
-        return command;
-    }
-
-    fn write_line(&mut self, buf: &[u8]) -> Result<()> {
-        self.stream.write_all(buf)?;
-        self.stream.write_all(&[CR, LF])?;
-        self.stream.flush()?;
-        if self.debug {
-            print!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
-        }
-        Ok(())
     }
 }
 
@@ -710,6 +647,140 @@ impl <T: Read + Write> Session<T> {
         self.conn.run_command_and_read_response(untagged_command)
     }
 }
+
+impl <T: Read + Write> Connection<T> {
+    fn read_greeting(&mut self) -> Result<()> {
+        let mut v = Vec::new();
+        self.readline(&mut v)?;
+        Ok(())
+    }
+
+    fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
+        self.run_command_and_read_response(command).map(|_| ())
+    }
+
+    fn run_command(&mut self, untagged_command: &str) -> Result<()> {
+        let command = self.create_command(untagged_command.to_string());
+        self.write_line(command.into_bytes().as_slice())
+    }
+
+    fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
+        self.run_command(untagged_command)?;
+        self.read_response()
+    }
+
+    fn read_response(&mut self) -> Result<Vec<u8>> {
+        let mut v = Vec::new();
+        self.read_response_onto(&mut v)?;
+        Ok(v)
+    }
+
+    fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<()> {
+        let mut continue_from = None;
+        let mut try_first = !data.is_empty();
+        let match_tag = format!("{}{}", TAG_PREFIX, self.tag);
+        loop {
+            let line_start = if try_first {
+                try_first = false;
+                0
+            } else {
+                let start_new = data.len();
+                self.readline(data)?;
+                continue_from.take().unwrap_or(start_new)
+            };
+
+            let break_with = {
+                use imap_proto::{parse_response, Response, Status};
+                let line = &data[line_start..];
+
+                match parse_response(line) {
+                    IResult::Done(
+                        _,
+                        Response::Done {
+                            tag,
+                            status,
+                            information,
+                            ..
+                        },
+                    ) => {
+                        assert_eq!(tag.as_bytes(), match_tag.as_bytes());
+                        Some(match status {
+                            Status::Bad | Status::No => {
+                                Err((status, information.map(|s| s.to_string())))
+                            }
+                            Status::Ok => Ok(()),
+                            status => Err((status, None)),
+                        })
+                    }
+                    IResult::Done(..) => None,
+                    IResult::Incomplete(..) => {
+                        continue_from = Some(line_start);
+                        None
+                    }
+                    _ => Some(Err((Status::Bye, None))),
+                }
+            };
+
+            match break_with {
+                Some(Ok(_)) => {
+                    data.truncate(line_start);
+                    break Ok(());
+                }
+                Some(Err((status, expl))) => {
+                    use imap_proto::Status;
+                    match status {
+                        Status::Bad => {
+                            break Err(Error::BadResponse(
+                                expl.unwrap_or("no explanation given".to_string()),
+                            ))
+                        }
+                        Status::No => {
+                            break Err(Error::NoResponse(
+                                expl.unwrap_or("no explanation given".to_string()),
+                            ))
+                        }
+                        _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+
+    fn readline(&mut self, into: &mut Vec<u8>) -> Result<usize> {
+        use std::io::BufRead;
+        let read = self.stream.read_until(LF, into)?;
+        if read == 0 {
+            return Err(Error::ConnectionLost);
+        }
+
+        if self.debug {
+            // Remove CRLF
+            let len = into.len();
+            let line = &into[(len - read)..(len - 2)];
+            print!("S: {}\n", String::from_utf8_lossy(line));
+        }
+
+        Ok(read)
+    }
+
+    fn create_command(&mut self, command: String) -> String {
+        self.tag += 1;
+        let command = format!("{}{} {}", TAG_PREFIX, self.tag, command);
+        return command;
+    }
+
+    fn write_line(&mut self, buf: &[u8]) -> Result<()> {
+        self.stream.write_all(buf)?;
+        self.stream.write_all(&[CR, LF])?;
+        self.stream.flush()?;
+        if self.debug {
+            print!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
+        }
+        Ok(())
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
