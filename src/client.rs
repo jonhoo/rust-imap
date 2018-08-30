@@ -4,6 +4,7 @@ use nom::IResult;
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
+use std::ops::{Deref,DerefMut};
 
 use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
@@ -34,13 +35,66 @@ fn validate_str(value: &str) -> Result<String> {
     Ok(quoted)
 }
 
-/// Stream to interface with the IMAP server. This interface is only for the command stream.
+/// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
+/// a succesful login attempt.
+///
+/// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
+/// primitives type.
+#[derive(Debug)]
+pub struct Session<T: Read + Write> {
+    conn: Connection<T>,
+}
+
+/// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
+/// connecting. A succesfull call to [`login`](struct.Client.html#method.login) will return a
+/// [`Session`](struct.Session.html) instance, providing the usual IMAP methods.
+///
+/// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
+/// primitives type.
 #[derive(Debug)]
 pub struct Client<T: Read + Write> {
+    conn: Connection<T>,
+}
+
+/// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
+/// login) use a `Connection` internally for the TCP stream primitives.
+#[derive(Debug)]
+pub struct Connection<T: Read + Write> {
     stream: BufStream<T>,
     tag: u32,
     pub debug: bool,
 }
+
+// `Deref` instances are so we can make use of the same underlying primitives in `Client` and
+// `Session`
+impl<T: Read + Write> Deref for Client<T> {
+    type Target = Connection<T>;
+
+    fn deref(&self) -> &Connection<T> {
+        &self.conn
+    }
+}
+
+impl<T: Read + Write> DerefMut for Client<T> {
+    fn deref_mut(&mut self) -> &mut Connection<T> {
+        &mut self.conn
+    }
+}
+
+impl<T: Read + Write> Deref for Session<T> {
+    type Target = Connection<T>;
+
+    fn deref(&self) -> &Connection<T> {
+        &self.conn
+    }
+}
+
+impl<T: Read + Write> DerefMut for Session<T> {
+    fn deref_mut(&mut self) -> &mut Connection<T> {
+        &mut self.conn
+    }
+}
+
 
 /// `IdleHandle` allows a client to block waiting for changes to the remote mailbox.
 ///
@@ -50,12 +104,12 @@ pub struct Client<T: Read + Write> {
 /// As long a the handle is active, the mailbox cannot be otherwise accessed.
 #[derive(Debug)]
 pub struct IdleHandle<'a, T: Read + Write + 'a> {
-    client: &'a mut Client<T>,
+    session: &'a mut Session<T>,
     keepalive: Duration,
     done: bool,
 }
 
-/// Must be implemented for a transport in order for a `Client` using that transport to support
+/// Must be implemented for a transport in order for a `Session` using that transport to support
 /// operations with timeouts.
 ///
 /// Examples of where this is useful is for `IdleHandle::wait_keepalive` and
@@ -70,9 +124,9 @@ pub trait SetReadTimeout {
 }
 
 impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
-    fn new(client: &'a mut Client<T>) -> Result<Self> {
+    fn new(session: &'a mut Session<T>) -> Result<Self> {
         let mut h = IdleHandle {
-            client: client,
+            session: session,
             keepalive: Duration::from_secs(29 * 60),
             done: false,
         };
@@ -84,20 +138,20 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
         // https://tools.ietf.org/html/rfc2177
         //
         // The IDLE command takes no arguments.
-        self.client.run_command("IDLE")?;
+        self.session.run_command("IDLE")?;
 
         // A tagged response will be sent either
         //
         //   a) if there's an error, or
         //   b) *after* we send DONE
         let mut v = Vec::new();
-        self.client.readline(&mut v)?;
+        self.session.readline(&mut v)?;
         if v.starts_with(b"+") {
             self.done = false;
             return Ok(());
         }
 
-        self.client.read_response_onto(&mut v)?;
+        self.session.read_response_onto(&mut v)?;
         // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
         unreachable!();
     }
@@ -105,8 +159,8 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     fn terminate(&mut self) -> Result<()> {
         if !self.done {
             self.done = true;
-            self.client.write_line(b"DONE")?;
-            self.client.read_response().map(|_| ())
+            self.session.write_line(b"DONE")?;
+            self.session.read_response().map(|_| ())
         } else {
             Ok(())
         }
@@ -114,10 +168,10 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Internal helper that doesn't consume self.
     ///
-    /// This is necessary so that we can keep using the inner `Client` in `wait_keepalive`.
+    /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
     fn wait_inner(&mut self) -> Result<()> {
         let mut v = Vec::new();
-        match self.client.readline(&mut v).map(|_| ()) {
+        match self.session.readline(&mut v).map(|_| ()) {
             Err(Error::Io(ref e))
                 if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
             {
@@ -166,12 +220,12 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
     pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
-        self.client
+        self.session
             .stream
             .get_mut()
             .set_read_timeout(Some(timeout))?;
         let res = self.wait_inner();
-        self.client.stream.get_mut().set_read_timeout(None).is_ok();
+        self.session.stream.get_mut().set_read_timeout(None).is_ok();
         res
     }
 }
@@ -197,20 +251,72 @@ impl<'a> SetReadTimeout for TlsStream<TcpStream> {
     }
 }
 
-impl Client<TcpStream> {
-    /// Creates a new client.
-    pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
-        match TcpStream::connect(addr) {
-            Ok(stream) => {
-                let mut socket = Client::new(stream);
+/// Creates a new client. The usual IMAP commands are part of the [`Session`](struct.Session.html)
+/// type, returned from a succesful call to [`Client::login`](struct.Client.html#method.login).
+/// ```rust,no_run
+/// # extern crate native_tls;
+/// # extern crate imap;
+/// # use std::io;
+/// # use native_tls::TlsConnector;
+/// # fn main() {
+/// // a plain, unencrypted TCP connection
+/// let client = imap::client::connect(("imap.example.org", 143)).unwrap();
+///
+/// // upgrade to SSL
+/// let ssl_connector = TlsConnector::builder().build().unwrap();
+/// let ssl_client = client.secure("imap.example.org", &ssl_connector);
+/// # }
+/// ```
+pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
+    match TcpStream::connect(addr) {
+        Ok(stream) => {
+            let mut socket = Client::new(stream);
 
-                socket.read_greeting()?;
-                Ok(socket)
-            }
-            Err(e) => Err(Error::Io(e)),
+            socket.read_greeting()?;
+            Ok(socket)
         }
+        Err(e) => Err(Error::Io(e)),
     }
+}
 
+/// Creates a `Client` with an SSL wrapper. The usual IMAP commands are part of the
+/// [`Session`](struct.Session.html) type, returned from a succesful call to
+/// [`Client::login`](struct.Client.html#method.login).
+/// ```rust,no_run
+/// # extern crate native_tls;
+/// # extern crate imap;
+/// # use std::io;
+/// # use native_tls::TlsConnector;
+/// # fn main() {
+/// let ssl_connector = TlsConnector::builder().build().unwrap();
+/// let ssl_client = imap::client::secure_connect(
+///     ("imap.example.org", 993),
+///     "imap.example.org",
+///     &ssl_connector).unwrap();
+/// # }
+/// ```
+pub fn secure_connect<A: ToSocketAddrs>(
+    addr: A,
+    domain: &str,
+    ssl_connector: &TlsConnector,
+) -> Result<Client<TlsStream<TcpStream>>> {
+    match TcpStream::connect(addr) {
+        Ok(stream) => {
+            let ssl_stream = match TlsConnector::connect(ssl_connector, domain, stream) {
+                Ok(s) => s,
+                Err(e) => return Err(Error::TlsHandshake(e)),
+            };
+            let mut socket = Client::new(ssl_stream);
+
+            socket.read_greeting()?;
+            Ok(socket)
+        }
+        Err(e) => Err(Error::Io(e)),
+    }
+}
+
+
+impl Client<TcpStream> {
     /// This will upgrade a regular TCP connection to use SSL.
     ///
     /// Use the domain parameter for openssl's SNI and hostname verification.
@@ -221,31 +327,24 @@ impl Client<TcpStream> {
     ) -> Result<Client<TlsStream<TcpStream>>> {
         // TODO This needs to be tested
         self.run_command_and_check_ok("STARTTLS")?;
-        TlsConnector::connect(ssl_connector, domain, self.stream.into_inner()?)
+        TlsConnector::connect(ssl_connector, domain, self.conn.stream.into_inner()?)
             .map(Client::new)
             .map_err(Error::TlsHandshake)
     }
 }
 
-impl Client<TlsStream<TcpStream>> {
-    /// Creates a client with an SSL wrapper.
-    pub fn secure_connect<A: ToSocketAddrs>(
-        addr: A,
-        domain: &str,
-        ssl_connector: &TlsConnector,
-    ) -> Result<Client<TlsStream<TcpStream>>> {
-        match TcpStream::connect(addr) {
-            Ok(stream) => {
-                let ssl_stream = match TlsConnector::connect(ssl_connector, domain, stream) {
-                    Ok(s) => s,
-                    Err(e) => return Err(Error::TlsHandshake(e)),
-                };
-                let mut socket = Client::new(ssl_stream);
-
-                socket.read_greeting()?;
-                Ok(socket)
-            }
-            Err(e) => Err(Error::Io(e)),
+// As the pattern of returning the unauthenticated `Client` (a.k.a. `self`) back with a login error
+// is relatively common, it's abstacted away into a macro here.
+//
+// Note: 1) using `.map_err(|e| (e, self))` or similar here makes the closure own self, so we can't
+//          do that.
+//       2) in theory we wouldn't need the second parameter, and could just use the identifier
+//          `self` from the surrounding function, but being explicit here seems a lot cleaner.
+macro_rules! ok_or_unauth_client_err {
+    ($r:expr, $self:expr) => {
+        match $r {
+            Ok(o) => o,
+            Err(e) => return Err((e, $self))
         }
     }
 }
@@ -254,55 +353,100 @@ impl<T: Read + Write> Client<T> {
     /// Creates a new client with the underlying stream.
     pub fn new(stream: T) -> Client<T> {
         Client {
-            stream: BufStream::new(stream),
-            tag: INITIAL_TAG,
-            debug: false,
+            conn: Connection {
+                stream: BufStream::new(stream),
+                tag: INITIAL_TAG,
+                debug: false,
+            },
         }
     }
 
     /// Authenticate will authenticate with the server, using the authenticator given.
-    pub fn authenticate<A: Authenticator>(
-        &mut self,
+    pub fn authenticate<A: Authenticator> (
+        mut self,
         auth_type: &str,
         authenticator: A,
-    ) -> Result<()> {
-        self.run_command(&format!("AUTHENTICATE {}", auth_type))?;
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+        ok_or_unauth_client_err!(self.run_command(&format!("AUTHENTICATE {}", auth_type)), self);
         self.do_auth_handshake(authenticator)
     }
 
     /// This func does the handshake process once the authenticate command is made.
-    fn do_auth_handshake<A: Authenticator>(&mut self, authenticator: A) -> Result<()> {
+    fn do_auth_handshake<A: Authenticator>(
+        mut self,
+        authenticator: A
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // TODO Clean up this code
         loop {
             let mut line = Vec::new();
-            self.readline(&mut line)?;
+            // explicit match blocks neccessary to convert error to tuple and not bind self too
+            // early (see also comment on `login`)
+            ok_or_unauth_client_err!(self.readline(&mut line), self);
 
             if line.starts_with(b"+") {
-                let data = parse_authenticate_response(String::from_utf8(line).unwrap())?;
+                let data = ok_or_unauth_client_err!(
+                    parse_authenticate_response(String::from_utf8(line).unwrap()), self);
                 let auth_response = authenticator.process(data);
 
-                self.write_line(auth_response.into_bytes().as_slice())?
+                ok_or_unauth_client_err!(self.write_line(auth_response.into_bytes().as_slice()), self);
             } else {
-                return self.read_response_onto(&mut line).map(|_| ());
+                ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
+                return Ok(Session { conn: self.conn });
             }
         }
     }
 
-    /// Log in to the IMAP server.
-    pub fn login(&mut self, username: &str, password: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!(
-            "LOGIN {} {}",
-            validate_str(username)?,
-            validate_str(password)?
-        ))
-    }
+    /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
+    /// returned; on error the original `Client` instance is returned in addition to the error.
+    /// This is because `login` takes ownership of `self`, so in order to try again (e.g. after
+    /// prompting the user for credetials), ownership of the original `Client` needs to be
+    /// transferred back to the caller.
+    ///
+    /// ```rust,no_run
+    /// # extern crate imap;
+    /// # extern crate native_tls;
+    /// # use std::io;
+    /// # use native_tls::TlsConnector;
+    /// # fn main() {
+    /// # let ssl_connector = TlsConnector::builder().build().unwrap();
+    /// let ssl_client = imap::client::secure_connect(
+    ///     ("imap.example.org", 993),
+    ///     "imap.example.org",
+    ///     &ssl_connector).unwrap();
+    ///
+    /// // try to login
+    /// let session = match ssl_client.login("user", "pass") {
+    ///     Ok(s) => s,
+    ///     Err((e, orig_client)) => {
+    ///         eprintln!("error logging in: {}", e);
+    ///         // prompt user and try again with orig_client here
+    ///         return;
+    ///     }
+    /// };
+    ///
+    /// // use session for IMAP commands
+    /// # }
+    pub fn login(
+        mut self,
+        username: &str,
+        password: &str
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+        let u = ok_or_unauth_client_err!(validate_str(username), self);
+        let p = ok_or_unauth_client_err!(validate_str(password), self);
+        ok_or_unauth_client_err!(self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)), self);
 
+        Ok(Session { conn: self.conn })
+    }
+}
+
+
+impl <T: Read + Write> Session<T> {
     /// Selects a mailbox
     ///
     /// Note that the server *is* allowed to unilaterally send things to the client for messages in
     /// a selected mailbox whose status has changed. See the note on [unilateral server responses
     /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that if you use
-    /// [`Client::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
+    /// [`Connection::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
     /// `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
@@ -476,15 +620,15 @@ impl<T: Read + Write> Client<T> {
         self.read_response().map(|_| ())
     }
 
+    // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
-        self.run_command_and_read_response(command).map(|_| ())
+        self.run_command_and_read_response(command).map(|_| (()))
     }
 
     /// Runs any command passed to it.
     pub fn run_command(&mut self, untagged_command: &str) -> Result<()> {
-        let command = self.create_command(untagged_command.to_string());
-        self.write_line(command.into_bytes().as_slice())
+        self.conn.run_command(untagged_command)
     }
 
     /// Run a raw IMAP command and read back its response.
@@ -494,6 +638,27 @@ impl<T: Read + Write> Client<T> {
     /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that you *may* see
     /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     pub fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
+        self.conn.run_command_and_read_response(untagged_command)
+    }
+}
+
+impl <T: Read + Write> Connection<T> {
+    fn read_greeting(&mut self) -> Result<()> {
+        let mut v = Vec::new();
+        self.readline(&mut v)?;
+        Ok(())
+    }
+
+    fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
+        self.run_command_and_read_response(command).map(|_| ())
+    }
+
+    fn run_command(&mut self, untagged_command: &str) -> Result<()> {
+        let command = self.create_command(untagged_command.to_string());
+        self.write_line(command.into_bytes().as_slice())
+    }
+
+    fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
         self.run_command(untagged_command)?;
         self.read_response()
     }
@@ -576,12 +741,6 @@ impl<T: Read + Write> Client<T> {
         }
     }
 
-    fn read_greeting(&mut self) -> Result<()> {
-        let mut v = Vec::new();
-        self.readline(&mut v)?;
-        Ok(())
-    }
-
     fn readline(&mut self, into: &mut Vec<u8>) -> Result<usize> {
         use std::io::BufRead;
         let read = self.stream.read_until(LF, into)?;
@@ -616,11 +775,18 @@ impl<T: Read + Write> Client<T> {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
+
+    macro_rules! mock_session {
+        ($s:expr) => {
+            Session { conn: Client::new($s).conn }
+        }
+    }
 
     #[test]
     fn read_response() {
@@ -637,9 +803,9 @@ mod tests {
                         * 2 FETCH (BODY[TEXT] {3}\r\nfoo)\r\n\
                         a0 OK FETCH completed\r\n";
         let mock_stream = MockStream::new(response.as_bytes().to_vec());
-        let mut client = Client::new(mock_stream);
-        client.read_response().unwrap();
-        client.read_response().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.read_response().unwrap();
+        session.read_response().unwrap();
     }
 
     #[test]
@@ -713,10 +879,10 @@ mod tests {
         let password = "password";
         let command = format!("a1 LOGIN {} {}\r\n", quote!(username), quote!(password));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.login(username, password).unwrap();
+        let client = Client::new(mock_stream);
+        let session = client.login(username, password).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid login command"
         );
     }
@@ -726,10 +892,10 @@ mod tests {
         let response = b"a1 OK Logout completed.\r\n".to_vec();
         let command = format!("a1 LOGOUT\r\n");
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.logout().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.logout().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid logout command"
         );
     }
@@ -745,12 +911,12 @@ mod tests {
             quote!(new_mailbox_name)
         );
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client
+        let mut session = mock_session!(mock_stream);
+        session
             .rename(current_mailbox_name, new_mailbox_name)
             .unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid rename command"
         );
     }
@@ -761,10 +927,10 @@ mod tests {
         let mailbox = "INBOX";
         let command = format!("a1 SUBSCRIBE {}\r\n", quote!(mailbox));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.subscribe(mailbox).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.subscribe(mailbox).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid subscribe command"
         );
     }
@@ -775,10 +941,10 @@ mod tests {
         let mailbox = "INBOX";
         let command = format!("a1 UNSUBSCRIBE {}\r\n", quote!(mailbox));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.unsubscribe(mailbox).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.unsubscribe(mailbox).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid unsubscribe command"
         );
     }
@@ -787,10 +953,10 @@ mod tests {
     fn expunge() {
         let response = b"a1 OK EXPUNGE completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.expunge().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.expunge().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 EXPUNGE\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 EXPUNGE\r\n".to_vec(),
             "Invalid expunge command"
         );
     }
@@ -799,10 +965,10 @@ mod tests {
     fn check() {
         let response = b"a1 OK CHECK completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.check().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.check().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 CHECK\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 CHECK\r\n".to_vec(),
             "Invalid check command"
         );
     }
@@ -836,10 +1002,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 EXAMINE {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        let mailbox = client.examine(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        let mailbox = session.examine(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid examine command"
         );
         assert_eq!(mailbox, expected_mailbox);
@@ -882,10 +1048,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 SELECT {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        let mailbox = client.select(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        let mailbox = session.select(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid select command"
         );
         assert_eq!(mailbox, expected_mailbox);
@@ -898,10 +1064,10 @@ mod tests {
             .to_vec();
         let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        let capabilities = client.capabilities().unwrap();
+        let mut session = mock_session!(mock_stream);
+        let capabilities = session.capabilities().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 CAPABILITY\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 CAPABILITY\r\n".to_vec(),
             "Invalid capability command"
         );
         assert_eq!(capabilities.len(), 4);
@@ -916,10 +1082,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 CREATE {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.create(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.create(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid create command"
         );
     }
@@ -930,10 +1096,10 @@ mod tests {
         let mailbox_name = "INBOX";
         let command = format!("a1 DELETE {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.delete(mailbox_name).unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.delete(mailbox_name).unwrap();
         assert!(
-            client.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid delete command"
         );
     }
@@ -942,10 +1108,10 @@ mod tests {
     fn noop() {
         let response = b"a1 OK NOOP completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.noop().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.noop().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 NOOP\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 NOOP\r\n".to_vec(),
             "Invalid noop command"
         );
     }
@@ -954,10 +1120,10 @@ mod tests {
     fn close() {
         let response = b"a1 OK CLOSE completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
-        let mut client = Client::new(mock_stream);
-        client.close().unwrap();
+        let mut session = mock_session!(mock_stream);
+        session.close().unwrap();
         assert!(
-            client.stream.get_ref().written_buf == b"a1 CLOSE\r\n".to_vec(),
+            session.stream.get_ref().written_buf == b"a1 CLOSE\r\n".to_vec(),
             "Invalid close command"
         );
     }
@@ -974,7 +1140,7 @@ mod tests {
 
     fn generic_store<F, T>(prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         let res = "* 2 FETCH (FLAGS (\\Deleted \\Seen))\r\n\
                    * 3 FETCH (FLAGS (\\Deleted))\r\n\
@@ -996,7 +1162,7 @@ mod tests {
 
     fn generic_copy<F, T>(prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         generic_with_uid(
             "OK COPY completed\r\n",
@@ -1020,21 +1186,21 @@ mod tests {
 
     fn generic_fetch<F, T>(prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         generic_with_uid("OK FETCH completed\r\n", "FETCH", "1", "BODY[]", prefix, op);
     }
 
     fn generic_with_uid<F, T>(res: &str, cmd: &str, seq: &str, query: &str, prefix: &str, op: F)
     where
-        F: FnOnce(&mut Client<MockStream>, &str, &str) -> Result<T>,
+        F: FnOnce(&mut Session<MockStream>, &str, &str) -> Result<T>,
     {
         let resp = format!("a1 {}\r\n", res).as_bytes().to_vec();
         let line = format!("a1{}{} {} {}\r\n", prefix, cmd, seq, query);
-        let mut client = Client::new(MockStream::new(resp));
-        let _ = op(&mut client, seq, query);
+        let mut session = mock_session!(MockStream::new(resp));
+        let _ = op(&mut session, seq, query);
         assert!(
-            client.stream.get_ref().written_buf == line.as_bytes().to_vec(),
+            session.stream.get_ref().written_buf == line.as_bytes().to_vec(),
             "Invalid command"
         );
     }

@@ -1,7 +1,6 @@
 extern crate imap;
 extern crate native_tls;
 
-use imap::client::Client;
 use native_tls::TlsConnector;
 
 // To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
@@ -12,30 +11,36 @@ fn main() {
     let port = 993;
     let socket_addr = (domain, port);
     let ssl_connector = TlsConnector::builder().build().unwrap();
-    let mut imap_socket = Client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
+    let client = imap::client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
 
-    imap_socket.login("username", "password").unwrap();
+    let mut imap_session = match client.login("username", "password") {
+        Ok(c) => c,
+        Err((e, _unauth_client)) => {
+            eprintln!("failed to login: {}", e);
+            return;
+        }
+    };
 
-    match imap_socket.capabilities() {
+    match imap_session.capabilities() {
         Ok(capabilities) => for capability in capabilities.iter() {
             println!("{}", capability);
         },
         Err(e) => println!("Error parsing capability: {}", e),
     };
 
-    match imap_socket.select("INBOX") {
+    match imap_session.select("INBOX") {
         Ok(mailbox) => {
             println!("{}", mailbox);
         }
         Err(e) => println!("Error selecting INBOX: {}", e),
     };
 
-    match imap_socket.fetch("2", "body[text]") {
+    match imap_session.fetch("2", "body[text]") {
         Ok(msgs) => for msg in &msgs {
             print!("{:?}", msg);
         },
         Err(e) => println!("Error Fetching email 2: {}", e),
     };
 
-    imap_socket.logout().unwrap();
+    imap_session.logout().unwrap();
 }
