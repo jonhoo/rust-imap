@@ -431,12 +431,6 @@ impl<T: Read + Write> Client<T> {
         username: &str,
         password: &str
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
-        // note that we need the explicit match blocks here for two reasons:
-        // 1. we need to convert the validate_str error type to our tuple of
-        //    (Error, Client)
-        // 2. we can't use `.map_err(|e| (e, self))` because that would capture self into the
-        //    closure. this way borowck sees that self is only bound in the error case where we
-        //    return anyways.
         let u = ok_or_unauth_client_err!(validate_str(username), self);
         let p = ok_or_unauth_client_err!(validate_str(password), self);
         ok_or_unauth_client_err!(self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)), self);
