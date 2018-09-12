@@ -26,10 +26,10 @@ macro_rules! quote {
 
 fn validate_str(value: &str) -> Result<String> {
     let quoted = quote!(value);
-    if let Some(_) = quoted.find("\n") {
+    if quoted.find('\n').is_some() {
         return Err(Error::Validate(ValidateError('\n')));
     }
-    if let Some(_) = quoted.find("\r") {
+    if quoted.find('\r').is_some() {
         return Err(Error::Validate(ValidateError('\r')));
     }
     Ok(quoted)
@@ -126,7 +126,7 @@ pub trait SetReadTimeout {
 impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     fn new(session: &'a mut Session<T>) -> Result<Self> {
         let mut h = IdleHandle {
-            session: session,
+            session,
             keepalive: Duration::from_secs(29 * 60),
             done: false,
         };
@@ -239,7 +239,7 @@ impl<'a, T: Read + Write + 'a> Drop for IdleHandle<'a, T> {
 
 impl<'a> SetReadTimeout for TcpStream {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
-        TcpStream::set_read_timeout(self, timeout).map_err(|e| Error::Io(e))
+        TcpStream::set_read_timeout(self, timeout).map_err(Error::Io)
     }
 }
 
@@ -247,7 +247,7 @@ impl<'a> SetReadTimeout for TlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.get_ref()
             .set_read_timeout(timeout)
-            .map_err(|e| Error::Io(e))
+            .map_err(Error::Io)
     }
 }
 
@@ -368,13 +368,13 @@ impl<T: Read + Write> Client<T> {
         authenticator: A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         ok_or_unauth_client_err!(self.run_command(&format!("AUTHENTICATE {}", auth_type)), self);
-        self.do_auth_handshake(authenticator)
+        self.do_auth_handshake(&authenticator)
     }
 
     /// This func does the handshake process once the authenticate command is made.
     fn do_auth_handshake<A: Authenticator>(
         mut self,
-        authenticator: A
+        authenticator: &A
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // TODO Clean up this code
         loop {
@@ -466,7 +466,7 @@ impl <T: Read + Write> Session<T> {
     /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
-            .and_then(|lines| parse_fetches(lines))
+            .and_then(parse_fetches)
     }
 
     /// Fetch retreives data associated with a set of messages by UID in the mailbox.
@@ -476,7 +476,7 @@ impl <T: Read + Write> Session<T> {
     /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
-            .and_then(|lines| parse_fetches(lines))
+            .and_then(parse_fetches)
     }
 
     /// Noop always succeeds, and it does nothing.
@@ -522,8 +522,8 @@ impl <T: Read + Write> Session<T> {
 
     /// Capability requests a listing of capabilities that the server supports.
     pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
-        self.run_command_and_read_response(&format!("CAPABILITY"))
-            .and_then(|lines| parse_capabilities(lines))
+        self.run_command_and_read_response("CAPABILITY")
+            .and_then(parse_capabilities)
     }
 
     /// Expunge permanently removes all messages that have the \Deleted flag set from the currently
@@ -546,12 +546,12 @@ impl <T: Read + Write> Session<T> {
     /// Store alters data associated with a message in the mailbox.
     pub fn store(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
-            .and_then(|lines| parse_fetches(lines))
+            .and_then(parse_fetches)
     }
 
     pub fn uid_store(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
-            .and_then(|lines| parse_fetches(lines))
+            .and_then(parse_fetches)
     }
 
     /// Copy copies the specified message to the end of the specified destination mailbox.
@@ -574,7 +574,7 @@ impl <T: Read + Write> Session<T> {
             "LIST {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        )).and_then(|lines| parse_names(lines))
+        )).and_then(parse_names)
     }
 
     /// The LSUB command returns a subset of names from the set of names
@@ -588,7 +588,7 @@ impl <T: Read + Write> Session<T> {
             "LSUB {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        )).and_then(|lines| parse_names(lines))
+        )).and_then(parse_names)
     }
 
     /// The STATUS command requests the status of the indicated mailbox.
@@ -623,7 +623,7 @@ impl <T: Read + Write> Session<T> {
     // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
-        self.run_command_and_read_response(command).map(|_| (()))
+        self.run_command_and_read_response(command).map(|_| ())
     }
 
     /// Runs any command passed to it.
@@ -654,7 +654,7 @@ impl <T: Read + Write> Connection<T> {
     }
 
     fn run_command(&mut self, untagged_command: &str) -> Result<()> {
-        let command = self.create_command(untagged_command.to_string());
+        let command = self.create_command(untagged_command);
         self.write_line(command.into_bytes().as_slice())
     }
 
@@ -725,12 +725,12 @@ impl <T: Read + Write> Connection<T> {
                     match status {
                         Status::Bad => {
                             break Err(Error::BadResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
+                                expl.unwrap_or_else(|| "no explanation given".to_string()),
                             ))
                         }
                         Status::No => {
                             break Err(Error::NoResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
+                                expl.unwrap_or_else(|| "no explanation given".to_string()),
                             ))
                         }
                         _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
@@ -758,10 +758,9 @@ impl <T: Read + Write> Connection<T> {
         Ok(read)
     }
 
-    fn create_command(&mut self, command: String) -> String {
+    fn create_command(&mut self, command: &str) -> String {
         self.tag += 1;
-        let command = format!("{}{} {}", TAG_PREFIX, self.tag, command);
-        return command;
+        format!("{}{} {}", TAG_PREFIX, self.tag, command)
     }
 
     fn write_line(&mut self, buf: &[u8]) -> Result<()> {
@@ -858,14 +857,14 @@ mod tests {
         let mut imap_stream = Client::new(mock_stream);
 
         let expected_command = format!("a1 {}", base_command);
-        let command = imap_stream.create_command(String::from(base_command));
+        let command = imap_stream.create_command(&base_command);
         assert!(
             command == expected_command,
             "expected command doesn't equal actual command"
         );
 
         let expected_command2 = format!("a2 {}", base_command);
-        let command2 = imap_stream.create_command(String::from(base_command));
+        let command2 = imap_stream.create_command(&base_command);
         assert!(
             command2 == expected_command2,
             "expected command doesn't equal actual command"

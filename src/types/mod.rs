@@ -66,9 +66,6 @@ impl<D: PartialEq> PartialEq for ZeroCopy<D> {
     fn eq(&self, other: &ZeroCopy<D>) -> bool {
         **self == **other
     }
-    fn ne(&self, other: &ZeroCopy<D>) -> bool {
-        **self != **other
-    }
 }
 impl<D: Eq> Eq for ZeroCopy<D> {}
 
