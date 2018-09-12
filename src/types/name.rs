@@ -8,15 +8,15 @@ pub struct Name {
 }
 
 impl Name {
-    pub fn attributes<'a>(&'a self) -> &'a [&'a str] {
+    pub fn attributes(&self) -> &[&str] {
         &self.attributes[..]
     }
 
-    pub fn delimiter<'a>(&'a self) -> &'a str {
+    pub fn delimiter(&self) -> &str {
         self.delimiter
     }
 
-    pub fn name<'a>(&'a self) -> &'a str {
+    pub fn name(&self) -> &str {
         self.name
     }
 }

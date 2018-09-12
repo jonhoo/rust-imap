@@ -11,19 +11,19 @@ pub struct Fetch {
 }
 
 impl Fetch {
-    pub fn flags<'a>(&'a self) -> &'a [&'a str] {
+    pub fn flags(&self) -> &[&str] {
         &self.flags[..]
     }
 
-    pub fn rfc822_header<'a>(&'a self) -> Option<&'a [u8]> {
+    pub fn rfc822_header(&self) -> Option<&[u8]> {
         self.rfc822_header
     }
 
-    pub fn rfc822<'a>(&'a self) -> Option<&'a [u8]> {
+    pub fn rfc822(&self) -> Option<&[u8]> {
         self.rfc822
     }
 
-    pub fn body<'a>(&'a self) -> Option<&'a [u8]> {
+    pub fn body(&self) -> Option<&[u8]> {
         self.body
     }
 }

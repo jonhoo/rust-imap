@@ -15,7 +15,7 @@ impl Capabilities {
         self.0.contains(s)
     }
 
-    pub fn iter<'a>(&'a self) -> Iter<'a, &'a str> {
+    pub fn iter(&self) -> Iter<&str> {
         self.0.iter()
     }
 

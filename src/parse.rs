@@ -8,7 +8,7 @@ use super::types::*;
 pub fn parse_authenticate_response(line: String) -> Result<String> {
     let authenticate_regex = Regex::new("^+(.*)\r\n").unwrap();
 
-    for cap in authenticate_regex.captures_iter(line.as_str()) {
+    if let Some(cap) = authenticate_regex.captures_iter(line.as_str()).next() {
         let data = cap.get(1).map(|x| x.as_str()).unwrap_or("");
         return Ok(String::from(data));
     }
@@ -112,9 +112,7 @@ pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
                     AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
                     AttributeValue::Rfc822Header(rfc) => fetch.rfc822_header = rfc,
                     AttributeValue::BodySection {
-                        section: _,
-                        index: _,
-                        data,
+                        data, ..
                     } => fetch.body = data,
                     _ => {}
                 }
