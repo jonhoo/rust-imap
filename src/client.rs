@@ -563,6 +563,20 @@ impl <T: Read + Write> Session<T> {
         self.run_command_and_check_ok(&format!("UID COPY {} {}", uid_set, mailbox_name))
     }
 
+    /// Moves each message in the sequence into the destination mailbox.
+    pub fn imap_move(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
+        self.run_command_and_check_ok(&format!("MOVE {} {}", sequence_set, validate_str(mailbox_name)?))
+    }
+
+    /// Moves each message in the uid set into the destination mailbox.
+    pub fn uid_move(&mut self, uid_set: &str, mailbox_name: &str) -> Result<()> {
+        self.run_command_and_check_ok(&format!(
+            "UID MOVE {} {}",
+            uid_set,
+            validate_str(mailbox_name)?
+        ))
+    }
+
     /// The LIST command returns a subset of names from the complete set
     /// of all names available to the client.
     pub fn list(
@@ -1170,6 +1184,40 @@ mod tests {
             "MEETING",
             prefix,
             op,
+        );
+    }
+
+    #[test]
+    fn imap_move() {
+        let response = b"* OK [COPYUID 1511554416 142,399 41:42] Moved UIDs.\r\n\
+            * 2 EXPUNGE\r\n\
+            * 1 EXPUNGE\r\n\
+            a1 OK Move completed\r\n".to_vec();
+        let mailbox_name = "MEETING";
+        let command = format!("a1 MOVE 1:2 {}\r\n", quote!(mailbox_name));
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.imap_move("1:2", mailbox_name).unwrap();
+        assert!(
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            "Invalid move command"
+        );
+    }
+
+    #[test]
+    fn uid_move() {
+        let response = b"* OK [COPYUID 1511554416 142,399 41:42] Moved UIDs.\r\n\
+            * 2 EXPUNGE\r\n\
+            * 1 EXPUNGE\r\n\
+            a1 OK Move completed\r\n".to_vec();
+        let mailbox_name = "MEETING";
+        let command = format!("a1 UID MOVE 41:42 {}\r\n", quote!(mailbox_name));
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.uid_move("41:42", mailbox_name).unwrap();
+        assert!(
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            "Invalid uid move command"
         );
     }
 
