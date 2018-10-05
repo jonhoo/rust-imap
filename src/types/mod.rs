@@ -11,7 +11,7 @@ mod capabilities;
 pub use self::capabilities::Capabilities;
 
 pub struct ZeroCopy<D> {
-    owned: Box<[u8]>,
+    _owned: Box<[u8]>,
     derived: D,
 }
 
@@ -35,14 +35,14 @@ impl<D> ZeroCopy<D> {
 
         // the memory pointed to by `owned` now has a stable address (on the heap).
         // even if we move the `Box` (i.e., into `ZeroCopy`), a slice to it will remain valid.
-        let owned = owned.into_boxed_slice();
+        let _owned = owned.into_boxed_slice();
 
         // this is the unsafe part -- the implementor of `derive` must be aware that the reference
         // they are passed is not *really* 'static, but rather the lifetime of `&self`.
-        let static_owned_ref: &'static [u8] = mem::transmute(&*owned);
+        let static_owned_ref: &'static [u8] = mem::transmute(&*_owned);
 
         Ok(ZeroCopy {
-            owned,
+            _owned,
             derived: derive(static_owned_ref)?,
         })
     }
