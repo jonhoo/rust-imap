@@ -563,12 +563,17 @@ impl <T: Read + Write> Session<T> {
         self.run_command_and_check_ok(&format!("UID COPY {} {}", uid_set, mailbox_name))
     }
 
-    /// Moves each message in the sequence into the destination mailbox.
-    pub fn imap_move(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
+    /// Moves each message in the sequence into the destination mailbox. This function is
+    /// named `mv` instead of `move` due to it being a reserved keyword.
+    /// The MOVE command is defined in [RFC 6851 - "Internet Message Access Protocol (IMAP)
+    /// - MOVE Extension"](https://tools.ietf.org/html/rfc6851#section-3).
+    pub fn mv(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("MOVE {} {}", sequence_set, validate_str(mailbox_name)?))
     }
 
     /// Moves each message in the uid set into the destination mailbox.
+    /// The UID MOVE command is defined in [RFC 6851 - "Internet Message Access Protocol (IMAP)
+    /// - MOVE Extension"](https://tools.ietf.org/html/rfc6851#section-3).
     pub fn uid_move(&mut self, uid_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "UID MOVE {} {}",
