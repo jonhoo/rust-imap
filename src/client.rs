@@ -1193,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn imap_move() {
+    fn mv() {
         let response = b"* OK [COPYUID 1511554416 142,399 41:42] Moved UIDs.\r\n\
             * 2 EXPUNGE\r\n\
             * 1 EXPUNGE\r\n\
@@ -1202,7 +1202,7 @@ mod tests {
         let command = format!("a1 MOVE 1:2 {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
-        session.imap_move("1:2", mailbox_name).unwrap();
+        session.mv("1:2", mailbox_name).unwrap();
         assert!(
             session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid move command"
