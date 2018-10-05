@@ -5,11 +5,12 @@ use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 use std::ops::{Deref,DerefMut};
+use std::collections::HashSet;
 
 use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
 use super::parse::{
-    parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox, parse_names, parse_search_ids,
+    parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox, parse_names, parse_ids,
 };
 use super::types::*;
 
@@ -622,17 +623,17 @@ impl <T: Read + Write> Session<T> {
 
     /// Searches the mailbox for messages that match the given criteria and returns
     /// the list of message sequence numbers of those messages.
-    pub fn search(&mut self, query: &str) -> Result<Vec<u32>> {
+    pub fn search(&mut self, query: &str) -> ZeroCopyResult<HashSet<u32>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query))
-            .and_then(|lines| parse_search_ids(&lines[..]))
+            .and_then(parse_ids)
     }
 
     /// Searches the mailbox for messages that match the given criteria and returns
     /// the list of unique identifier numbers of those messages.
-    pub fn uid_search(&mut self, query: &str) -> Result<Vec<u32>> {
+    pub fn uid_search(&mut self, query: &str) -> ZeroCopyResult<HashSet<u32>> {
         eprint!("{}", format!("UID SEARCH {}", query));
         self.run_command_and_read_response(&format!("UID SEARCH {}", query))
-            .and_then(|lines| parse_search_ids(&lines[..]))
+            .and_then(parse_ids)
     }
 
     // these are only here because they are public interface, the rest is in `Connection`
@@ -1079,11 +1080,12 @@ mod tests {
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let ids = session.search("Unseen").unwrap();
+        let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert!(
             session.stream.get_ref().written_buf == b"a1 SEARCH Unseen\r\n".to_vec(),
             "Invalid search command"
         );
-        assert_eq!(ids, vec![1, 2, 3, 4, 5]);
+        assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect());
     }
 
     #[test]
@@ -1094,11 +1096,12 @@ mod tests {
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let ids = session.uid_search("Unseen").unwrap();
+        let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert!(
             session.stream.get_ref().written_buf == b"a1 UID SEARCH Unseen\r\n".to_vec(),
             "Invalid search command"
         );
-        assert_eq!(ids, vec![1, 2, 3, 4, 5]);
+        assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect());
     }
 
     #[test]

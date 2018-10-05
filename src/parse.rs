@@ -1,7 +1,7 @@
 use imap_proto::{self, MailboxDatum, Response};
 use nom::IResult;
 use regex::Regex;
-use std::str;
+use std::collections::HashSet;
 
 use super::error::{Error, ParseError, Result};
 use super::types::*;
@@ -129,7 +129,6 @@ pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
 
 pub fn parse_capabilities(lines: Vec<u8>) -> ZeroCopyResult<Capabilities> {
     let f = |mut lines| {
-        use std::collections::HashSet;
         let mut caps = HashSet::new();
         loop {
             match imap_proto::parse_response(lines) {
@@ -223,24 +222,30 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
     }
 }
 
-pub fn parse_search_ids(lines: &[u8]) -> Result<Vec<u32>> {
-    match str::from_utf8(lines) {
-        Ok(resp) => {
-            let re = Regex::new(r"^(?i)\* SEARCH((?:\s+[0-9]+)*)\s*$").unwrap();
-            match re.captures(resp) {
-                Some(cap) => {
-                    let mut line = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-                    Ok(line
-                        .trim()
-                        .split(' ')
-                        .filter_map(|id| id.trim().parse().ok())
-                        .collect())
+pub fn parse_ids(lines: Vec<u8>) -> ZeroCopyResult<HashSet<u32>> {
+    let f = |mut lines| {
+        let mut ids = HashSet::new();
+        loop {
+            match imap_proto::parse_response(lines) {
+                IResult::Done(rest, Response::IDs(c)) => {
+                    lines = rest;
+                    ids.extend(c);
+
+                    if lines.is_empty() {
+                        break Ok(ids);
+                    }
                 }
-                None => Err(Error::Parse(ParseError::Invalid(lines.to_vec()))),
+                IResult::Done(_, resp) => {
+                    break Err(resp.into());
+                }
+                _ => {
+                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                }
             }
         }
-        Err(_) => Err(Error::Parse(ParseError::Invalid(lines.to_vec()))),
-    }
+    };
+
+    unsafe { ZeroCopy::new(lines, f) }
 }
 
 #[cfg(test)]
@@ -312,11 +317,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_search_ids_test() {
-        let lines = "* SEARCH 1600 1698 1739 1781 1795 1885 1891 1892 1893 1898 1899 1901 1911 1926 1932 1933 1993 1994 2007 2032 2033 2041 2053 2062 2063 2065 2066 2072 2078 2079 2082 2084 2095 2100 2101 2102 2103 2104 2107 2116 2120 2135 2138 2154 2163 2168 2172 2189 2193 2198 2199 2205 2212 2213 2221 2227 2267 2275 2276 2295 2300 2328 2330 2332 2333 2334 2335 2336 2337 2338 2339 2341 2342 2347 2349 2350 2358 2359 2362 2369 2371 2372 2373 2374 2375 2376 2377 2378 2379 2380 2381 2382 2383 2384 2385 2386 2390 2392 2397 2400 2401 2403 2405 2409 2411 2414 2417 2419 2420 2424 2426 2428 2439 2454 2456 2467 2468 2469 2490 2515 2519 2520 2521".as_bytes();
+    fn parse_ids_test() {
+        let lines = b"* SEARCH 1600 1698 1739 1781 1795 1885 1891 1892 1893 1898 1899 1901 1911 1926 1932 1933 1993 1994 2007 2032 2033 2041 2053 2062 2063 2065 2066 2072 2078 2079 2082 2084 2095 2100 2101 2102 2103 2104 2107 2116 2120 2135 2138 2154 2163 2168 2172 2189 2193 2198 2199 2205 2212 2213 2221 2227 2267 2275 2276 2295 2300 2328 2330 2332 2333 2334\r\n\
+            * SEARCH 2335 2336 2337 2338 2339 2341 2342 2347 2349 2350 2358 2359 2362 2369 2371 2372 2373 2374 2375 2376 2377 2378 2379 2380 2381 2382 2383 2384 2385 2386 2390 2392 2397 2400 2401 2403 2405 2409 2411 2414 2417 2419 2420 2424 2426 2428 2439 2454 2456 2467 2468 2469 2490 2515 2519 2520 2521\r\n";
+        let ids = parse_ids(lines.to_vec()).unwrap();
+        let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(
-            parse_search_ids(lines).unwrap(),
-            vec![
+            ids,
+            [
                 1600, 1698, 1739, 1781, 1795, 1885, 1891, 1892, 1893, 1898, 1899, 1901, 1911, 1926,
                 1932, 1933, 1993, 1994, 2007, 2032, 2033, 2041, 2053, 2062, 2063, 2065, 2066, 2072,
                 2078, 2079, 2082, 2084, 2095, 2100, 2101, 2102, 2103, 2104, 2107, 2116, 2120, 2135,
@@ -326,10 +334,12 @@ mod tests {
                 2375, 2376, 2377, 2378, 2379, 2380, 2381, 2382, 2383, 2384, 2385, 2386, 2390, 2392,
                 2397, 2400, 2401, 2403, 2405, 2409, 2411, 2414, 2417, 2419, 2420, 2424, 2426, 2428,
                 2439, 2454, 2456, 2467, 2468, 2469, 2490, 2515, 2519, 2520, 2521
-            ]
+            ].iter().cloned().collect()
         );
 
-        let lines = "* SEARCH".as_bytes();
-        assert_eq!(parse_search_ids(lines).unwrap(), Vec::<u32>::new());
+        let lines = b"* SEARCH\r\n";
+        let ids = parse_ids(lines.to_vec()).unwrap();
+        let ids: HashSet<u32> = ids.iter().cloned().collect();
+        assert_eq!(ids, HashSet::<u32>::new());
     }
 }
