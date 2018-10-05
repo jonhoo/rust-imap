@@ -534,6 +534,7 @@ impl <T: Read + Write> Session<T> {
 
     /// Permanently removes all messages that have both the \Deleted flag set and have a UID that is
     /// included in the specified message set.
+    /// The UID EXPUNGE command is defined in [RFC 4315 - "Internet Message Access Protocol (IMAP) - UIDPLUS extension"](https://tools.ietf.org/html/rfc4315#section-2.1).
     pub fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("UID EXPUNGE {}", uid_set))
     }
