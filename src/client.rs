@@ -623,15 +623,14 @@ impl <T: Read + Write> Session<T> {
 
     /// Searches the mailbox for messages that match the given criteria and returns
     /// the list of message sequence numbers of those messages.
-    pub fn search(&mut self, query: &str) -> ZeroCopyResult<HashSet<u32>> {
+    pub fn search(&mut self, query: &str) -> Result<HashSet<u32>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query))
             .and_then(parse_ids)
     }
 
     /// Searches the mailbox for messages that match the given criteria and returns
     /// the list of unique identifier numbers of those messages.
-    pub fn uid_search(&mut self, query: &str) -> ZeroCopyResult<HashSet<u32>> {
-        eprint!("{}", format!("UID SEARCH {}", query));
+    pub fn uid_search(&mut self, query: &str) -> Result<HashSet<u32>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query))
             .and_then(parse_ids)
     }

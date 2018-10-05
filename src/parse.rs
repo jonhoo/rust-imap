@@ -222,30 +222,27 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
     }
 }
 
-pub fn parse_ids(lines: Vec<u8>) -> ZeroCopyResult<HashSet<u32>> {
-    let f = |mut lines| {
-        let mut ids = HashSet::new();
-        loop {
-            match imap_proto::parse_response(lines) {
-                IResult::Done(rest, Response::IDs(c)) => {
-                    lines = rest;
-                    ids.extend(c);
+pub fn parse_ids(lines: Vec<u8>) -> Result<HashSet<u32>> {
+    let mut lines = &lines[..];
+    let mut ids = HashSet::new();
+    loop {
+        match imap_proto::parse_response(lines) {
+            IResult::Done(rest, Response::IDs(c)) => {
+                lines = rest;
+                ids.extend(c);
 
-                    if lines.is_empty() {
-                        break Ok(ids);
-                    }
-                }
-                IResult::Done(_, resp) => {
-                    break Err(resp.into());
-                }
-                _ => {
-                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                if lines.is_empty() {
+                    break Ok(ids);
                 }
             }
+            IResult::Done(_, resp) => {
+                break Err(resp.into());
+            }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
         }
-    };
-
-    unsafe { ZeroCopy::new(lines, f) }
+    }
 }
 
 #[cfg(test)]
