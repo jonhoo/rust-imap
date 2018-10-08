@@ -533,6 +533,13 @@ impl <T: Read + Write> Session<T> {
         self.run_command_and_check_ok("EXPUNGE")
     }
 
+    /// Permanently removes all messages that have both the \Deleted flag set and have a UID that is
+    /// included in the specified message set.
+    /// The UID EXPUNGE command is defined in [RFC 4315 - "Internet Message Access Protocol (IMAP) - UIDPLUS extension"](https://tools.ietf.org/html/rfc4315#section-2.1).
+    pub fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
+        self.run_command_and_check_ok(&format!("UID EXPUNGE {}", uid_set))
+    }
+
     /// Check requests a checkpoint of the currently selected mailbox.
     pub fn check(&mut self) -> Result<()> {
         self.run_command_and_check_ok("CHECK")
@@ -990,6 +997,21 @@ mod tests {
         session.expunge().unwrap();
         assert!(
             session.stream.get_ref().written_buf == b"a1 EXPUNGE\r\n".to_vec(),
+            "Invalid expunge command"
+        );
+    }
+
+    #[test]
+    fn uid_expunge() {
+        let response = b"* 2 EXPUNGE\r\n\
+            * 3 EXPUNGE\r\n\
+            * 4 EXPUNGE\r\n\
+            a1 OK UID EXPUNGE completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.uid_expunge("2:4").unwrap();
+        assert!(
+            session.stream.get_ref().written_buf == b"a1 UID EXPUNGE 2:4\r\n".to_vec(),
             "Invalid expunge command"
         );
     }
