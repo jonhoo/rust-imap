@@ -1,5 +1,4 @@
 use imap_proto::{self, MailboxDatum, Response};
-use nom::IResult;
 use regex::Regex;
 use std::collections::HashSet;
 
@@ -36,7 +35,7 @@ where
             }
 
             match imap_proto::parse_response(lines) {
-                IResult::Done(rest, resp) => {
+                Ok((rest, resp)) => {
                     lines = rest;
 
                     match map(resp) {
@@ -130,7 +129,7 @@ pub fn parse_capabilities(lines: Vec<u8>) -> ZeroCopyResult<Capabilities> {
         let mut caps = HashSet::new();
         loop {
             match imap_proto::parse_response(lines) {
-                IResult::Done(rest, Response::Capabilities(c)) => {
+                Ok((rest, Response::Capabilities(c))) => {
                     lines = rest;
                     caps.extend(c);
 
@@ -138,7 +137,7 @@ pub fn parse_capabilities(lines: Vec<u8>) -> ZeroCopyResult<Capabilities> {
                         break Ok(Capabilities(caps));
                     }
                 }
-                IResult::Done(_, resp) => {
+                Ok((_, resp)) => {
                     break Err(resp.into());
                 }
                 _ => {
@@ -156,7 +155,7 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
 
     loop {
         match imap_proto::parse_response(lines) {
-            IResult::Done(rest, Response::Data { status, code, .. }) => {
+            Ok((rest, Response::Data { status, code, .. })) => {
                 lines = rest;
 
                 if let imap_proto::Status::Ok = status {
@@ -184,7 +183,7 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
                     _ => {}
                 }
             }
-            IResult::Done(rest, Response::MailboxData(m)) => {
+            Ok((rest, Response::MailboxData(m))) => {
                 lines = rest;
 
                 use imap_proto::MailboxDatum;
@@ -206,7 +205,7 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
                     MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
                 }
             }
-            IResult::Done(_, resp) => {
+            Ok((_, resp)) => {
                 break Err(resp.into());
             }
             _ => {
@@ -225,7 +224,7 @@ pub fn parse_ids(lines: Vec<u8>) -> Result<HashSet<u32>> {
     let mut ids = HashSet::new();
     loop {
         match imap_proto::parse_response(lines) {
-            IResult::Done(rest, Response::IDs(c)) => {
+            Ok((rest, Response::IDs(c))) => {
                 lines = rest;
                 ids.extend(c);
 
@@ -233,7 +232,7 @@ pub fn parse_ids(lines: Vec<u8>) -> Result<HashSet<u32>> {
                     break Ok(ids);
                 }
             }
-            IResult::Done(_, resp) => {
+            Ok((_, resp)) => {
                 break Err(resp.into());
             }
             _ => {

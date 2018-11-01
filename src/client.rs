@@ -1,6 +1,5 @@
 use bufstream::BufStream;
 use native_tls::{TlsConnector, TlsStream};
-use nom::IResult;
 use std::collections::HashSet;
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -743,7 +742,7 @@ impl<T: Read + Write> Connection<T> {
                 let line = &data[line_start..];
 
                 match parse_response(line) {
-                    IResult::Done(
+                    Ok((
                         _,
                         Response::Done {
                             tag,
@@ -751,7 +750,7 @@ impl<T: Read + Write> Connection<T> {
                             information,
                             ..
                         },
-                    ) => {
+                    )) => {
                         assert_eq!(tag.as_bytes(), match_tag.as_bytes());
                         Some(match status {
                             Status::Bad | Status::No => {
@@ -761,8 +760,8 @@ impl<T: Read + Write> Connection<T> {
                             status => Err((status, None)),
                         })
                     }
-                    IResult::Done(..) => None,
-                    IResult::Incomplete(..) => {
+                    Ok((..)) => None,
+                    Err(nom::Err::Incomplete(..)) => {
                         continue_from = Some(line_start);
                         None
                     }
