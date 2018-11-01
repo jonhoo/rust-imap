@@ -112,9 +112,7 @@ pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
                     AttributeValue::Uid(uid) => fetch.uid = Some(uid),
                     AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
                     AttributeValue::Rfc822Header(rfc) => fetch.rfc822_header = rfc,
-                    AttributeValue::BodySection {
-                        data, ..
-                    } => fetch.body = data,
+                    AttributeValue::BodySection { data, .. } => fetch.body = data,
                     _ => {}
                 }
             }
@@ -331,7 +329,10 @@ mod tests {
                 2375, 2376, 2377, 2378, 2379, 2380, 2381, 2382, 2383, 2384, 2385, 2386, 2390, 2392,
                 2397, 2400, 2401, 2403, 2405, 2409, 2411, 2414, 2417, 2419, 2420, 2424, 2426, 2428,
                 2439, 2454, 2456, 2467, 2468, 2469, 2490, 2515, 2519, 2520, 2521
-            ].iter().cloned().collect()
+            ]
+            .iter()
+            .cloned()
+            .collect()
         );
 
         let lines = b"* SEARCH\r\n";

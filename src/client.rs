@@ -1,16 +1,17 @@
 use bufstream::BufStream;
 use native_tls::{TlsConnector, TlsStream};
 use nom::IResult;
+use std::collections::HashSet;
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::ops::{Deref, DerefMut};
 use std::time::Duration;
-use std::ops::{Deref,DerefMut};
-use std::collections::HashSet;
 
 use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
 use super::parse::{
-    parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox, parse_names, parse_ids,
+    parse_authenticate_response, parse_capabilities, parse_fetches, parse_ids, parse_mailbox,
+    parse_names,
 };
 use super::types::*;
 
@@ -95,7 +96,6 @@ impl<T: Read + Write> DerefMut for Session<T> {
         &mut self.conn
     }
 }
-
 
 /// `IdleHandle` allows a client to block waiting for changes to the remote mailbox.
 ///
@@ -246,9 +246,7 @@ impl<'a> SetReadTimeout for TcpStream {
 
 impl<'a> SetReadTimeout for TlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
-        self.get_ref()
-            .set_read_timeout(timeout)
-            .map_err(Error::Io)
+        self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
     }
 }
 
@@ -316,7 +314,6 @@ pub fn secure_connect<A: ToSocketAddrs>(
     }
 }
 
-
 impl Client<TcpStream> {
     /// This will upgrade a regular TCP connection to use SSL.
     ///
@@ -345,9 +342,9 @@ macro_rules! ok_or_unauth_client_err {
     ($r:expr, $self:expr) => {
         match $r {
             Ok(o) => o,
-            Err(e) => return Err((e, $self))
+            Err(e) => return Err((e, $self)),
         }
-    }
+    };
 }
 
 impl<T: Read + Write> Client<T> {
@@ -363,19 +360,22 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Authenticate will authenticate with the server, using the authenticator given.
-    pub fn authenticate<A: Authenticator> (
+    pub fn authenticate<A: Authenticator>(
         mut self,
         auth_type: &str,
         authenticator: A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
-        ok_or_unauth_client_err!(self.run_command(&format!("AUTHENTICATE {}", auth_type)), self);
+        ok_or_unauth_client_err!(
+            self.run_command(&format!("AUTHENTICATE {}", auth_type)),
+            self
+        );
         self.do_auth_handshake(&authenticator)
     }
 
     /// This func does the handshake process once the authenticate command is made.
     fn do_auth_handshake<A: Authenticator>(
         mut self,
-        authenticator: &A
+        authenticator: &A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // TODO Clean up this code
         loop {
@@ -386,10 +386,15 @@ impl<T: Read + Write> Client<T> {
 
             if line.starts_with(b"+") {
                 let data = ok_or_unauth_client_err!(
-                    parse_authenticate_response(String::from_utf8(line).unwrap()), self);
+                    parse_authenticate_response(String::from_utf8(line).unwrap()),
+                    self
+                );
                 let auth_response = authenticator.process(data);
 
-                ok_or_unauth_client_err!(self.write_line(auth_response.into_bytes().as_slice()), self);
+                ok_or_unauth_client_err!(
+                    self.write_line(auth_response.into_bytes().as_slice()),
+                    self
+                );
             } else {
                 ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
                 return Ok(Session { conn: self.conn });
@@ -430,18 +435,20 @@ impl<T: Read + Write> Client<T> {
     pub fn login(
         mut self,
         username: &str,
-        password: &str
+        password: &str,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         let u = ok_or_unauth_client_err!(validate_str(username), self);
         let p = ok_or_unauth_client_err!(validate_str(password), self);
-        ok_or_unauth_client_err!(self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)), self);
+        ok_or_unauth_client_err!(
+            self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)),
+            self
+        );
 
         Ok(Session { conn: self.conn })
     }
 }
 
-
-impl <T: Read + Write> Session<T> {
+impl<T: Read + Write> Session<T> {
     /// Selects a mailbox
     ///
     /// Note that the server *is* allowed to unilaterally send things to the client for messages in
@@ -576,7 +583,11 @@ impl <T: Read + Write> Session<T> {
     /// The MOVE command is defined in [RFC 6851 - "Internet Message Access Protocol (IMAP)
     /// - MOVE Extension"](https://tools.ietf.org/html/rfc6851#section-3).
     pub fn mv(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("MOVE {} {}", sequence_set, validate_str(mailbox_name)?))
+        self.run_command_and_check_ok(&format!(
+            "MOVE {} {}",
+            sequence_set,
+            validate_str(mailbox_name)?
+        ))
     }
 
     /// Moves each message in the uid set into the destination mailbox.
@@ -601,7 +612,8 @@ impl <T: Read + Write> Session<T> {
             "LIST {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        )).and_then(parse_names)
+        ))
+        .and_then(parse_names)
     }
 
     /// The LSUB command returns a subset of names from the set of names
@@ -615,7 +627,8 @@ impl <T: Read + Write> Session<T> {
             "LSUB {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        )).and_then(parse_names)
+        ))
+        .and_then(parse_names)
     }
 
     /// The STATUS command requests the status of the indicated mailbox.
@@ -624,7 +637,8 @@ impl <T: Read + Write> Session<T> {
             "STATUS {} {}",
             validate_str(mailbox_name)?,
             status_data_items
-        )).and_then(|lines| parse_mailbox(&lines[..]))
+        ))
+        .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
     /// Returns a handle that can be used to block until the state of the currently selected
@@ -683,7 +697,7 @@ impl <T: Read + Write> Session<T> {
     }
 }
 
-impl <T: Read + Write> Connection<T> {
+impl<T: Read + Write> Connection<T> {
     fn read_greeting(&mut self) -> Result<()> {
         let mut v = Vec::new();
         self.readline(&mut v)?;
@@ -815,7 +829,6 @@ impl <T: Read + Write> Connection<T> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::super::error::Result;
@@ -824,8 +837,10 @@ mod tests {
 
     macro_rules! mock_session {
         ($s:expr) => {
-            Session { conn: Client::new($s).conn }
-        }
+            Session {
+                conn: Client::new($s).conn,
+            }
+        };
     }
 
     #[test]
@@ -1006,7 +1021,8 @@ mod tests {
         let response = b"* 2 EXPUNGE\r\n\
             * 3 EXPUNGE\r\n\
             * 4 EXPUNGE\r\n\
-            a1 OK UID EXPUNGE completed\r\n".to_vec();
+            a1 OK UID EXPUNGE completed\r\n"
+            .to_vec();
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         session.uid_expunge("2:4").unwrap();
@@ -1266,7 +1282,8 @@ mod tests {
         let response = b"* OK [COPYUID 1511554416 142,399 41:42] Moved UIDs.\r\n\
             * 2 EXPUNGE\r\n\
             * 1 EXPUNGE\r\n\
-            a1 OK Move completed\r\n".to_vec();
+            a1 OK Move completed\r\n"
+            .to_vec();
         let mailbox_name = "MEETING";
         let command = format!("a1 MOVE 1:2 {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
@@ -1283,7 +1300,8 @@ mod tests {
         let response = b"* OK [COPYUID 1511554416 142,399 41:42] Moved UIDs.\r\n\
             * 2 EXPUNGE\r\n\
             * 1 EXPUNGE\r\n\
-            a1 OK Move completed\r\n".to_vec();
+            a1 OK Move completed\r\n"
+            .to_vec();
         let mailbox_name = "MEETING";
         let command = format!("a1 UID MOVE 41:42 {}\r\n", quote!(mailbox_name));
         let mock_stream = MockStream::new(response);
