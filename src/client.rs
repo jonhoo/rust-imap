@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::{Deref, DerefMut};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use super::authenticator::Authenticator;
@@ -44,6 +45,10 @@ fn validate_str(value: &str) -> Result<String> {
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
+    /// Server responses that are not related to the current command. See also the note on
+    /// [unilateral server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
+    pub unsolicited_responses: mpsc::Receiver<UnsolicitedResponse>,
+    unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
 }
 
 /// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
@@ -396,7 +401,7 @@ impl<T: Read + Write> Client<T> {
                 );
             } else {
                 ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
-                return Ok(Session { conn: self.conn });
+                return Ok(Session::new(self.conn));
             }
         }
     }
@@ -443,27 +448,34 @@ impl<T: Read + Write> Client<T> {
             self
         );
 
-        Ok(Session { conn: self.conn })
+        Ok(Session::new(self.conn))
     }
 }
 
 impl<T: Read + Write> Session<T> {
+    // not public, just to avoid duplicating the channel creation code
+    fn new(conn: Connection<T>) -> Self {
+        let (tx, rx) = mpsc::channel();
+        Session { conn, unsolicited_responses: rx, unsolicited_responses_tx: tx }
+    }
+
     /// Selects a mailbox
     ///
     /// Note that the server *is* allowed to unilaterally send things to the client for messages in
     /// a selected mailbox whose status has changed. See the note on [unilateral server responses
     /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that if you use
     /// [`Connection::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
-    /// `EXISTS`, `FETCH`, and `EXPUNGE` responses!
+    /// `EXISTS`, `FETCH`, and `EXPUNGE` responses. You can get them from the
+    /// `unsolicited_responses` channel of the [`Session`](struct.Session.html).
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
-            .and_then(|lines| parse_mailbox(&lines[..]))
+            .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
-            .and_then(|lines| parse_mailbox(&lines[..]))
+            .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
     /// Fetch retreives data associated with a set of messages in the mailbox.
@@ -473,7 +485,7 @@ impl<T: Read + Write> Session<T> {
     /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
-            .and_then(parse_fetches)
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Fetch retreives data associated with a set of messages by UID in the mailbox.
@@ -483,7 +495,7 @@ impl<T: Read + Write> Session<T> {
     /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
-            .and_then(parse_fetches)
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Noop always succeeds, and it does nothing.
@@ -530,7 +542,7 @@ impl<T: Read + Write> Session<T> {
     /// Capability requests a listing of capabilities that the server supports.
     pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
         self.run_command_and_read_response("CAPABILITY")
-            .and_then(parse_capabilities)
+            .and_then(|lines| parse_capabilities(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Expunge permanently removes all messages that have the \Deleted flag set from the currently
@@ -560,12 +572,12 @@ impl<T: Read + Write> Session<T> {
     /// Store alters data associated with a message in the mailbox.
     pub fn store(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
-            .and_then(parse_fetches)
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
     pub fn uid_store(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
-            .and_then(parse_fetches)
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Copy copies the specified message to the end of the specified destination mailbox.
@@ -612,7 +624,7 @@ impl<T: Read + Write> Session<T> {
             quote!(reference_name),
             mailbox_search_pattern
         ))
-        .and_then(parse_names)
+        .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The LSUB command returns a subset of names from the set of names
@@ -627,7 +639,7 @@ impl<T: Read + Write> Session<T> {
             quote!(reference_name),
             mailbox_search_pattern
         ))
-        .and_then(parse_names)
+        .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The STATUS command requests the status of the indicated mailbox.
@@ -637,7 +649,7 @@ impl<T: Read + Write> Session<T> {
             validate_str(mailbox_name)?,
             status_data_items
         ))
-        .and_then(|lines| parse_mailbox(&lines[..]))
+        .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
     /// Returns a handle that can be used to block until the state of the currently selected
@@ -664,14 +676,14 @@ impl<T: Read + Write> Session<T> {
     /// the list of message sequence numbers of those messages.
     pub fn search(&mut self, query: &str) -> Result<HashSet<u32>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query))
-            .and_then(parse_ids)
+            .and_then(|lines| parse_ids(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Searches the mailbox for messages that match the given criteria and returns
     /// the list of unique identifier numbers of those messages.
     pub fn uid_search(&mut self, query: &str) -> Result<HashSet<u32>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query))
-            .and_then(parse_ids)
+            .and_then(|lines| parse_ids(lines, &mut self.unsolicited_responses_tx))
     }
 
     // these are only here because they are public interface, the rest is in `Connection`
@@ -836,9 +848,7 @@ mod tests {
 
     macro_rules! mock_session {
         ($s:expr) => {
-            Session {
-                conn: Client::new($s).conn,
-            }
+            Session::new(Client::new($s).conn)
         };
     }
 

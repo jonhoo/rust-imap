@@ -10,6 +10,25 @@ pub use self::name::Name;
 mod capabilities;
 pub use self::capabilities::Capabilities;
 
+
+/// re-exported from imap_proto;
+pub use imap_proto::StatusAttribute;
+
+/// Responses that the server sends that are not related to the current command.
+/// [RFC 3501](https://tools.ietf.org/html/rfc3501#section-7) states that clients need to be able
+/// to accept any response at any time. These are the ones we've encountered in the wild.
+///
+/// Note that `Recent`, `Exists` and `Expunge` responses refer to the currently `SELECT`ed folder,
+/// so the user must take care when interpreting these.
+#[derive(Debug, PartialEq, Eq)]
+pub enum UnsolicitedResponse {
+    Status(String, Vec<StatusAttribute>),
+    Recent(u32),
+    Exists(u32),
+    Expunge(u32),
+}
+
+
 pub struct ZeroCopy<D> {
     _owned: Box<[u8]>,
     derived: D,
