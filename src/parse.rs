@@ -146,21 +146,34 @@ pub fn parse_capabilities(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<Unsolic
                 Ok((rest, Response::Capabilities(c))) => {
                     lines = rest;
                     caps.extend(c);
-
-                    if lines.is_empty() {
-                        break Ok(Capabilities(caps));
-                    }
                 }
-                Ok((rest, Response::MailboxData(MailboxDatum::Status { mailbox, status }))) => {
+                Ok((rest, data)) => {
                     lines = rest;
-                    unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status)).unwrap();
-                }
-                Ok((_, resp)) => {
-                    break Err(resp.into());
+                    match data {
+                        Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
+                            unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status)).unwrap();
+                        }
+                        Response::MailboxData(MailboxDatum::Recent(n)) => {
+                            unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
+                        }
+                        Response::MailboxData(MailboxDatum::Exists(n)) => {
+                            unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
+                        }
+                        Response::Expunge(n) => {
+                            unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+                        }
+                        resp => {
+                            break Err(resp.into());
+                        }
+                    }
                 }
                 _ => {
                     break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
                 }
+            }
+
+            if lines.is_empty() {
+                break Ok(Capabilities(caps));
             }
         }
     };
@@ -223,6 +236,10 @@ pub fn parse_mailbox(mut lines: &[u8], unsolicited: &mut mpsc::Sender<Unsolicite
                     MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
                 }
             }
+            Ok((rest, Response::Expunge(n))) => {
+                lines = rest;
+                unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+            }
             Ok((_, resp)) => {
                 break Err(resp.into());
             }
@@ -241,21 +258,34 @@ pub fn parse_ids(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedRespo
     let mut lines = &lines[..];
     let mut ids = HashSet::new();
     loop {
+        if lines.is_empty() {
+            break Ok(ids);
+        }
+
         match imap_proto::parse_response(lines) {
             Ok((rest, Response::IDs(c))) => {
                 lines = rest;
                 ids.extend(c);
-
-                if lines.is_empty() {
-                    break Ok(ids);
-                }
             }
-            Ok((rest, Response::MailboxData(MailboxDatum::Status { mailbox, status }))) => {
+            Ok((rest, data)) => {
                 lines = rest;
-                unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status)).unwrap();
-            }
-            Ok((_, resp)) => {
-                break Err(resp.into());
+                match data {
+                    Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
+                        unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status)).unwrap();
+                    }
+                    Response::MailboxData(MailboxDatum::Recent(n)) => {
+                        unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
+                    }
+                    Response::MailboxData(MailboxDatum::Exists(n)) => {
+                        unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
+                    }
+                    Response::Expunge(n) => {
+                        unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+                    }
+                    resp => {
+                        break Err(resp.into());
+                    }
+                }
             }
             _ => {
                 break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
@@ -344,6 +374,64 @@ mod tests {
         assert_eq!(fetches[0].message, 37);
         assert_eq!(fetches[0].uid, Some(74));
     }
+
+    #[test]
+    fn parse_names_w_unilateral() {
+        let lines = b"\
+                    * LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n\
+                    * 4 EXPUNGE\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let names = parse_names(lines.to_vec(), &mut send).unwrap();
+
+        assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Expunge(4));
+
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[0].attributes(), &["\\HasNoChildren"]);
+        assert_eq!(names[0].delimiter(), ".");
+        assert_eq!(names[0].name(), "INBOX");
+
+    }
+
+    #[test]
+    fn parse_capabilities_w_unilateral() {
+        use types::StatusAttribute::*;
+
+        let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
+        let lines = b"\
+                    * CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
+                    * STATUS dev.github (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n\
+                    * 4 EXISTS\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+
+        assert_eq!(capabilities.len(), 4);
+        for e in expected_capabilities {
+            assert!(capabilities.has(e));
+        }
+
+        assert_eq!(recv.try_recv().unwrap(),
+            UnsolicitedResponse::Status("dev.github".to_string(), vec![Messages(10), UidNext(11), UidValidity(1408806928), Unseen(0)]));
+        assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Exists(4));
+    }
+
+    #[test]
+    fn parse_ids_w_unilateral() {
+        use types::StatusAttribute::*;
+
+        let lines = b"\
+            * SEARCH 23 42 4711\r\n\
+            * 1 RECENT\r\n\
+            * STATUS INBOX (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let ids = parse_ids(lines.to_vec(), &mut send).unwrap();
+
+        assert_eq!(ids, [23, 42, 4711].iter().cloned().collect());
+
+        assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Recent(1));
+        assert_eq!(recv.try_recv().unwrap(),
+            UnsolicitedResponse::Status("INBOX".to_string(), vec![Messages(10), UidNext(11), UidValidity(1408806928), Unseen(0)]));
+    }
+
 
     #[test]
     fn parse_ids_test() {
