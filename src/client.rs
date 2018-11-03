@@ -1,5 +1,6 @@
 use bufstream::BufStream;
 use native_tls::{TlsConnector, TlsStream};
+use nom;
 use std::collections::HashSet;
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
