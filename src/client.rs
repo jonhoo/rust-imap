@@ -395,8 +395,8 @@ impl<T: Read + Write> Client<T> {
                     parse_authenticate_response(String::from_utf8(line).unwrap()),
                     self
                 );
-                let auth_response = base64::encode(authenticator.process(data).as_str());
-
+                let raw_response = &authenticator.process(data);
+                let auth_response = base64::encode(raw_response);
                 ok_or_unauth_client_err!(
                     self.write_line(auth_response.into_bytes().as_slice()),
                     self
@@ -948,8 +948,9 @@ mod tests {
         let client = Client::new(mock_stream);
         enum Authenticate { Auth };
         impl Authenticator for Authenticate {
-            fn process(&self, _: String) -> String {
-                "foo".to_string()
+            type Response = Vec<u8>;
+            fn process(&self, _: String) -> Self::Response {
+                b"foo".to_vec()
             }
         }
         let auth = Authenticate::Auth;
