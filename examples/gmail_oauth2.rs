@@ -13,7 +13,7 @@ struct GmailOAuth2 {
 impl Authenticator for GmailOAuth2 {
     type Response = String;
     #[allow(unused_variables)]
-    fn process(&self, data: String) -> Self::Response {
+    fn process(&self, data: Vec<u8>) -> Self::Response {
         format!(
             "user={}\x01auth=Bearer {}\x01\x01",
             self.user, self.access_token

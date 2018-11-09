@@ -395,7 +395,14 @@ impl<T: Read + Write> Client<T> {
                     parse_authenticate_response(String::from_utf8(line).unwrap()),
                     self
                 );
-                let raw_response = &authenticator.process(data);
+                let challenge = ok_or_unauth_client_err!(
+                    base64::decode(data.as_str())
+                        .map_err(|_|
+                                 Error::Parse(ParseError::Authentication(data))
+                        ),
+                    self
+                );
+                let raw_response = &authenticator.process(challenge);
                 let auth_response = base64::encode(raw_response);
                 ok_or_unauth_client_err!(
                     self.write_line(auth_response.into_bytes().as_slice()),
@@ -940,7 +947,7 @@ mod tests {
 
     #[test]
     fn authenticate() {
-        let response = b"+\r\n\
+        let response = b"+YmFy\r\n\
                          a1 OK Logged in\r\n".to_vec();
         let command =  "a1 AUTHENTICATE PLAIN\r\n\
                         Zm9v\r\n";
@@ -949,7 +956,11 @@ mod tests {
         enum Authenticate { Auth };
         impl Authenticator for Authenticate {
             type Response = Vec<u8>;
-            fn process(&self, _: String) -> Self::Response {
+            fn process(&self, challenge: Vec<u8>) -> Self::Response {
+                assert!(
+                    challenge == b"bar".to_vec(),
+                    "Invalid authenticate challenge"
+                );
                 b"foo".to_vec()
             }
         }
