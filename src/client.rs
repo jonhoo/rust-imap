@@ -402,7 +402,7 @@ impl<T: Read + Write> Client<T> {
                         ),
                     self
                 );
-                let raw_response = &authenticator.process(challenge);
+                let raw_response = &authenticator.process(&challenge);
                 let auth_response = base64::encode(raw_response);
                 ok_or_unauth_client_err!(
                     self.write_line(auth_response.into_bytes().as_slice()),
@@ -956,9 +956,9 @@ mod tests {
         enum Authenticate { Auth };
         impl Authenticator for Authenticate {
             type Response = Vec<u8>;
-            fn process(&self, challenge: Vec<u8>) -> Self::Response {
+            fn process(&self, challenge: &[u8]) -> Self::Response {
                 assert!(
-                    challenge == b"bar".to_vec(),
+                    challenge == b"bar",
                     "Invalid authenticate challenge"
                 );
                 b"foo".to_vec()
