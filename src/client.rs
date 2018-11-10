@@ -1,3 +1,4 @@
+extern crate base64;
 use bufstream::BufStream;
 use native_tls::{TlsConnector, TlsStream};
 use nom;
@@ -394,8 +395,15 @@ impl<T: Read + Write> Client<T> {
                     parse_authenticate_response(String::from_utf8(line).unwrap()),
                     self
                 );
-                let auth_response = authenticator.process(data);
-
+                let challenge = ok_or_unauth_client_err!(
+                    base64::decode(data.as_str())
+                        .map_err(|_|
+                                 Error::Parse(ParseError::Authentication(data))
+                        ),
+                    self
+                );
+                let raw_response = &authenticator.process(&challenge);
+                let auth_response = base64::encode(raw_response);
                 ok_or_unauth_client_err!(
                     self.write_line(auth_response.into_bytes().as_slice()),
                     self
@@ -934,6 +942,33 @@ mod tests {
         assert!(
             command2 == expected_command2,
             "expected command doesn't equal actual command"
+        );
+    }
+
+    #[test]
+    fn authenticate() {
+        let response = b"+YmFy\r\n\
+                         a1 OK Logged in\r\n".to_vec();
+        let command =  "a1 AUTHENTICATE PLAIN\r\n\
+                        Zm9v\r\n";
+        let mock_stream = MockStream::new(response);
+        let client = Client::new(mock_stream);
+        enum Authenticate { Auth };
+        impl Authenticator for Authenticate {
+            type Response = Vec<u8>;
+            fn process(&self, challenge: &[u8]) -> Self::Response {
+                assert!(
+                    challenge == b"bar",
+                    "Invalid authenticate challenge"
+                );
+                b"foo".to_vec()
+            }
+        }
+        let auth = Authenticate::Auth;
+        let session = client.authenticate("PLAIN", auth).unwrap();
+        assert!(
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            "Invalid authenticate command"
         );
     }
 
