@@ -390,7 +390,7 @@ impl<T: Read + Write> Client<T> {
             // early (see also comment on `login`)
             ok_or_unauth_client_err!(self.readline(&mut line), self);
 
-            if line.starts_with(b"+") {
+            if line.starts_with(b"+ ") {
                 let data = ok_or_unauth_client_err!(
                     parse_authenticate_response(String::from_utf8(line).unwrap()),
                     self
@@ -947,7 +947,7 @@ mod tests {
 
     #[test]
     fn authenticate() {
-        let response = b"+YmFy\r\n\
+        let response = b"+ YmFy\r\n\
                          a1 OK Logged in\r\n".to_vec();
         let command =  "a1 AUTHENTICATE PLAIN\r\n\
                         Zm9v\r\n";
