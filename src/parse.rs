@@ -7,7 +7,7 @@ use super::error::{Error, ParseError, Result};
 use super::types::*;
 
 pub fn parse_authenticate_response(line: String) -> Result<String> {
-    let authenticate_regex = Regex::new("^\\+(.*)\r\n").unwrap();
+    let authenticate_regex = Regex::new("^\\+ (.*)\r\n").unwrap();
 
     if let Some(cap) = authenticate_regex.captures_iter(line.as_str()).next() {
         let data = cap.get(1).map(|x| x.as_str()).unwrap_or("");
