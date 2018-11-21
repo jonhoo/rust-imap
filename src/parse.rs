@@ -14,7 +14,7 @@ pub fn parse_authenticate_response(line: String) -> Result<String> {
         return Ok(String::from(data));
     }
 
-    Err(Error::Parse(ParseError::Authentication(line)))
+    Err(Error::Parse(ParseError::Authentication(line, None)))
 }
 
 enum MapOrNot<T> {
@@ -24,9 +24,13 @@ enum MapOrNot<T> {
     Ignore,
 }
 
-unsafe fn parse_many<T, F>(lines: Vec<u8>, mut map: F, unsolicited: &mut mpsc::Sender<UnsolicitedResponse>) -> ZeroCopyResult<Vec<T>>
+unsafe fn parse_many<T, F>(
+    lines: Vec<u8>,
+    mut map: F,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> ZeroCopyResult<Vec<T>>
 where
-    F: FnMut(Response<'static>) -> MapOrNot<T>,
+    F: FnMut(Response<'static>) -> Result<MapOrNot<T>>,
 {
     let f = |mut lines: &'static [u8]| {
         let mut things = Vec::new();
@@ -39,26 +43,27 @@ where
                 Ok((rest, resp)) => {
                     lines = rest;
 
-                    match map(resp) {
+                    match map(resp)? {
                         MapOrNot::Map(t) => things.push(t),
                         MapOrNot::Not(resp) => {
                             // check if this is simply a unilateral server response
                             // (see Section 7 of RFC 3501):
                             match resp {
                                 Response::MailboxData(MailboxDatum::Recent(n)) => {
-                                    unsolicited.send(UnsolicitedResponse::Recent(n))
-                                        .unwrap();
+                                    unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
                                 }
                                 Response::MailboxData(MailboxDatum::Exists(n)) => {
-                                    unsolicited.send(UnsolicitedResponse::Exists(n))
-                                        .unwrap();
+                                    unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
                                 }
                                 Response::Expunge(id) => {
-                                    unsolicited.send(UnsolicitedResponse::Expunge(id))
-                                        .unwrap();
+                                    unsolicited.send(UnsolicitedResponse::Expunge(id)).unwrap();
                                 }
                                 Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                                    unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status))
+                                    unsolicited
+                                        .send(UnsolicitedResponse::Status {
+                                            mailbox: mailbox.into(),
+                                            attributes: status,
+                                        })
                                         .unwrap();
                                 }
                                 Response::Fetch(..) => {
@@ -66,7 +71,7 @@ where
                                 }
                                 resp => break Err(resp.into()),
                             }
-                        },
+                        }
                         MapOrNot::Ignore => continue,
                     }
                 }
@@ -80,7 +85,10 @@ where
     ZeroCopy::new(lines, f)
 }
 
-pub fn parse_names(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedResponse>) -> ZeroCopyResult<Vec<Name>> {
+pub fn parse_names(
+    lines: Vec<u8>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> ZeroCopyResult<Vec<Name>> {
     use imap_proto::MailboxDatum;
     let f = |resp| match resp {
         // https://github.com/djc/imap-proto/issues/4
@@ -93,18 +101,21 @@ pub fn parse_names(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedRes
             flags,
             delimiter,
             name,
-        }) => MapOrNot::Map(Name {
-            attributes: flags,
+        }) => Ok(MapOrNot::Map(Name {
+            attributes: flags.into_iter().map(NameAttribute::from).collect(),
             delimiter,
             name,
-        }),
-        resp => MapOrNot::Not(resp),
+        })),
+        resp => Ok(MapOrNot::Not(resp)),
     };
 
     unsafe { parse_many(lines, f, unsolicited) }
 }
 
-pub fn parse_fetches(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedResponse>) -> ZeroCopyResult<Vec<Fetch>> {
+pub fn parse_fetches(
+    lines: Vec<u8>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> ZeroCopyResult<Vec<Fetch>> {
     let f = |resp| match resp {
         Response::Fetch(num, attrs) => {
             let mut fetch = Fetch {
@@ -120,7 +131,7 @@ pub fn parse_fetches(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedR
                 use imap_proto::AttributeValue;
                 match attr {
                     AttributeValue::Flags(flags) => {
-                        fetch.flags.extend(flags);
+                        fetch.flags.extend(flags.into_iter().map(Flag::from));
                     }
                     AttributeValue::Uid(uid) => fetch.uid = Some(uid),
                     AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
@@ -130,15 +141,18 @@ pub fn parse_fetches(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedR
                 }
             }
 
-            MapOrNot::Map(fetch)
+            Ok(MapOrNot::Map(fetch))
         }
-        resp => MapOrNot::Not(resp),
+        resp => Ok(MapOrNot::Not(resp)),
     };
 
     unsafe { parse_many(lines, f, unsolicited) }
 }
 
-pub fn parse_capabilities(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedResponse>) -> ZeroCopyResult<Capabilities> {
+pub fn parse_capabilities(
+    lines: Vec<u8>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> ZeroCopyResult<Capabilities> {
     let f = |mut lines| {
         let mut caps = HashSet::new();
         loop {
@@ -151,7 +165,12 @@ pub fn parse_capabilities(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<Unsolic
                     lines = rest;
                     match data {
                         Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                            unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status)).unwrap();
+                            unsolicited
+                                .send(UnsolicitedResponse::Status {
+                                    mailbox: mailbox.into(),
+                                    attributes: status,
+                                })
+                                .unwrap();
                         }
                         Response::MailboxData(MailboxDatum::Recent(n)) => {
                             unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
@@ -181,7 +200,10 @@ pub fn parse_capabilities(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<Unsolic
     unsafe { ZeroCopy::new(lines, f) }
 }
 
-pub fn parse_mailbox(mut lines: &[u8], unsolicited: &mut mpsc::Sender<UnsolicitedResponse>) -> Result<Mailbox> {
+pub fn parse_mailbox(
+    mut lines: &[u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Mailbox> {
     let mut mailbox = Mailbox::default();
 
     loop {
@@ -209,7 +231,7 @@ pub fn parse_mailbox(mut lines: &[u8], unsolicited: &mut mpsc::Sender<Unsolicite
                     Some(ResponseCode::PermanentFlags(flags)) => {
                         mailbox
                             .permanent_flags
-                            .extend(flags.into_iter().map(|s| s.to_string()));
+                            .extend(flags.into_iter().map(String::from).map(Flag::from));
                     }
                     _ => {}
                 }
@@ -220,7 +242,12 @@ pub fn parse_mailbox(mut lines: &[u8], unsolicited: &mut mpsc::Sender<Unsolicite
                 use imap_proto::MailboxDatum;
                 match m {
                     MailboxDatum::Status { mailbox, status } => {
-                        unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status)).unwrap();
+                        unsolicited
+                            .send(UnsolicitedResponse::Status {
+                                mailbox: mailbox.into(),
+                                attributes: status,
+                            })
+                            .unwrap();
                     }
                     MailboxDatum::Exists(e) => {
                         mailbox.exists = e;
@@ -231,7 +258,7 @@ pub fn parse_mailbox(mut lines: &[u8], unsolicited: &mut mpsc::Sender<Unsolicite
                     MailboxDatum::Flags(flags) => {
                         mailbox
                             .flags
-                            .extend(flags.into_iter().map(|s| s.to_string()));
+                            .extend(flags.into_iter().map(String::from).map(Flag::from));
                     }
                     MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
                 }
@@ -254,7 +281,10 @@ pub fn parse_mailbox(mut lines: &[u8], unsolicited: &mut mpsc::Sender<Unsolicite
     }
 }
 
-pub fn parse_ids(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedResponse>) -> Result<HashSet<u32>> {
+pub fn parse_ids(
+    lines: Vec<u8>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<HashSet<u32>> {
     let mut lines = &lines[..];
     let mut ids = HashSet::new();
     loop {
@@ -271,7 +301,12 @@ pub fn parse_ids(lines: Vec<u8>, unsolicited: &mut mpsc::Sender<UnsolicitedRespo
                 lines = rest;
                 match data {
                     Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                        unsolicited.send(UnsolicitedResponse::Status(mailbox.into(), status)).unwrap();
+                        unsolicited
+                            .send(UnsolicitedResponse::Status {
+                                mailbox: mailbox.into(),
+                                attributes: status,
+                            })
+                            .unwrap();
                     }
                     Response::MailboxData(MailboxDatum::Recent(n)) => {
                         unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
@@ -328,7 +363,10 @@ mod tests {
         let names = parse_names(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert_eq!(names.len(), 1);
-        assert_eq!(names[0].attributes(), &["\\HasNoChildren"]);
+        assert_eq!(
+            names[0].attributes(),
+            &[NameAttribute::from("\\HasNoChildren")]
+        );
         assert_eq!(names[0].delimiter(), ".");
         assert_eq!(names[0].name(), "INBOX");
     }
@@ -352,11 +390,11 @@ mod tests {
         assert!(recv.try_recv().is_err());
         assert_eq!(fetches.len(), 2);
         assert_eq!(fetches[0].message, 24);
-        assert_eq!(fetches[0].flags(), &["\\Seen"]);
+        assert_eq!(fetches[0].flags(), &[Flag::Seen]);
         assert_eq!(fetches[0].uid, Some(4827943));
         assert_eq!(fetches[0].rfc822(), None);
         assert_eq!(fetches[1].message, 25);
-        assert_eq!(fetches[1].flags(), &["\\Seen"]);
+        assert_eq!(fetches[1].flags(), &[Flag::Seen]);
         assert_eq!(fetches[1].uid, None);
         assert_eq!(fetches[1].rfc822(), None);
     }
@@ -386,10 +424,12 @@ mod tests {
         assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Expunge(4));
 
         assert_eq!(names.len(), 1);
-        assert_eq!(names[0].attributes(), &["\\HasNoChildren"]);
+        assert_eq!(
+            names[0].attributes(),
+            &[NameAttribute::from("\\HasNoChildren")]
+        );
         assert_eq!(names[0].delimiter(), ".");
         assert_eq!(names[0].name(), "INBOX");
-
     }
 
     #[test]
@@ -409,8 +449,18 @@ mod tests {
             assert!(capabilities.has(e));
         }
 
-        assert_eq!(recv.try_recv().unwrap(),
-            UnsolicitedResponse::Status("dev.github".to_string(), vec![Messages(10), UidNext(11), UidValidity(1408806928), Unseen(0)]));
+        assert_eq!(
+            recv.try_recv().unwrap(),
+            UnsolicitedResponse::Status {
+                mailbox: "dev.github".to_string(),
+                attributes: vec![
+                    Messages(10),
+                    UidNext(11),
+                    UidValidity(1408806928),
+                    Unseen(0)
+                ]
+            }
+        );
         assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Exists(4));
     }
 
@@ -428,10 +478,19 @@ mod tests {
         assert_eq!(ids, [23, 42, 4711].iter().cloned().collect());
 
         assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Recent(1));
-        assert_eq!(recv.try_recv().unwrap(),
-            UnsolicitedResponse::Status("INBOX".to_string(), vec![Messages(10), UidNext(11), UidValidity(1408806928), Unseen(0)]));
+        assert_eq!(
+            recv.try_recv().unwrap(),
+            UnsolicitedResponse::Status {
+                mailbox: "INBOX".to_string(),
+                attributes: vec![
+                    Messages(10),
+                    UidNext(11),
+                    UidValidity(1408806928),
+                    Unseen(0)
+                ]
+            }
+        );
     }
-
 
     #[test]
     fn parse_ids_test() {

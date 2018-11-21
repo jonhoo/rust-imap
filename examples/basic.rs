@@ -1,46 +1,47 @@
 extern crate imap;
 extern crate native_tls;
 
-use native_tls::TlsConnector;
-
-// To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
-// See: https://support.google.com/accounts/answer/6010255?hl=en
-// Look at the gmail_oauth2.rs example on how to connect to a gmail server securely.
 fn main() {
-    let domain = "imap.gmail.com";
-    let port = 993;
-    let socket_addr = (domain, port);
-    let ssl_connector = TlsConnector::builder().build().unwrap();
-    let client = imap::client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
+    // To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
+    // See: https://support.google.com/accounts/answer/6010255?hl=en
+    // Look at the gmail_oauth2.rs example on how to connect to a gmail server securely.
+    fetch_inbox_top().unwrap();
+}
 
-    let mut imap_session = match client.login("username", "password") {
-        Ok(c) => c,
-        Err((e, _unauth_client)) => {
-            eprintln!("failed to login: {}", e);
-            return;
-        }
+fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
+    let domain = "imap.example.com";
+    let tls = native_tls::TlsConnector::builder().build().unwrap();
+
+    // we pass in the domain twice to check that the server's TLS
+    // certificate is valid for the domain we're connecting to.
+    let client = imap::connect((domain, 993), domain, &tls).unwrap();
+
+    // the client we have here is unauthenticated.
+    // to do anything useful with the e-mails, we need to log in
+    let mut imap_session = client
+        .login("me@example.com", "password")
+        .map_err(|e| e.0)?;
+
+    // we want to fetch the first email in the INBOX mailbox
+    imap_session.select("INBOX")?;
+
+    // fetch message number 1 in this mailbox, along with its RFC822 field.
+    // RFC 822 dictates the format of the body of e-mails
+    let messages = imap_session.fetch("1", "RFC822")?;
+    let message = if let Some(m) = messages.iter().next() {
+        m
+    } else {
+        return Ok(None);
     };
 
-    match imap_session.capabilities() {
-        Ok(capabilities) => for capability in capabilities.iter() {
-            println!("{}", capability);
-        },
-        Err(e) => println!("Error parsing capability: {}", e),
-    };
+    // extract the message's body
+    let body = message.rfc822().expect("message did not have a body!");
+    let body = std::str::from_utf8(body)
+        .expect("message was not valid utf-8")
+        .to_string();
 
-    match imap_session.select("INBOX") {
-        Ok(mailbox) => {
-            println!("{}", mailbox);
-        }
-        Err(e) => println!("Error selecting INBOX: {}", e),
-    };
+    // be nice to the server and log out
+    imap_session.logout()?;
 
-    match imap_session.fetch("2", "body[text]") {
-        Ok(msgs) => for msg in &msgs {
-            print!("{:?}", msg);
-        },
-        Err(e) => println!("Error Fetching email 2: {}", e),
-    };
-
-    imap_session.logout().unwrap();
+    Ok(Some(body))
 }

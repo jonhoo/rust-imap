@@ -1,3 +1,5 @@
+//! IMAP error types.
+
 use std::error::Error as StdError;
 use std::fmt;
 use std::io::Error as IoError;
@@ -5,11 +7,13 @@ use std::net::TcpStream;
 use std::result;
 use std::string::FromUtf8Error;
 
+use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
 use imap_proto::Response;
 use native_tls::Error as TlsError;
 use native_tls::HandshakeError as TlsHandshakeError;
 
+/// A convenience wrapper around `Result` for `imap::Error`.
 pub type Result<T> = result::Result<T, Error>;
 
 /// A set of errors that can occur in the IMAP client
@@ -27,17 +31,24 @@ pub enum Error {
     NoResponse(String),
     /// The connection was terminated unexpectedly.
     ConnectionLost,
-    // Error parsing a server response.
+    /// Error parsing a server response.
     Parse(ParseError),
-    // Error validating input data
+    /// Command inputs were not valid [IMAP
+    /// strings](https://tools.ietf.org/html/rfc3501#section-4.3).
     Validate(ValidateError),
-    // Error appending a mail
+    /// Error appending an e-mail.
     Append,
 }
 
 impl From<IoError> for Error {
     fn from(err: IoError) -> Error {
         Error::Io(err)
+    }
+}
+
+impl From<ParseError> for Error {
+    fn from(err: ParseError) -> Error {
+        Error::Parse(err)
     }
 }
 
@@ -106,14 +117,16 @@ impl StdError for Error {
     }
 }
 
+/// An error occured while trying to parse a server response.
 #[derive(Debug)]
 pub enum ParseError {
-    // Indicates an error parsing the status response. Such as OK, NO, and BAD.
+    /// Indicates an error parsing the status response. Such as OK, NO, and BAD.
     Invalid(Vec<u8>),
-    // An unexpected response was encountered.
+    /// An unexpected response was encountered.
     Unexpected(String),
-    // Authentication errors.
-    Authentication(String),
+    /// The client could not find or decode the server's authentication challenge.
+    Authentication(String, Option<DecodeError>),
+    /// The client receive data that was not UTF-8 encoded.
     DataNotUtf8(FromUtf8Error),
 }
 
@@ -130,19 +143,21 @@ impl StdError for ParseError {
         match *self {
             ParseError::Invalid(_) => "Unable to parse status response",
             ParseError::Unexpected(_) => "Encountered unexpected parsed response",
-            ParseError::Authentication(_) => "Unable to parse authentication response",
+            ParseError::Authentication(_, _) => "Unable to parse authentication response",
             ParseError::DataNotUtf8(_) => "Unable to parse data as UTF-8 text",
         }
     }
 
     fn cause(&self) -> Option<&StdError> {
         match *self {
+            ParseError::Authentication(_, Some(ref e)) => Some(e),
             _ => None,
         }
     }
 }
 
-// Invalid character found. Expand as needed
+/// An [invalid character](https://tools.ietf.org/html/rfc3501#section-4.3) was found in an input
+/// string.
 #[derive(Debug)]
 pub struct ValidateError(pub char);
 

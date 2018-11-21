@@ -1,3 +1,194 @@
+//! This module contains types used throughout the IMAP protocol.
+
+use std::borrow::Cow;
+
+/// From section [2.3.1.1 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.1).
+///
+/// A 32-bit value assigned to each message, which when used with the unique identifier validity
+/// value (see below) forms a 64-bit value that MUST NOT refer to any other message in the mailbox
+/// or any subsequent mailbox with the same name forever.  Unique identifiers are assigned in a
+/// strictly ascending fashion in the mailbox; as each message is added to the mailbox it is
+/// assigned a higher UID than the message(s) which were added previously.  Unlike message sequence
+/// numbers, unique identifiers are not necessarily contiguous.
+///
+/// The unique identifier of a message MUST NOT change during the session, and SHOULD NOT change
+/// between sessions.  Any change of unique identifiers between sessions MUST be detectable using
+/// the `UIDVALIDITY` mechanism discussed below.  Persistent unique identifiers are required for a
+/// client to resynchronize its state from a previous session with the server (e.g., disconnected
+/// or offline access clients); this is discussed further in
+/// [`IMAP-DISC`](https://tools.ietf.org/html/rfc3501#ref-IMAP-DISC).
+///
+/// Associated with every mailbox are two values which aid in unique identifier handling: the next
+/// unique identifier value and the unique identifier validity value.
+///
+/// The next unique identifier value is the predicted value that will be assigned to a new message
+/// in the mailbox.  Unless the unique identifier validity also changes (see below), the next
+/// unique identifier value MUST have the following two characteristics.  First, the next unique
+/// identifier value MUST NOT change unless new messages are added to the mailbox; and second, the
+/// next unique identifier value MUST change whenever new messages are added to the mailbox, even
+/// if those new messages are subsequently expunged.
+///
+/// > Note: The next unique identifier value is intended to provide a means for a client to
+/// > determine whether any messages have been delivered to the mailbox since the previous time it
+/// > checked this value.  It is not intended to provide any guarantee that any message will have
+/// > this unique identifier.  A client can only assume, at the time that it obtains the next
+/// > unique identifier value, that messages arriving after that time will have a UID greater than
+/// > or equal to that value.
+///
+/// The unique identifier validity value is sent in a `UIDVALIDITY` response code in an `OK`
+/// untagged response at mailbox selection time. If unique identifiers from an earlier session fail
+/// to persist in this session, the unique identifier validity value MUST be greater than the one
+/// used in the earlier session.
+///
+/// > Note: Ideally, unique identifiers SHOULD persist at all
+/// > times.  Although this specification recognizes that failure
+/// > to persist can be unavoidable in certain server
+/// > environments, it STRONGLY ENCOURAGES message store
+/// > implementation techniques that avoid this problem.  For
+/// > example:
+/// >
+/// >   1. Unique identifiers MUST be strictly ascending in the
+/// >      mailbox at all times.  If the physical message store is
+/// >      re-ordered by a non-IMAP agent, this requires that the
+/// >      unique identifiers in the mailbox be regenerated, since
+/// >      the former unique identifiers are no longer strictly
+/// >      ascending as a result of the re-ordering.
+/// >   2. If the message store has no mechanism to store unique
+/// >      identifiers, it must regenerate unique identifiers at
+/// >      each session, and each session must have a unique
+/// >      `UIDVALIDITY` value.
+/// >   3. If the mailbox is deleted and a new mailbox with the
+/// >      same name is created at a later date, the server must
+/// >      either keep track of unique identifiers from the
+/// >      previous instance of the mailbox, or it must assign a
+/// >      new `UIDVALIDITY` value to the new instance of the
+/// >      mailbox.  A good `UIDVALIDITY` value to use in this case
+/// >      is a 32-bit representation of the creation date/time of
+/// >      the mailbox.  It is alright to use a constant such as
+/// >      1, but only if it guaranteed that unique identifiers
+/// >      will never be reused, even in the case of a mailbox
+/// >      being deleted (or renamed) and a new mailbox by the
+/// >      same name created at some future time.
+/// >   4. The combination of mailbox name, `UIDVALIDITY`, and `UID`
+/// >      must refer to a single immutable message on that server
+/// >      forever.  In particular, the internal date, [RFC 2822](https://tools.ietf.org/html/rfc2822)
+/// >      size, envelope, body structure, and message texts
+/// >      (RFC822, RFC822.HEADER, RFC822.TEXT, and all BODY[...]
+/// >      fetch data items) must never change.  This does not
+/// >      include message numbers, nor does it include attributes
+/// >      that can be set by a `STORE` command (e.g., `FLAGS`).
+pub type Uid = u32;
+
+/// From section [2.3.1.2 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.2).
+///
+/// A relative position from 1 to the number of messages in the mailbox.
+/// This position MUST be ordered by ascending unique identifier.  As
+/// each new message is added, it is assigned a message sequence number
+/// that is 1 higher than the number of messages in the mailbox before
+/// that new message was added.
+///
+/// Message sequence numbers can be reassigned during the session.  For
+/// example, when a message is permanently removed (expunged) from the
+/// mailbox, the message sequence number for all subsequent messages is
+/// decremented.  The number of messages in the mailbox is also
+/// decremented.  Similarly, a new message can be assigned a message
+/// sequence number that was once held by some other message prior to an
+/// expunge.
+///
+/// In addition to accessing messages by relative position in the
+/// mailbox, message sequence numbers can be used in mathematical
+/// calculations.  For example, if an untagged "11 EXISTS" is received,
+/// and previously an untagged "8 EXISTS" was received, three new
+/// messages have arrived with message sequence numbers of 9, 10, and 11.
+/// Another example, if message 287 in a 523 message mailbox has UID
+/// 12345, there are exactly 286 messages which have lesser UIDs and 236
+/// messages which have greater UIDs.
+pub type Seq = u32;
+
+/// With the exception of [`Flag::Custom`], these flags are system flags that are pre-defined in
+/// [RFC 3501 section 2.3.2](https://tools.ietf.org/html/rfc3501#section-2.3.2). All system flags
+/// begin with `\` in the IMAP protocol.  Certain system flags (`\Deleted` and `\Seen`) have
+/// special semantics described elsewhere.
+///
+/// A flag can be permanent or session-only on a per-flag basis. Permanent flags are those which
+/// the client can add or remove from the message flags permanently; that is, concurrent and
+/// subsequent sessions will see any change in permanent flags.  Changes to session flags are valid
+/// only in that session.
+///
+/// > Note: The `\Recent` system flag is a special case of a session flag.  `\Recent` can not be
+/// > used as an argument in a `STORE` or `APPEND` command, and thus can not be changed at all.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Flag<'a> {
+    /// Message has been read
+    Seen,
+
+    /// Message has been answered
+    Answered,
+
+    /// Message is "flagged" for urgent/special attention
+    Flagged,
+
+    /// Message is "deleted" for removal by later EXPUNGE
+    Deleted,
+
+    /// Message has not completed composition (marked as a draft).
+    Draft,
+
+    /// Message is "recently" arrived in this mailbox.  This session is the first session to have
+    /// been notified about this message; if the session is read-write, subsequent sessions will
+    /// not see `\Recent` set for this message.  This flag can not be altered by the client.
+    ///
+    /// If it is not possible to determine whether or not this session is the first session to be
+    /// notified about a message, then that message SHOULD be considered recent.
+    ///
+    /// If multiple connections have the same mailbox selected simultaneously, it is undefined
+    /// which of these connections will see newly-arrived messages with `\Recent` set and which
+    /// will see it without `\Recent` set.
+    Recent,
+
+    /// The [`Mailbox::permanent_flags`] can include this special flag (`\*`), which indicates that
+    /// it is possible to create new keywords by attempting to store those flags in the mailbox.
+    MayCreate,
+
+    /// A non-standard user- or server-defined flag.
+    Custom(Cow<'a, str>),
+}
+
+impl Flag<'static> {
+    fn system(s: &str) -> Option<Self> {
+        match s {
+            "\\Seen" => Some(Flag::Seen),
+            "\\Answered" => Some(Flag::Answered),
+            "\\Flagged" => Some(Flag::Flagged),
+            "\\Deleted" => Some(Flag::Deleted),
+            "\\Draft" => Some(Flag::Draft),
+            "\\Recent" => Some(Flag::Recent),
+            "\\*" => Some(Flag::MayCreate),
+            _ => None,
+        }
+    }
+}
+
+impl<'a> From<String> for Flag<'a> {
+    fn from(s: String) -> Self {
+        if let Some(f) = Flag::system(&s) {
+            f
+        } else {
+            Flag::Custom(Cow::Owned(s))
+        }
+    }
+}
+
+impl<'a> From<&'a str> for Flag<'a> {
+    fn from(s: &'a str) -> Self {
+        if let Some(f) = Flag::system(s) {
+            f
+        } else {
+            Flag::Custom(Cow::Borrowed(s))
+        }
+    }
+}
+
 mod mailbox;
 pub use self::mailbox::Mailbox;
 
@@ -5,11 +196,10 @@ mod fetch;
 pub use self::fetch::Fetch;
 
 mod name;
-pub use self::name::Name;
+pub use self::name::{Name, NameAttribute};
 
 mod capabilities;
 pub use self::capabilities::Capabilities;
-
 
 /// re-exported from imap_proto;
 pub use imap_proto::StatusAttribute;
@@ -22,13 +212,62 @@ pub use imap_proto::StatusAttribute;
 /// so the user must take care when interpreting these.
 #[derive(Debug, PartialEq, Eq)]
 pub enum UnsolicitedResponse {
-    Status(String, Vec<StatusAttribute>),
+    /// An unsolicited [`STATUS response`](https://tools.ietf.org/html/rfc3501#section-7.2.4).
+    Status {
+        /// The mailbox that this status response is for.
+        mailbox: String,
+        /// The attributes of this mailbox.
+        attributes: Vec<StatusAttribute>,
+    },
+
+    /// An unsolicited [`RECENT` response](https://tools.ietf.org/html/rfc3501#section-7.3.2)
+    /// indicating the number of messages with the `\Recent` flag set.  This response occurs if the
+    /// size of the mailbox changes (e.g., new messages arrive).
+    ///
+    /// > Note: It is not guaranteed that the message sequence
+    /// > numbers of recent messages will be a contiguous range of
+    /// > the highest n messages in the mailbox (where n is the
+    /// > value reported by the `RECENT` response).  Examples of
+    /// > situations in which this is not the case are: multiple
+    /// > clients having the same mailbox open (the first session
+    /// > to be notified will see it as recent, others will
+    /// > probably see it as non-recent), and when the mailbox is
+    /// > re-ordered by a non-IMAP agent.
+    /// >
+    /// > The only reliable way to identify recent messages is to
+    /// > look at message flags to see which have the `\Recent` flag
+    /// > set, or to do a `SEARCH RECENT`.
     Recent(u32),
+
+    /// An unsolicited [`EXISTS` response](https://tools.ietf.org/html/rfc3501#section-7.3.1) that
+    /// reports the number of messages in the mailbox. This response occurs if the size of the
+    /// mailbox changes (e.g., new messages arrive).
     Exists(u32),
+
+    /// An unsolicited [`EXPUNGE` response](https://tools.ietf.org/html/rfc3501#section-7.4.1) that
+    /// reports that the specified message sequence number has been permanently removed from the
+    /// mailbox.  The message sequence number for each successive message in the mailbox is
+    /// immediately decremented by 1, and this decrement is reflected in message sequence numbers
+    /// in subsequent responses (including other untagged `EXPUNGE` responses).
+    ///
+    /// The EXPUNGE response also decrements the number of messages in the mailbox; it is not
+    /// necessary to send an `EXISTS` response with the new value.
+    ///
+    /// As a result of the immediate decrement rule, message sequence numbers that appear in a set
+    /// of successive `EXPUNGE` responses depend upon whether the messages are removed starting
+    /// from lower numbers to higher numbers, or from higher numbers to lower numbers.  For
+    /// example, if the last 5 messages in a 9-message mailbox are expunged, a "lower to higher"
+    /// server will send five untagged `EXPUNGE` responses for message sequence number 5, whereas a
+    /// "higher to lower server" will send successive untagged `EXPUNGE` responses for message
+    /// sequence numbers 9, 8, 7, 6, and 5.
+    // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(u32),
 }
 
-
+/// This type wraps an input stream and a type that was constructed by parsing that input stream,
+/// which allows the parsed type to refer to data in the underlying stream instead of copying it.
+///
+/// Any references given out by a `ZeroCopy` should never be used after the `ZeroCopy` is dropped.
 pub struct ZeroCopy<D> {
     _owned: Box<[u8]>,
     derived: D,
@@ -46,7 +285,7 @@ impl<D> ZeroCopy<D> {
     /// `&self`.
     ///
     /// It is *not* safe for the error type `E` to borrow from the passed reference.
-    pub unsafe fn new<F, E>(owned: Vec<u8>, derive: F) -> Result<Self, E>
+    pub(crate) unsafe fn new<F, E>(owned: Vec<u8>, derive: F) -> Result<Self, E>
     where
         F: FnOnce(&'static [u8]) -> Result<D, E>,
     {
@@ -68,7 +307,7 @@ impl<D> ZeroCopy<D> {
 }
 
 use super::error::Error;
-pub type ZeroCopyResult<T> = Result<ZeroCopy<T>, Error>;
+pub(crate) type ZeroCopyResult<T> = Result<ZeroCopy<T>, Error>;
 
 use std::ops::Deref;
 impl<D> Deref for ZeroCopy<D> {

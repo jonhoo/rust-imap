@@ -1,16 +1,16 @@
-extern crate base64;
+use base64;
 use bufstream::BufStream;
 use native_tls::{TlsConnector, TlsStream};
 use nom;
 use std::collections::HashSet;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::{Deref, DerefMut};
 use std::sync::mpsc;
-use std::time::Duration;
 
 use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
+use super::extensions;
 use super::parse::{
     parse_authenticate_response, parse_capabilities, parse_fetches, parse_ids, parse_mailbox,
     parse_names,
@@ -41,9 +41,8 @@ fn validate_str(value: &str) -> Result<String> {
 
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
 /// a succesful login attempt.
-///
-/// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
-/// primitives type.
+// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
+// primitives type.
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
@@ -56,9 +55,8 @@ pub struct Session<T: Read + Write> {
 /// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
 /// connecting. A succesfull call to [`login`](struct.Client.html#method.login) will return a
 /// [`Session`](struct.Session.html) instance, providing the usual IMAP methods.
-///
-/// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
-/// primitives type.
+// Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
+// primitives type.
 #[derive(Debug)]
 pub struct Client<T: Read + Write> {
     conn: Connection<T>,
@@ -67,9 +65,13 @@ pub struct Client<T: Read + Write> {
 /// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
 /// login) use a `Connection` internally for the TCP stream primitives.
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct Connection<T: Read + Write> {
-    stream: BufStream<T>,
+    pub(crate) stream: BufStream<T>,
     tag: u32,
+
+    /// Enable debug mode for this connection so that all client-server interactions are printed to
+    /// `STDERR`.
     pub debug: bool,
 }
 
@@ -103,161 +105,13 @@ impl<T: Read + Write> DerefMut for Session<T> {
     }
 }
 
-/// `IdleHandle` allows a client to block waiting for changes to the remote mailbox.
+/// Connect to a server using an insecure TCP connection.
 ///
-/// The handle blocks using the IMAP IDLE command specificed in [RFC
-/// 2177](https://tools.ietf.org/html/rfc2177).
+/// The returned [`Client`] is unauthenticated; to access session-related methods (through
+/// [`Session`]), use [`Client::login`] or [`Client::authenticate`].
 ///
-/// As long a the handle is active, the mailbox cannot be otherwise accessed.
-#[derive(Debug)]
-pub struct IdleHandle<'a, T: Read + Write + 'a> {
-    session: &'a mut Session<T>,
-    keepalive: Duration,
-    done: bool,
-}
-
-/// Must be implemented for a transport in order for a `Session` using that transport to support
-/// operations with timeouts.
-///
-/// Examples of where this is useful is for `IdleHandle::wait_keepalive` and
-/// `IdleHandle::wait_timeout`.
-pub trait SetReadTimeout {
-    /// Set the timeout for subsequent reads to the given one.
-    ///
-    /// If `timeout` is `None`, the read timeout should be removed.
-    ///
-    /// See also `std::net::TcpStream::set_read_timeout`.
-    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()>;
-}
-
-impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
-    fn new(session: &'a mut Session<T>) -> Result<Self> {
-        let mut h = IdleHandle {
-            session,
-            keepalive: Duration::from_secs(29 * 60),
-            done: false,
-        };
-        h.init()?;
-        Ok(h)
-    }
-
-    fn init(&mut self) -> Result<()> {
-        // https://tools.ietf.org/html/rfc2177
-        //
-        // The IDLE command takes no arguments.
-        self.session.run_command("IDLE")?;
-
-        // A tagged response will be sent either
-        //
-        //   a) if there's an error, or
-        //   b) *after* we send DONE
-        let mut v = Vec::new();
-        self.session.readline(&mut v)?;
-        if v.starts_with(b"+") {
-            self.done = false;
-            return Ok(());
-        }
-
-        self.session.read_response_onto(&mut v)?;
-        // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
-        unreachable!();
-    }
-
-    fn terminate(&mut self) -> Result<()> {
-        if !self.done {
-            self.done = true;
-            self.session.write_line(b"DONE")?;
-            self.session.read_response().map(|_| ())
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Internal helper that doesn't consume self.
-    ///
-    /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
-    fn wait_inner(&mut self) -> Result<()> {
-        let mut v = Vec::new();
-        match self.session.readline(&mut v).map(|_| ()) {
-            Err(Error::Io(ref e))
-                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
-            {
-                // we need to refresh the IDLE connection
-                self.terminate()?;
-                self.init()?;
-                self.wait_inner()
-            }
-            r => r,
-        }
-    }
-
-    /// Block until the selected mailbox changes.
-    pub fn wait(mut self) -> Result<()> {
-        self.wait_inner()
-    }
-}
-
-impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
-    /// Set the keep-alive interval to use when `wait_keepalive` is called.
-    ///
-    /// The interval defaults to 29 minutes as dictated by RFC 2177.
-    pub fn set_keepalive(&mut self, interval: Duration) {
-        self.keepalive = interval;
-    }
-
-    /// Block until the selected mailbox changes.
-    ///
-    /// This method differs from `IdleHandle::wait` in that it will periodically refresh the IDLE
-    /// connection, to prevent the server from timing out our connection. The keepalive interval is
-    /// set to 29 minutes by default, as dictated by RFC 2177, but can be changed using
-    /// `set_keepalive`.
-    ///
-    /// This is the recommended method to use for waiting.
-    pub fn wait_keepalive(self) -> Result<()> {
-        // The server MAY consider a client inactive if it has an IDLE command
-        // running, and if such a server has an inactivity timeout it MAY log
-        // the client off implicitly at the end of its timeout period.  Because
-        // of that, clients using IDLE are advised to terminate the IDLE and
-        // re-issue it at least every 29 minutes to avoid being logged off.
-        // This still allows a client to receive immediate mailbox updates even
-        // though it need only "poll" at half hour intervals.
-        let keepalive = self.keepalive;
-        self.wait_timeout(keepalive)
-    }
-
-    /// Block until the selected mailbox changes, or until the given amount of time has expired.
-    pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
-        self.session
-            .stream
-            .get_mut()
-            .set_read_timeout(Some(timeout))?;
-        let res = self.wait_inner();
-        self.session.stream.get_mut().set_read_timeout(None).is_ok();
-        res
-    }
-}
-
-impl<'a, T: Read + Write + 'a> Drop for IdleHandle<'a, T> {
-    fn drop(&mut self) {
-        // we don't want to panic here if we can't terminate the Idle
-        self.terminate().is_ok();
-    }
-}
-
-impl<'a> SetReadTimeout for TcpStream {
-    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
-        TcpStream::set_read_timeout(self, timeout).map_err(Error::Io)
-    }
-}
-
-impl<'a> SetReadTimeout for TlsStream<TcpStream> {
-    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
-        self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
-    }
-}
-
-/// Creates a new client. The usual IMAP commands are part of the [`Session`](struct.Session.html)
-/// type, returned from a succesful call to [`Client::login`](struct.Client.html#method.login).
+/// Consider using [`connect`] for a secured connection where possible.
+/// You can upgrade an insecure client to a secure one using [`Client::secure`].
 /// ```rust,no_run
 /// # extern crate native_tls;
 /// # extern crate imap;
@@ -265,14 +119,14 @@ impl<'a> SetReadTimeout for TlsStream<TcpStream> {
 /// # use native_tls::TlsConnector;
 /// # fn main() {
 /// // a plain, unencrypted TCP connection
-/// let client = imap::client::connect(("imap.example.org", 143)).unwrap();
+/// let client = imap::connect_insecure(("imap.example.org", 143)).unwrap();
 ///
 /// // upgrade to SSL
-/// let ssl_connector = TlsConnector::builder().build().unwrap();
-/// let ssl_client = client.secure("imap.example.org", &ssl_connector);
+/// let tls = TlsConnector::builder().build().unwrap();
+/// let tls_client = client.secure("imap.example.org", &tls);
 /// # }
 /// ```
-pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
+pub fn connect_insecure<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
     match TcpStream::connect(addr) {
         Ok(stream) => {
             let mut socket = Client::new(stream);
@@ -284,23 +138,27 @@ pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
     }
 }
 
-/// Creates a `Client` with an SSL wrapper. The usual IMAP commands are part of the
-/// [`Session`](struct.Session.html) type, returned from a succesful call to
-/// [`Client::login`](struct.Client.html#method.login).
-/// ```rust,no_run
+/// Connect to a server using a TLS-encrypted connection.
+///
+/// The returned [`Client`] is unauthenticated; to access session-related methods (through
+/// [`Session`]), use [`Client::login`] or [`Client::authenticate`].
+///
+/// The domain must be passed in separately from the `TlsConnector` so that the certificate of the
+/// IMAP server can be validated.
+///
+/// # Examples
+///
+/// ```no_run
 /// # extern crate native_tls;
 /// # extern crate imap;
 /// # use std::io;
 /// # use native_tls::TlsConnector;
 /// # fn main() {
-/// let ssl_connector = TlsConnector::builder().build().unwrap();
-/// let ssl_client = imap::client::secure_connect(
-///     ("imap.example.org", 993),
-///     "imap.example.org",
-///     &ssl_connector).unwrap();
+/// let tls = TlsConnector::builder().build().unwrap();
+/// let client = imap::connect(("imap.example.org", 993), "imap.example.org", &tls).unwrap();
 /// # }
 /// ```
-pub fn secure_connect<A: ToSocketAddrs>(
+pub fn connect<A: ToSocketAddrs>(
     addr: A,
     domain: &str,
     ssl_connector: &TlsConnector,
@@ -321,9 +179,9 @@ pub fn secure_connect<A: ToSocketAddrs>(
 }
 
 impl Client<TcpStream> {
-    /// This will upgrade a regular TCP connection to use SSL.
+    /// This will upgrade an IMAP client from using a regular TCP connection to use TLS.
     ///
-    /// Use the domain parameter for openssl's SNI and hostname verification.
+    /// The domain parameter is required to perform hostname verification.
     pub fn secure(
         mut self,
         domain: &str,
@@ -354,7 +212,10 @@ macro_rules! ok_or_unauth_client_err {
 }
 
 impl<T: Read + Write> Client<T> {
-    /// Creates a new client with the underlying stream.
+    /// Creates a new client over the given stream.
+    ///
+    /// This method primarily exists for writing tests that mock the underlying transport, but can
+    /// also be used to support IMAP over custom tunnels.
     pub fn new(stream: T) -> Client<T> {
         Client {
             conn: Connection {
@@ -365,7 +226,94 @@ impl<T: Read + Write> Client<T> {
         }
     }
 
-    /// Authenticate will authenticate with the server, using the authenticator given.
+    /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
+    /// returned; on error the original `Client` instance is returned in addition to the error.
+    /// This is because `login` takes ownership of `self`, so in order to try again (e.g. after
+    /// prompting the user for credetials), ownership of the original `Client` needs to be
+    /// transferred back to the caller.
+    ///
+    /// ```rust,no_run
+    /// # extern crate imap;
+    /// # extern crate native_tls;
+    /// # use std::io;
+    /// # use native_tls::TlsConnector;
+    /// # fn main() {
+    /// # let tls_connector = TlsConnector::builder().build().unwrap();
+    /// let client = imap::connect(
+    ///     ("imap.example.org", 993),
+    ///     "imap.example.org",
+    ///     &tls_connector).unwrap();
+    ///
+    /// match client.login("user", "pass") {
+    ///     Ok(s) => {
+    ///         // you are successfully authenticated!
+    ///     },
+    ///     Err((e, orig_client)) => {
+    ///         eprintln!("error logging in: {}", e);
+    ///         // prompt user and try again with orig_client here
+    ///         return;
+    ///     }
+    /// }
+    /// # }
+    /// ```
+    pub fn login(
+        mut self,
+        username: &str,
+        password: &str,
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+        let u = ok_or_unauth_client_err!(validate_str(username), self);
+        let p = ok_or_unauth_client_err!(validate_str(password), self);
+        ok_or_unauth_client_err!(
+            self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)),
+            self
+        );
+
+        Ok(Session::new(self.conn))
+    }
+
+    /// Authenticate with the server using the given custom `authenticator` to handle the server's
+    /// challenge.
+    ///
+    /// ```no_run
+    /// extern crate imap;
+    /// extern crate native_tls;
+    /// use native_tls::TlsConnector;
+    ///
+    /// struct OAuth2 {
+    ///     user: String,
+    ///     access_token: String,
+    /// }
+    ///
+    /// impl imap::Authenticator for OAuth2 {
+    ///     type Response = String;
+    ///     fn process(&self, _: &[u8]) -> Self::Response {
+    ///         format!(
+    ///             "user={}\x01auth=Bearer {}\x01\x01",
+    ///             self.user, self.access_token
+    ///         )
+    ///     }
+    /// }
+    ///
+    /// fn main() {
+    ///     let auth = OAuth2 {
+    ///         user: String::from("me@example.com"),
+    ///         access_token: String::from("<access_token>"),
+    ///     };
+    ///     let domain = "imap.example.com";
+    ///     let tls = TlsConnector::builder().build().unwrap();
+    ///     let client = imap::connect((domain, 993), domain, &tls).unwrap();
+    ///     match client.authenticate("XOAUTH2", auth) {
+    ///         Ok(session) => {
+    ///             // you are successfully authenticated!
+    ///         },
+    ///         Err((e, orig_client)) => {
+    ///             eprintln!("error authenticating: {}", e);
+    ///             // prompt user and try again with orig_client here
+    ///             return;
+    ///         }
+    ///     };
+    /// }
+    /// ```
     pub fn authenticate<A: Authenticator>(
         mut self,
         auth_type: &str,
@@ -397,9 +345,7 @@ impl<T: Read + Write> Client<T> {
                 );
                 let challenge = ok_or_unauth_client_err!(
                     base64::decode(data.as_str())
-                        .map_err(|_|
-                                 Error::Parse(ParseError::Authentication(data))
-                        ),
+                        .map_err(|e| Error::Parse(ParseError::Authentication(data, Some(e)))),
                     self
                 );
                 let raw_response = &authenticator.process(&challenge);
@@ -414,61 +360,30 @@ impl<T: Read + Write> Client<T> {
             }
         }
     }
-
-    /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
-    /// returned; on error the original `Client` instance is returned in addition to the error.
-    /// This is because `login` takes ownership of `self`, so in order to try again (e.g. after
-    /// prompting the user for credetials), ownership of the original `Client` needs to be
-    /// transferred back to the caller.
-    ///
-    /// ```rust,no_run
-    /// # extern crate imap;
-    /// # extern crate native_tls;
-    /// # use std::io;
-    /// # use native_tls::TlsConnector;
-    /// # fn main() {
-    /// # let ssl_connector = TlsConnector::builder().build().unwrap();
-    /// let ssl_client = imap::client::secure_connect(
-    ///     ("imap.example.org", 993),
-    ///     "imap.example.org",
-    ///     &ssl_connector).unwrap();
-    ///
-    /// // try to login
-    /// let session = match ssl_client.login("user", "pass") {
-    ///     Ok(s) => s,
-    ///     Err((e, orig_client)) => {
-    ///         eprintln!("error logging in: {}", e);
-    ///         // prompt user and try again with orig_client here
-    ///         return;
-    ///     }
-    /// };
-    ///
-    /// // use session for IMAP commands
-    /// # }
-    pub fn login(
-        mut self,
-        username: &str,
-        password: &str,
-    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
-        let u = ok_or_unauth_client_err!(validate_str(username), self);
-        let p = ok_or_unauth_client_err!(validate_str(password), self);
-        ok_or_unauth_client_err!(
-            self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)),
-            self
-        );
-
-        Ok(Session::new(self.conn))
-    }
 }
 
 impl<T: Read + Write> Session<T> {
     // not public, just to avoid duplicating the channel creation code
     fn new(conn: Connection<T>) -> Self {
         let (tx, rx) = mpsc::channel();
-        Session { conn, unsolicited_responses: rx, unsolicited_responses_tx: tx }
+        Session {
+            conn,
+            unsolicited_responses: rx,
+            unsolicited_responses_tx: tx,
+        }
     }
 
     /// Selects a mailbox
+    ///
+    /// The `SELECT` command selects a mailbox so that messages in the mailbox can be accessed.
+    /// Note that earlier versions of this protocol only required the FLAGS, EXISTS, and RECENT
+    /// untagged data; consequently, client implementations SHOULD implement default behavior for
+    /// missing data as discussed with the individual item.
+    ///
+    /// Only one mailbox can be selected at a time in a connection; simultaneous access to multiple
+    /// mailboxes requires multiple connections.  The `SELECT` command automatically deselects any
+    /// currently selected mailbox before attempting the new selection. Consequently, if a mailbox
+    /// is selected and a `SELECT` command that fails is attempted, no mailbox is selected.
     ///
     /// Note that the server *is* allowed to unilaterally send things to the client for messages in
     /// a selected mailbox whose status has changed. See the note on [unilateral server responses
@@ -477,11 +392,15 @@ impl<T: Read + Write> Session<T> {
     /// `EXISTS`, `FETCH`, and `EXPUNGE` responses. You can get them from the
     /// `unsolicited_responses` channel of the [`Session`](struct.Session.html).
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
+        // TODO: also note READ/WRITE vs READ-only mode!
         self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
-    /// Examine is identical to Select, but the selected mailbox is identified as read-only
+    /// The `EXAMINE` command is identical to [`Session::select`] and returns the same output;
+    /// however, the selected mailbox is identified as read-only. No changes to the permanent state
+    /// of the mailbox, including per-user state, are permitted; in particular, `EXAMINE` MUST NOT
+    /// cause messages to lose [`Flag::Recent`].
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
@@ -578,22 +497,63 @@ impl<T: Read + Write> Session<T> {
         self.run_command_and_check_ok("CLOSE")
     }
 
-    /// Store alters data associated with a message in the mailbox.
+    /// The [`STORE` command](https://tools.ietf.org/html/rfc3501#section-6.4.6) alters data
+    /// associated with a message in the mailbox.  Normally, `STORE` will return the updated value
+    /// of the data with an untagged FETCH response.  A suffix of `.SILENT` in `query` prevents the
+    /// untagged `FETCH`, and the server SHOULD assume that the client has determined the updated
+    /// value itself or does not care about the updated value.
+    ///
+    /// The currently defined data items that can be stored are:
+    ///
+    /// ```text
+    /// FLAGS <flag list>
+    ///    Replace the flags for the message (other than \Recent) with the
+    ///    argument.  The new value of the flags is returned as if a FETCH
+    ///    of those flags was done.
+    ///
+    /// FLAGS.SILENT <flag list>
+    ///    Equivalent to FLAGS, but without returning a new value.
+    ///
+    /// +FLAGS <flag list>
+    ///    Add the argument to the flags for the message.  The new value
+    ///    of the flags is returned as if a FETCH of those flags was done.
+    ///
+    /// +FLAGS.SILENT <flag list>
+    ///    Equivalent to +FLAGS, but without returning a new value.
+    ///
+    /// -FLAGS <flag list>
+    ///    Remove the argument from the flags for the message.  The new
+    ///    value of the flags is returned as if a FETCH of those flags was
+    ///    done.
+    ///
+    /// -FLAGS.SILENT <flag list>
+    ///    Equivalent to -FLAGS, but without returning a new value.
+    /// ```
     pub fn store(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
             .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
+    /// Equivalent to [`Session::store`], except that all identifiers in `sequence_set` are
+    /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_store(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
             .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Copy copies the specified message to the end of the specified destination mailbox.
+    /// The [`COPY` command](https://tools.ietf.org/html/rfc3501#section-6.4.7) copies the
+    /// specified message(s) to the end of the specified destination mailbox.  The flags and
+    /// internal date of the message(s) SHOULD be preserved, and [`Flag::Recent`] SHOULD be set, in
+    /// the copy.
+    ///
+    /// If the `COPY` command is unsuccessful for any reason, server implementations MUST restore
+    /// the destination mailbox to its state before the `COPY` attempt.
     pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name))
     }
 
+    /// Equivalent to [`Session::copy`], except that all identifiers in `sequence_set` are
+    /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_copy(&mut self, uid_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("UID COPY {} {}", uid_set, mailbox_name))
     }
@@ -602,6 +562,34 @@ impl<T: Read + Write> Session<T> {
     /// named `mv` instead of `move` due to it being a reserved keyword.
     /// The MOVE command is defined in [RFC 6851 - "Internet Message Access Protocol (IMAP)
     /// - MOVE Extension"](https://tools.ietf.org/html/rfc6851#section-3).
+    ///
+    /// The [`MOVE` command](https://tools.ietf.org/html/rfc6851#section-3.1) is an IMAP extension
+    /// outlined in [RFC 6851](https://tools.ietf.org/html/rfc6851#section-3.1). It takes two
+    /// arguments: a sequence set and a named mailbox. Each message included in the set is moved,
+    /// rather than copied, from the selected (source) mailbox to the named (target) mailbox.
+    ///
+    /// This means that a new message is created in the target mailbox with a
+    /// new [`Uid`], the original message is removed from the source mailbox, and
+    /// it appears to the client as a single action.  This has the same
+    /// effect for each message as this sequence:
+    ///
+    ///   1. COPY
+    ///   2. STORE +FLAGS.SILENT \DELETED
+    ///   3. EXPUNGE
+    ///
+    /// Although the effect of the `MOVE` is the same as the preceding steps, the semantics are not
+    /// identical: The intermediate states produced by those steps do not occur, and the response
+    /// codes are different.  In particular, though the `COPY` and `EXPUNGE` response codes will be
+    /// returned, response codes for a STORE MUST NOT be generated and [`Flag::Deleted`] MUST NOT
+    /// be set for any message.
+    ///
+    /// Because a `MOVE` applies to a set of messages, it might fail partway through the set.
+    /// Regardless of whether the command is successful in moving the entire set, each individual
+    /// message SHOULD either be moved or unaffected.  The server MUST leave each message in a
+    /// state where it is in at least one of the source or target mailboxes (no message can be lost
+    /// or orphaned).  The server SHOULD NOT leave any message in both mailboxes (it would be bad
+    /// for a partial failure to result in a bunch of duplicate messages).  This is true even if
+    /// the server returns with [`Error::No`].
     pub fn mv(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "MOVE {} {}",
@@ -610,9 +598,10 @@ impl<T: Read + Write> Session<T> {
         ))
     }
 
-    /// Moves each message in the uid set into the destination mailbox.
-    /// The UID MOVE command is defined in [RFC 6851 - "Internet Message Access Protocol (IMAP)
-    /// - MOVE Extension"](https://tools.ietf.org/html/rfc6851#section-3).
+    /// Equivalent to [`Session::copy`], except that all identifiers in `sequence_set` are
+    /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8)
+    /// and the [semantics of `MOVE` and `UID
+    /// MOVE`](https://tools.ietf.org/html/rfc6851#section-3.3).
     pub fn uid_mv(&mut self, uid_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "UID MOVE {} {}",
@@ -663,8 +652,8 @@ impl<T: Read + Write> Session<T> {
 
     /// Returns a handle that can be used to block until the state of the currently selected
     /// mailbox changes.
-    pub fn idle(&mut self) -> Result<IdleHandle<T>> {
-        IdleHandle::new(self)
+    pub fn idle(&mut self) -> Result<extensions::idle::Handle<T>> {
+        extensions::idle::Handle::new(self)
     }
 
     /// The APPEND command adds a mail to a mailbox.
@@ -690,7 +679,7 @@ impl<T: Read + Write> Session<T> {
 
     /// Searches the mailbox for messages that match the given criteria and returns
     /// the list of unique identifier numbers of those messages.
-    pub fn uid_search(&mut self, query: &str) -> Result<HashSet<u32>> {
+    pub fn uid_search(&mut self, query: &str) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query))
             .and_then(|lines| parse_ids(lines, &mut self.unsolicited_responses_tx))
     }
@@ -738,13 +727,13 @@ impl<T: Read + Write> Connection<T> {
         self.read_response()
     }
 
-    fn read_response(&mut self) -> Result<Vec<u8>> {
+    pub(crate) fn read_response(&mut self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
         self.read_response_onto(&mut v)?;
         Ok(v)
     }
 
-    fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<()> {
+    pub(crate) fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<()> {
         let mut continue_from = None;
         let mut try_first = !data.is_empty();
         let match_tag = format!("{}{}", TAG_PREFIX, self.tag);
@@ -816,7 +805,7 @@ impl<T: Read + Write> Connection<T> {
         }
     }
 
-    fn readline(&mut self, into: &mut Vec<u8>) -> Result<usize> {
+    pub(crate) fn readline(&mut self, into: &mut Vec<u8>) -> Result<usize> {
         use std::io::BufRead;
         let read = self.stream.read_until(LF, into)?;
         if read == 0 {
@@ -827,7 +816,7 @@ impl<T: Read + Write> Connection<T> {
             // Remove CRLF
             let len = into.len();
             let line = &into[(len - read)..(len - 2)];
-            print!("S: {}\n", String::from_utf8_lossy(line));
+            eprint!("S: {}\n", String::from_utf8_lossy(line));
         }
 
         Ok(read)
@@ -838,12 +827,12 @@ impl<T: Read + Write> Connection<T> {
         format!("{}{} {}", TAG_PREFIX, self.tag, command)
     }
 
-    fn write_line(&mut self, buf: &[u8]) -> Result<()> {
+    pub(crate) fn write_line(&mut self, buf: &[u8]) -> Result<()> {
         self.stream.write_all(buf)?;
         self.stream.write_all(&[CR, LF])?;
         self.stream.flush()?;
         if self.debug {
-            print!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
+            eprint!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
         }
         Ok(())
     }
@@ -948,19 +937,19 @@ mod tests {
     #[test]
     fn authenticate() {
         let response = b"+ YmFy\r\n\
-                         a1 OK Logged in\r\n".to_vec();
-        let command =  "a1 AUTHENTICATE PLAIN\r\n\
-                        Zm9v\r\n";
+                         a1 OK Logged in\r\n"
+            .to_vec();
+        let command = "a1 AUTHENTICATE PLAIN\r\n\
+                       Zm9v\r\n";
         let mock_stream = MockStream::new(response);
         let client = Client::new(mock_stream);
-        enum Authenticate { Auth };
+        enum Authenticate {
+            Auth,
+        };
         impl Authenticator for Authenticate {
             type Response = Vec<u8>;
             fn process(&self, challenge: &[u8]) -> Self::Response {
-                assert!(
-                    challenge == b"bar",
-                    "Invalid authenticate challenge"
-                );
+                assert!(challenge == b"bar", "Invalid authenticate challenge");
                 b"foo".to_vec()
             }
         }
@@ -1102,11 +1091,11 @@ mod tests {
             .to_vec();
         let expected_mailbox = Mailbox {
             flags: vec![
-                "\\Answered".to_string(),
-                "\\Flagged".to_string(),
-                "\\Deleted".to_string(),
-                "\\Seen".to_string(),
-                "\\Draft".to_string(),
+                Flag::Answered,
+                Flag::Flagged,
+                Flag::Deleted,
+                Flag::Seen,
+                Flag::Draft,
             ],
             exists: 1,
             recent: 1,
@@ -1141,22 +1130,22 @@ mod tests {
             .to_vec();
         let expected_mailbox = Mailbox {
             flags: vec![
-                "\\Answered".to_string(),
-                "\\Flagged".to_string(),
-                "\\Deleted".to_string(),
-                "\\Seen".to_string(),
-                "\\Draft".to_string(),
+                Flag::Answered,
+                Flag::Flagged,
+                Flag::Deleted,
+                Flag::Seen,
+                Flag::Draft,
             ],
             exists: 1,
             recent: 1,
             unseen: Some(1),
             permanent_flags: vec![
-                "\\*".to_string(),
-                "\\Answered".to_string(),
-                "\\Flagged".to_string(),
-                "\\Deleted".to_string(),
-                "\\Draft".to_string(),
-                "\\Seen".to_string(),
+                Flag::MayCreate,
+                Flag::Answered,
+                Flag::Flagged,
+                Flag::Deleted,
+                Flag::Draft,
+                Flag::Seen,
             ],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
@@ -1197,7 +1186,7 @@ mod tests {
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let ids = session.uid_search("Unseen").unwrap();
-        let ids: HashSet<u32> = ids.iter().cloned().collect();
+        let ids: HashSet<Uid> = ids.iter().cloned().collect();
         assert!(
             session.stream.get_ref().written_buf == b"a1 UID SEARCH Unseen\r\n".to_vec(),
             "Invalid search command"

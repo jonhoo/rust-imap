@@ -10,54 +10,57 @@
 [![Build Status](https://ci.appveyor.com/api/projects/status/github/mattnenterprise/rust-imap?svg=true)](https://ci.appveyor.com/api/projects/status/github/mattnenterprise/rust-imap)
 [![Coverage Status](https://coveralls.io/repos/github/mattnenterprise/rust-imap/badge.svg?branch=master)](https://coveralls.io/github/mattnenterprise/rust-imap?branch=master)
 
-IMAP client bindings for Rust.
+This crate lets you connect to and interact with servers that implement the IMAP protocol ([RFC
+3501](https://tools.ietf.org/html/rfc3501)). After authenticating with the server, IMAP lets
+you list, fetch, and search for e-mails, as well as monitor mailboxes for changes.
 
-## Usage
+To connect, use the `imap::connect` function. This gives you an unauthenticated `imap::Client`. You can
+then use `Client::login` or `Client::authenticate` to perform username/password or
+challenge/response authentication respectively. This in turn gives you an authenticated
+`Session`, which lets you access the mailboxes at the server.
 
-Here is a basic example of using the client.
-See the `examples/` directory for more examples.
+Below is a basic client example. See the `examples/` directory for more.
 
 ```rust
+extern crate imap;
 extern crate native_tls;
 
-// To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
-// See: https://support.google.com/accounts/answer/6010255?hl=en
-// Look at the `examples/gmail_oauth2.rs` for how to connect to gmail securely.
-fn main() {
-    let domain = "imap.gmail.com";
-    let port = 993;
-    let socket_addr = (domain, port);
-    let ssl_connector = native_tls::TlsConnector::builder().build().unwrap();
-    let mut imap_socket = Client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
+fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
+    let domain = "imap.example.com";
+    let tls = native_tls::TlsConnector::builder().build().unwrap();
 
-    imap_socket.login("username", "password").unwrap();
+    // we pass in the domain twice to check that the server's TLS
+    // certificate is valid for the domain we're connecting to.
+    let client = imap::connect((domain, 993), domain, &tls).unwrap();
 
-    match imap_socket.capabilities() {
-        Ok(capabilities) => {
-            for capability in capabilities.iter() {
-                println!("{}", capability);
-            }
-        }
-        Err(e) => println!("Error parsing capabilities: {}", e),
+    // the client we have here is unauthenticated.
+    // to do anything useful with the e-mails, we need to log in
+    let mut imap_session = client
+        .login("me@example.com", "password")
+        .map_err(|e| e.0)?;
+
+    // we want to fetch the first email in the INBOX mailbox
+    imap_session.select("INBOX")?;
+
+    // fetch message number 1 in this mailbox, along with its RFC822 field.
+    // RFC 822 dictates the format of the body of e-mails
+    let messages = imap_session.fetch("1", "RFC822")?;
+    let message = if let Some(m) = messages.iter().next() {
+        m
+    } else {
+        return Ok(None);
     };
 
-    match imap_socket.select("INBOX") {
-        Ok(mailbox) => {
-            println!("{}", mailbox);
-        }
-        Err(e) => println!("Error selecting INBOX: {}", e),
-    };
+    // extract the message's body
+    let body = message.rfc822().expect("message did not have a body!");
+    let body = std::str::from_utf8(body)
+        .expect("message was not valid utf-8")
+        .to_string();
 
-    match imap_socket.fetch("2", "body[text]") {
-        Ok(messages) => {
-            for message in messages.iter() {
-                print!("{:?}", message);
-            }
-        }
-        Err(e) => println!("Error Fetching email 2: {}", e),
-    };
+    // be nice to the server and log out
+    imap_session.logout()?;
 
-    imap_socket.logout().unwrap();
+    Ok(Some(body))
 }
 ```
 
@@ -71,5 +74,5 @@ at your option.
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.

@@ -2,7 +2,6 @@ extern crate base64;
 extern crate imap;
 extern crate native_tls;
 
-use imap::authenticator::Authenticator;
 use native_tls::TlsConnector;
 
 struct GmailOAuth2 {
@@ -10,7 +9,7 @@ struct GmailOAuth2 {
     access_token: String,
 }
 
-impl Authenticator for GmailOAuth2 {
+impl imap::Authenticator for GmailOAuth2 {
     type Response = String;
     #[allow(unused_variables)]
     fn process(&self, data: &[u8]) -> Self::Response {
@@ -30,7 +29,7 @@ fn main() {
     let port = 993;
     let socket_addr = (domain, port);
     let ssl_connector = TlsConnector::builder().build().unwrap();
-    let client = imap::client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
+    let client = imap::connect(socket_addr, domain, &ssl_connector).unwrap();
 
     let mut imap_session = match client.authenticate("XOAUTH2", gmail_auth) {
         Ok(c) => c,
@@ -46,9 +45,11 @@ fn main() {
     };
 
     match imap_session.fetch("2", "body[text]") {
-        Ok(msgs) => for msg in &msgs {
-            print!("{:?}", msg);
-        },
+        Ok(msgs) => {
+            for msg in &msgs {
+                print!("{:?}", msg);
+            }
+        }
         Err(e) => println!("Error Fetching email 2: {}", e),
     };
 
