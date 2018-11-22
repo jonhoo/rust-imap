@@ -422,21 +422,19 @@ impl<T: Read + Write> Session<T> {
     ///
     ///  - `ALL`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)`
     ///  - `FAST`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE)`
-    ///  - `FULL`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE ENVELOPE BODY)`
     ///
     /// The currently defined data items that can be fetched are listen [in the
     /// RFC](https://tools.ietf.org/html/rfc3501#section-6.4.5), but here are some common ones:
     ///
     ///  - `FLAGS`: The flags that are set for this message.
     ///  - `INTERNALDATE`: The internal date of the message.
-    ///  - `BODY`: Non-extensible form of BODYSTRUCTURE.
     ///  - `BODY[<section>]`:
     ///
     ///     The text of a particular body section.  The section specification is a set of zero or
     ///     more part specifiers delimited by periods.  A part specifier is either a part number
     ///     (see RFC) or one of the following: `HEADER`, `HEADER.FIELDS`, `HEADER.FIELDS.NOT`,
-    ///     `MIME`, and `TEXT`.  An empty section specification refers to the entire message,
-    ///     including the header.
+    ///     `MIME`, and `TEXT`.  An empty section specification (i.e., `BODY[]`) refers to the
+    ///     entire message, including the header.
     ///
     ///     The `HEADER`, `HEADER.FIELDS`, and `HEADER.FIELDS.NOT` part specifiers refer to the
     ///     [RFC-2822](https://tools.ietf.org/html/rfc2822) header of the message or of an
@@ -462,18 +460,12 @@ impl<T: Read + Write> Session<T> {
     ///     change, they will generally be included as part of the `FETCH` responses.
     ///  - `BODY.PEEK[<section>]`: An alternate form of `BODY[<section>]` that does not implicitly
     ///    set [`Flag::Seen`].
-    ///  - `BODYSTRUCTURE`: The [MIME-IMB](https://tools.ietf.org/html/rfc2045) body structure of
-    ///    the message.  This is computed by the server by parsing the
-    ///    [MIME-IMB](https://tools.ietf.org/html/rfc2045) header fields in the [RFC-2822] header
-    ///    and [MIME-IMB](https://tools.ietf.org/html/rfc2045) headers.
     ///  - `ENVELOPE`: The envelope structure of the message.  This is computed by the server by
     ///    parsing the [RFC-2822](https://tools.ietf.org/html/rfc2822) header into the component
     ///    parts, defaulting various fields as necessary.
     ///  - `RFC822`: Functionally equivalent to `BODY[]`.
     ///  - `RFC822.HEADER`: Functionally equivalent to `BODY.PEEK[HEADER]`.
     ///  - `RFC822.SIZE`: The [RFC-2822](https://tools.ietf.org/html/rfc2822) size of the message.
-    ///  - `RFC822.TEXT`: Functionally equivalent to `BODY[TEXT]`, differing in the syntax
-    ///    of the resulting untagged FETCH data (RFC822.TEXT is returned).
     ///  - `UID`: The unique identifier for the message.
     pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
