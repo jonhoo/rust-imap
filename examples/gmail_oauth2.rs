@@ -31,7 +31,7 @@ fn main() {
     let ssl_connector = TlsConnector::builder().build().unwrap();
     let client = imap::connect(socket_addr, domain, &ssl_connector).unwrap();
 
-    let mut imap_session = match client.authenticate("XOAUTH2", gmail_auth) {
+    let mut imap_session = match client.authenticate("XOAUTH2", &gmail_auth) {
         Ok(c) => c,
         Err((e, _unauth_client)) => {
             println!("error authenticating: {}", e);

@@ -45,7 +45,7 @@ pub trait SetReadTimeout {
 }
 
 impl<'a, T: Read + Write + 'a> Handle<'a, T> {
-    pub(crate) fn new(session: &'a mut Session<T>) -> Result<Self> {
+    pub(crate) fn make(session: &'a mut Session<T>) -> Result<Self> {
         let mut h = Handle {
             session,
             keepalive: Duration::from_secs(29 * 60),

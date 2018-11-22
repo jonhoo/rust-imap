@@ -27,7 +27,7 @@ pub struct Fetch {
 
 impl Fetch {
     /// A list of flags that are set for this message.
-    pub fn flags<'a>(&'a self) -> &'a [Flag<'a>] {
+    pub fn flags(&self) -> &[Flag] {
         &self.flags[..]
     }
 
@@ -106,7 +106,7 @@ impl Fetch {
     ///
     /// See [section 7.4.2 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-7.4.2) for
     /// details.
-    pub fn section(&self, path: SectionPath) -> Option<&[u8]> {
+    pub fn section(&self, path: &SectionPath) -> Option<&[u8]> {
         self.fetch
             .iter()
             .filter_map(|av| match av {
@@ -114,7 +114,7 @@ impl Fetch {
                     section: Some(sp),
                     data: Some(data),
                     ..
-                } if sp == &path => Some(*data),
+                } if sp == path => Some(*data),
                 _ => None,
             })
             .next()

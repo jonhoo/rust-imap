@@ -305,7 +305,7 @@ impl<T: Read + Write> Client<T> {
     ///     let domain = "imap.example.com";
     ///     let tls = TlsConnector::builder().build().unwrap();
     ///     let client = imap::connect((domain, 993), domain, &tls).unwrap();
-    ///     match client.authenticate("XOAUTH2", auth) {
+    ///     match client.authenticate("XOAUTH2", &auth) {
     ///         Ok(session) => {
     ///             // you are successfully authenticated!
     ///         },
@@ -320,13 +320,13 @@ impl<T: Read + Write> Client<T> {
     pub fn authenticate<A: Authenticator>(
         mut self,
         auth_type: &str,
-        authenticator: A,
+        authenticator: &A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         ok_or_unauth_client_err!(
             self.run_command(&format!("AUTHENTICATE {}", auth_type)),
             self
         );
-        self.do_auth_handshake(&authenticator)
+        self.do_auth_handshake(authenticator)
     }
 
     /// This func does the handshake process once the authenticate command is made.
@@ -905,7 +905,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// See [`extensions::idle::Handle`] for details.
     pub fn idle(&mut self) -> Result<extensions::idle::Handle<T>> {
-        extensions::idle::Handle::new(self)
+        extensions::idle::Handle::make(self)
     }
 
     /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) appends
@@ -986,7 +986,7 @@ impl<T: Read + Write> Session<T> {
     ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
     pub fn search(&mut self, query: &str) -> Result<HashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query))
-            .and_then(|lines| parse_ids(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Equivalent to [`Session::search`], except that the returned identifiers
@@ -994,7 +994,7 @@ impl<T: Read + Write> Session<T> {
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_search(&mut self, query: &str) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query))
-            .and_then(|lines| parse_ids(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
     }
 
     // these are only here because they are public interface, the rest is in `Connection`
@@ -1266,8 +1266,7 @@ mod tests {
                 b"foo".to_vec()
             }
         }
-        let auth = Authenticate::Auth;
-        let session = client.authenticate("PLAIN", auth).unwrap();
+        let session = client.authenticate("PLAIN", &Authenticate::Auth).unwrap();
         assert!(
             session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid authenticate command"

@@ -285,7 +285,7 @@ impl<D> ZeroCopy<D> {
     /// `&self`.
     ///
     /// It is *not* safe for the error type `E` to borrow from the passed reference.
-    pub(crate) unsafe fn new<F, E>(owned: Vec<u8>, derive: F) -> Result<Self, E>
+    pub(crate) unsafe fn make<F, E>(owned: Vec<u8>, derive: F) -> Result<Self, E>
     where
         F: FnOnce(&'static [u8]) -> Result<D, E>,
     {

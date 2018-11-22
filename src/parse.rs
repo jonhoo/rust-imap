@@ -82,7 +82,7 @@ where
         }
     };
 
-    ZeroCopy::new(lines, f)
+    ZeroCopy::make(lines, f)
 }
 
 pub fn parse_names(
@@ -209,7 +209,7 @@ pub fn parse_capabilities(
         }
     };
 
-    unsafe { ZeroCopy::new(lines, f) }
+    unsafe { ZeroCopy::make(lines, f) }
 }
 
 pub fn parse_mailbox(
@@ -294,7 +294,7 @@ pub fn parse_mailbox(
 }
 
 pub fn parse_ids(
-    lines: Vec<u8>,
+    lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
 ) -> Result<HashSet<u32>> {
     let mut lines = &lines[..];
@@ -487,7 +487,7 @@ mod tests {
             * 1 RECENT\r\n\
             * STATUS INBOX (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n";
         let (mut send, recv) = mpsc::channel();
-        let ids = parse_ids(lines.to_vec(), &mut send).unwrap();
+        let ids = parse_ids(lines, &mut send).unwrap();
 
         assert_eq!(ids, [23, 42, 4711].iter().cloned().collect());
 
@@ -511,7 +511,7 @@ mod tests {
         let lines = b"* SEARCH 1600 1698 1739 1781 1795 1885 1891 1892 1893 1898 1899 1901 1911 1926 1932 1933 1993 1994 2007 2032 2033 2041 2053 2062 2063 2065 2066 2072 2078 2079 2082 2084 2095 2100 2101 2102 2103 2104 2107 2116 2120 2135 2138 2154 2163 2168 2172 2189 2193 2198 2199 2205 2212 2213 2221 2227 2267 2275 2276 2295 2300 2328 2330 2332 2333 2334\r\n\
             * SEARCH 2335 2336 2337 2338 2339 2341 2342 2347 2349 2350 2358 2359 2362 2369 2371 2372 2373 2374 2375 2376 2377 2378 2379 2380 2381 2382 2383 2384 2385 2386 2390 2392 2397 2400 2401 2403 2405 2409 2411 2414 2417 2419 2420 2424 2426 2428 2439 2454 2456 2467 2468 2469 2490 2515 2519 2520 2521\r\n";
         let (mut send, recv) = mpsc::channel();
-        let ids = parse_ids(lines.to_vec(), &mut send).unwrap();
+        let ids = parse_ids(lines, &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(
@@ -534,7 +534,7 @@ mod tests {
 
         let lines = b"* SEARCH\r\n";
         let (mut send, recv) = mpsc::channel();
-        let ids = parse_ids(lines.to_vec(), &mut send).unwrap();
+        let ids = parse_ids(lines, &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(ids, HashSet::<u32>::new());
