@@ -122,21 +122,21 @@ pub fn parse_fetches(
                 message: num,
                 flags: vec![],
                 uid: None,
-                rfc822_header: None,
-                rfc822: None,
-                body: None,
+                size: None,
+                fetch: attrs,
             };
 
-            for attr in attrs {
+            // set some common fields eaglery
+            for attr in &fetch.fetch {
                 use imap_proto::AttributeValue;
                 match attr {
                     AttributeValue::Flags(flags) => {
-                        fetch.flags.extend(flags.into_iter().map(Flag::from));
+                        fetch
+                            .flags
+                            .extend(flags.into_iter().cloned().map(Flag::from));
                     }
-                    AttributeValue::Uid(uid) => fetch.uid = Some(uid),
-                    AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
-                    AttributeValue::Rfc822Header(rfc) => fetch.rfc822_header = rfc,
-                    AttributeValue::BodySection { data, .. } => fetch.body = data,
+                    AttributeValue::Uid(uid) => fetch.uid = Some(*uid),
+                    AttributeValue::Rfc822Size(sz) => fetch.size = Some(*sz),
                     _ => {}
                 }
             }
@@ -147,6 +147,18 @@ pub fn parse_fetches(
     };
 
     unsafe { parse_many(lines, f, unsolicited) }
+}
+
+pub fn parse_expunge(
+    lines: Vec<u8>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Vec<u32>> {
+    let f = |resp| match resp {
+        Response::Expunge(id) => Ok(MapOrNot::Map(id)),
+        resp => Ok(MapOrNot::Not(resp)),
+    };
+
+    unsafe { parse_many(lines, f, unsolicited).map(|ids| ids.take()) }
 }
 
 pub fn parse_capabilities(
@@ -392,11 +404,13 @@ mod tests {
         assert_eq!(fetches[0].message, 24);
         assert_eq!(fetches[0].flags(), &[Flag::Seen]);
         assert_eq!(fetches[0].uid, Some(4827943));
-        assert_eq!(fetches[0].rfc822(), None);
+        assert_eq!(fetches[0].body(), None);
+        assert_eq!(fetches[0].header(), None);
         assert_eq!(fetches[1].message, 25);
         assert_eq!(fetches[1].flags(), &[Flag::Seen]);
         assert_eq!(fetches[1].uid, None);
-        assert_eq!(fetches[1].rfc822(), None);
+        assert_eq!(fetches[1].body(), None);
+        assert_eq!(fetches[1].header(), None);
     }
 
     #[test]

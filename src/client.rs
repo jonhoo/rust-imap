@@ -11,10 +11,7 @@ use std::sync::mpsc;
 use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
 use super::extensions;
-use super::parse::{
-    parse_authenticate_response, parse_capabilities, parse_fetches, parse_ids, parse_mailbox,
-    parse_names,
-};
+use super::parse::*;
 use super::types::*;
 
 static TAG_PREFIX: &'static str = "a";
@@ -41,20 +38,26 @@ fn validate_str(value: &str) -> Result<String> {
 
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
 /// a succesful login attempt.
+///
+/// Note that the server *is* allowed to unilaterally send things to the client for messages in
+/// a selected mailbox whose status has changed. See the note on [unilateral server responses
+/// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). Any such messages are parsed out
+/// and sent on `Session::unsolicited_responses`.
 // Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
 // primitives type.
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
+    unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
+
     /// Server responses that are not related to the current command. See also the note on
     /// [unilateral server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub unsolicited_responses: mpsc::Receiver<UnsolicitedResponse>,
-    unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
 }
 
 /// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
-/// connecting. A succesfull call to [`login`](struct.Client.html#method.login) will return a
-/// [`Session`](struct.Session.html) instance, providing the usual IMAP methods.
+/// connecting. A succesfull call to [`Client::login`] or [`Client::authenticate`] will return a
+/// [`Session`] instance that provides the usual IMAP methods.
 // Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
 // primitives type.
 #[derive(Debug)]
@@ -399,8 +402,8 @@ impl<T: Read + Write> Session<T> {
 
     /// The `EXAMINE` command is identical to [`Session::select`] and returns the same output;
     /// however, the selected mailbox is identified as read-only. No changes to the permanent state
-    /// of the mailbox, including per-user state, are permitted; in particular, `EXAMINE` MUST NOT
-    /// cause messages to lose [`Flag::Recent`].
+    /// of the mailbox, including per-user state, will happen in a mailbox opened with `examine`;
+    /// in particular, messagess cannot lose [`Flag::Recent`] in an examined mailbox.
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
         self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
@@ -411,16 +414,74 @@ impl<T: Read + Write> Session<T> {
     /// Note that the server *is* allowed to unilaterally include `FETCH` responses for other
     /// messages in the selected mailbox whose status has changed. See the note on [unilateral
     /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
+    ///
+    /// `query` is a list of "data items" (space-separated in parentheses if `>1`). There are three
+    /// "macro items" which specify commonly-used sets of data items, and can be used instead of
+    /// data items.  A macro must be used by itself, and not in conjunction with other macros or
+    /// data items. They are:
+    ///
+    ///  - `ALL`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)`
+    ///  - `FAST`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE)`
+    ///  - `FULL`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE ENVELOPE BODY)`
+    ///
+    /// The currently defined data items that can be fetched are listen [in the
+    /// RFC](https://tools.ietf.org/html/rfc3501#section-6.4.5), but here are some common ones:
+    ///
+    ///  - `FLAGS`: The flags that are set for this message.
+    ///  - `INTERNALDATE`: The internal date of the message.
+    ///  - `BODY`: Non-extensible form of BODYSTRUCTURE.
+    ///  - `BODY[<section>]`:
+    ///
+    ///     The text of a particular body section.  The section specification is a set of zero or
+    ///     more part specifiers delimited by periods.  A part specifier is either a part number
+    ///     (see RFC) or one of the following: `HEADER`, `HEADER.FIELDS`, `HEADER.FIELDS.NOT`,
+    ///     `MIME`, and `TEXT`.  An empty section specification refers to the entire message,
+    ///     including the header.
+    ///
+    ///     The `HEADER`, `HEADER.FIELDS`, and `HEADER.FIELDS.NOT` part specifiers refer to the
+    ///     [RFC-2822](https://tools.ietf.org/html/rfc2822) header of the message or of an
+    ///     encapsulated [MIME-IMT](https://tools.ietf.org/html/rfc2046)
+    ///     MESSAGE/[RFC822](https://tools.ietf.org/html/rfc822) message. `HEADER.FIELDS` and
+    ///     `HEADER.FIELDS.NOT` are followed by a list of field-name (as defined in
+    ///     [RFC-2822](https://tools.ietf.org/html/rfc2822)) names, and return a subset of the
+    ///     header.  The subset returned by `HEADER.FIELDS` contains only those header fields with
+    ///     a field-name that matches one of the names in the list; similarly, the subset returned
+    ///     by `HEADER.FIELDS.NOT` contains only the header fields with a non-matching field-name.
+    ///     The field-matching is case-insensitive but otherwise exact.  Subsetting does not
+    ///     exclude the [RFC-2822](https://tools.ietf.org/html/rfc2822) delimiting blank line
+    ///     between the header and the body; the blank line is included in all header fetches,
+    ///     except in the case of a message which has no body and no blank line.
+    ///
+    ///     The `MIME` part specifier refers to the [MIME-IMB](https://tools.ietf.org/html/rfc2045)
+    ///     header for this part.
+    ///
+    ///     The `TEXT` part specifier refers to the text body of the message,
+    ///     omitting the [RFC-2822](https://tools.ietf.org/html/rfc2822) header.
+    ///
+    ///     [`Flag::Seen`] is implicitly set when `BODY` is fetched; if this causes the flags to
+    ///     change, they will generally be included as part of the `FETCH` responses.
+    ///  - `BODY.PEEK[<section>]`: An alternate form of `BODY[<section>]` that does not implicitly
+    ///    set [`Flag::Seen`].
+    ///  - `BODYSTRUCTURE`: The [MIME-IMB](https://tools.ietf.org/html/rfc2045) body structure of
+    ///    the message.  This is computed by the server by parsing the
+    ///    [MIME-IMB](https://tools.ietf.org/html/rfc2045) header fields in the [RFC-2822] header
+    ///    and [MIME-IMB](https://tools.ietf.org/html/rfc2045) headers.
+    ///  - `ENVELOPE`: The envelope structure of the message.  This is computed by the server by
+    ///    parsing the [RFC-2822](https://tools.ietf.org/html/rfc2822) header into the component
+    ///    parts, defaulting various fields as necessary.
+    ///  - `RFC822`: Functionally equivalent to `BODY[]`.
+    ///  - `RFC822.HEADER`: Functionally equivalent to `BODY.PEEK[HEADER]`.
+    ///  - `RFC822.SIZE`: The [RFC-2822](https://tools.ietf.org/html/rfc2822) size of the message.
+    ///  - `RFC822.TEXT`: Functionally equivalent to `BODY[TEXT]`, differing in the syntax
+    ///    of the resulting untagged FETCH data (RFC822.TEXT is returned).
+    ///  - `UID`: The unique identifier for the message.
     pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
             .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Fetch retreives data associated with a set of messages by UID in the mailbox.
-    ///
-    /// Note that the server *is* allowed to unilaterally include `FETCH` responses for other
-    /// messages in the selected mailbox whose status has changed. See the note on [unilateral
-    /// server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
+    /// Equivalent to [`Session::fetch`], except that all identifiers in `sequence_set` are
+    /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
             .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
@@ -436,63 +497,176 @@ impl<T: Read + Write> Session<T> {
         self.run_command_and_check_ok("LOGOUT")
     }
 
-    /// Create creates a mailbox with the given name.
+    /// The [`CREATE` command](https://tools.ietf.org/html/rfc3501#section-6.3.3) creates a mailbox
+    /// with the given name.  `Ok` is returned only if a new mailbox with that name has been
+    /// created.  It is an error to attempt to create `INBOX` or a mailbox with a name that
+    /// refers to an extant mailbox.  Any error in creation will return [`Error::No`].
+    ///
+    /// If the mailbox name is suffixed with the server's hierarchy separator character (as
+    /// returned from the server by [`Session::list`]), this is a declaration that the client
+    /// intends to create mailbox names under this name in the hierarchy.  Servers that do not
+    /// require this declaration will ignore the declaration.  In any case, the name created is
+    /// without the trailing hierarchy delimiter.
+    ///
+    /// If the server's hierarchy separator character appears elsewhere in the name, the server
+    /// will generally create any superior hierarchical names that are needed for the `CREATE`
+    /// command to be successfully completed.  In other words, an attempt to create `foo/bar/zap`
+    /// on a server in which `/` is the hierarchy separator character will usually create `foo/`
+    /// and `foo/bar/` if they do not already exist.
+    ///
+    /// If a new mailbox is created with the same name as a mailbox which was deleted, its unique
+    /// identifiers will be greater than any unique identifiers used in the previous incarnation of
+    /// the mailbox UNLESS the new incarnation has a different unique identifier validity value.
+    /// See the description of the [`UID`
+    /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
     pub fn create(&mut self, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("CREATE {}", validate_str(mailbox_name)?))
     }
 
-    /// Delete permanently removes the mailbox with the given name.
+    /// The [`DELETE` command](https://tools.ietf.org/html/rfc3501#section-6.3.4) permanently
+    /// removes the mailbox with the given name.  `Ok` is returned only if the mailbox has been
+    /// deleted.  It is an error to attempt to delete `INBOX` or a mailbox name that does not
+    /// exist.
+    ///
+    /// The `DELETE` command will not remove inferior hierarchical names. For example, if a mailbox
+    /// `foo` has an inferior `foo.bar` (assuming `.` is the hierarchy delimiter character),
+    /// removing `foo` will not remove `foo.bar`.  It is an error to attempt to delete a name that
+    /// has inferior hierarchical names and also has [`NameAttribute::NoSelect`].
+    ///
+    /// It is permitted to delete a name that has inferior hierarchical names and does not have
+    /// [`NameAttribute::NoSelect`].  In this case, all messages in that mailbox are removed, and
+    /// the name will acquire [`NameAttribute::NoSelect`].
+    ///
+    /// The value of the highest-used unique identifier of the deleted mailbox will be preserved so
+    /// that a new mailbox created with the same name will not reuse the identifiers of the former
+    /// incarnation, UNLESS the new incarnation has a different unique identifier validity value.
+    /// See the description of the [`UID`
+    /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
     pub fn delete(&mut self, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("DELETE {}", validate_str(mailbox_name)?))
     }
 
-    /// Rename changes the name of a mailbox.
-    pub fn rename(&mut self, current_mailbox_name: &str, new_mailbox_name: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!(
-            "RENAME {} {}",
-            quote!(current_mailbox_name),
-            quote!(new_mailbox_name)
-        ))
+    /// The [`RENAME` command](https://tools.ietf.org/html/rfc3501#section-6.3.5) changes the name
+    /// of a mailbox.  `Ok` is returned only if the mailbox has been renamed.  It is an error to
+    /// attempt to rename from a mailbox name that does not exist or to a mailbox name that already
+    /// exists.  Any error in renaming will return [`Error::No`].
+    ///
+    /// If the name has inferior hierarchical names, then the inferior hierarchical names will also
+    /// be renamed.  For example, a rename of `foo` to `zap` will rename `foo/bar` (assuming `/` is
+    /// the hierarchy delimiter character) to `zap/bar`.
+    ///
+    /// If the server's hierarchy separator character appears in the name, the server will
+    /// generally create any superior hierarchical names that are needed for the `RENAME` command
+    /// to complete successfully.  In other words, an attempt to rename `foo/bar/zap` to
+    /// `baz/rag/zowie` on a server in which `/` is the hierarchy separator character will
+    /// generally create `baz/` and `baz/rag/` if they do not already exist.
+    ///
+    /// The value of the highest-used unique identifier of the old mailbox name will be preserved
+    /// so that a new mailbox created with the same name will not reuse the identifiers of the
+    /// former incarnation, UNLESS the new incarnation has a different unique identifier validity
+    /// value. See the description of the [`UID`
+    /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
+    ///
+    /// Renaming `INBOX` is permitted, and has special behavior.  It moves all messages in `INBOX`
+    /// to a new mailbox with the given name, leaving `INBOX` empty.  If the server implementation
+    /// supports inferior hierarchical names of `INBOX`, these are unaffected by a rename of
+    /// `INBOX`.
+    pub fn rename(&mut self, from: &str, to: &str) -> Result<()> {
+        self.run_command_and_check_ok(&format!("RENAME {} {}", quote!(from), quote!(to)))
     }
 
-    /// Subscribe adds the specified mailbox name to the server's set of "active" or "subscribed"
-    /// mailboxes as returned by the LSUB command.
+    /// The [`SUBSCRIBE` command](https://tools.ietf.org/html/rfc3501#section-6.3.6) adds the
+    /// specified mailbox name to the server's set of "active" or "subscribed" mailboxes as
+    /// returned by [`Session::lsub`].  This command returns `Ok` only if the subscription is
+    /// successful.
+    ///
+    /// The server may validate the mailbox argument to `SUBSCRIBE` to verify that it exists.
+    /// However, it will not unilaterally remove an existing mailbox name from the subscription
+    /// list even if a mailbox by that name no longer exists.
     pub fn subscribe(&mut self, mailbox: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("SUBSCRIBE {}", quote!(mailbox)))
     }
 
-    /// Unsubscribe removes the specified mailbox name from the server's set of
-    /// "active" or "subscribed mailboxes as returned by the LSUB command.
+    /// The [`UNSUBSCRIBE` command](https://tools.ietf.org/html/rfc3501#section-6.3.7) removes the
+    /// specified mailbox name from the server's set of "active" or "subscribed" mailboxes as
+    /// returned by [`Session::lsub`].  This command returns `Ok` only if the unsubscription is
+    /// successful.
     pub fn unsubscribe(&mut self, mailbox: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", quote!(mailbox)))
     }
 
-    /// Capability requests a listing of capabilities that the server supports.
+    /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
+    /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
+    /// one of the listed capabilities. See [`Capabilities`] for further details.
     pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
         self.run_command_and_read_response("CAPABILITY")
             .and_then(|lines| parse_capabilities(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Expunge permanently removes all messages that have the \Deleted flag set from the currently
-    /// selected mailbox.
-    pub fn expunge(&mut self) -> Result<()> {
-        self.run_command_and_check_ok("EXPUNGE")
+    /// The [`EXPUNGE` command](https://tools.ietf.org/html/rfc3501#section-6.4.3) permanently
+    /// removes all messages that have [`Flag::Deleted`] set from the currently selected mailbox.
+    /// The message sequence number of each message that is removed is returned.
+    pub fn expunge(&mut self) -> Result<Vec<Seq>> {
+        self.run_command_and_read_response("EXPUNGE")
+            .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Permanently removes all messages that have both the \Deleted flag set and have a UID that is
-    /// included in the specified message set.
-    /// The UID EXPUNGE command is defined in [RFC 4315 - "Internet Message Access Protocol (IMAP) - UIDPLUS extension"](https://tools.ietf.org/html/rfc4315#section-2.1).
-    pub fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
-        self.run_command_and_check_ok(&format!("UID EXPUNGE {}", uid_set))
+    /// The [`UID EXPUNGE` command](https://tools.ietf.org/html/rfc4315#section-2.1) permanently
+    /// removes all messages that both have [`Flag::Deleted`] set and have a [`Uid`] that is
+    /// included in the specified sequence set from the currently selected mailbox.  If a message
+    /// either does not have [`Flag::Deleted`] set or has a [`Uid`] that is not included in the
+    /// specified sequence set, it is not affected.
+    ///
+    /// This command is particularly useful for disconnected use clients. By using [`uid_expunge`]
+    /// instead of [`expunge`] when resynchronizing with the server, the client can ensure that it
+    /// does not inadvertantly remove any messages that have been marked as [`Flag::Deleted`] by
+    /// other clients between the time that the client was last connected and the time the client
+    /// resynchronizes.
+    ///
+    /// This command requires that the server supports [RFC
+    /// 4315](https://tools.ietf.org/html/rfc4315) as indicated by the `UIDPLUS` capability (see
+    /// [`Session::capabilities`]). If the server does not support the `UIDPLUS` capability, the
+    /// client should fall back to using [`Session::store`] to temporarily remove [`Flag::Deleted`]
+    /// from messages it does not want to remove, then invoking [`Session::expunge`].  Finally, the
+    /// client should use [`Session::store`] to restore [`Flag::Deleted`] on the messages in which
+    /// it was temporarily removed.
+    ///
+    /// Alternatively, the client may fall back to using just [`Session::expunge`], risking the
+    /// unintended removal of some messages.
+    pub fn uid_expunge(&mut self, uid_set: &str) -> Result<Vec<Uid>> {
+        self.run_command_and_read_response(&format!("UID EXPUNGE {}", uid_set))
+            .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Check requests a checkpoint of the currently selected mailbox.
+    /// The [`CHECK` command](https://tools.ietf.org/html/rfc3501#section-6.4.1) requests a
+    /// checkpoint of the currently selected mailbox.  A checkpoint refers to any
+    /// implementation-dependent housekeeping associated with the mailbox (e.g., resolving the
+    /// server's in-memory state of the mailbox with the state on its disk) that is not normally
+    /// executed as part of each command.  A checkpoint MAY take a non-instantaneous amount of real
+    /// time to complete.  If a server implementation has no such housekeeping considerations,
+    /// [`Session::check`] is equivalent to [`Session::noop`].
+    ///
+    /// There is no guarantee that an `EXISTS` untagged response will happen as a result of
+    /// `CHECK`.  [`Session::noop`] SHOULD be used for new message polling.
     pub fn check(&mut self) -> Result<()> {
         self.run_command_and_check_ok("CHECK")
     }
 
-    /// Close permanently removes all messages that have the \Deleted flag set from the currently
-    /// selected mailbox, and returns to the authenticated state from the selected state.
+    /// The [`CLOSE` command](https://tools.ietf.org/html/rfc3501#section-6.4.2) permanently
+    /// removes all messages that have [`Flag::Deleted`] set from the currently selected mailbox,
+    /// and returns to the authenticated state from the selected state.  No `EXPUNGE` responses are
+    /// sent.
+    ///
+    /// No messages are removed, and no error is given, if the mailbox is selected by
+    /// [`Session::examine`] or is otherwise selected read-only.
+    ///
+    /// Even if a mailbox is selected, [`Session::select`], [`Session::examine`], or
+    /// [`Session::logout`] command MAY be issued without previously invoking [`Session::close`].
+    /// [`Session::select`], [`Session::examine`], and [`Session::logout`] implicitly close the
+    /// currently selected mailbox without doing an expunge.  However, when many messages are
+    /// deleted, a `CLOSE-LOGOUT` or `CLOSE-SELECT` sequence is considerably faster than an
+    /// `EXPUNGE-LOGOUT` or `EXPUNGE-SELECT` because no `EXPUNGE` responses (which the client would
+    /// probably ignore) are sent.
     pub fn close(&mut self) -> Result<()> {
         self.run_command_and_check_ok("CLOSE")
     }
@@ -500,35 +674,32 @@ impl<T: Read + Write> Session<T> {
     /// The [`STORE` command](https://tools.ietf.org/html/rfc3501#section-6.4.6) alters data
     /// associated with a message in the mailbox.  Normally, `STORE` will return the updated value
     /// of the data with an untagged FETCH response.  A suffix of `.SILENT` in `query` prevents the
-    /// untagged `FETCH`, and the server SHOULD assume that the client has determined the updated
-    /// value itself or does not care about the updated value.
+    /// untagged `FETCH`, and the server assumes that the client has determined the updated value
+    /// itself or does not care about the updated value.
     ///
     /// The currently defined data items that can be stored are:
     ///
-    /// ```text
-    /// FLAGS <flag list>
-    ///    Replace the flags for the message (other than \Recent) with the
-    ///    argument.  The new value of the flags is returned as if a FETCH
-    ///    of those flags was done.
+    ///  - `FLAGS <flag list>`:
     ///
-    /// FLAGS.SILENT <flag list>
-    ///    Equivalent to FLAGS, but without returning a new value.
+    ///    Replace the flags for the message (other than [`Flag::Recent`]) with the argument.  The
+    ///    new value of the flags is returned as if a `FETCH` of those flags was done.
     ///
-    /// +FLAGS <flag list>
-    ///    Add the argument to the flags for the message.  The new value
-    ///    of the flags is returned as if a FETCH of those flags was done.
+    ///  - `FLAGS.SILENT <flag list>`: Equivalent to `FLAGS`, but without returning a new value.
     ///
-    /// +FLAGS.SILENT <flag list>
-    ///    Equivalent to +FLAGS, but without returning a new value.
+    ///  - `+FLAGS <flag list>`
     ///
-    /// -FLAGS <flag list>
-    ///    Remove the argument from the flags for the message.  The new
-    ///    value of the flags is returned as if a FETCH of those flags was
-    ///    done.
+    ///    Add the argument to the flags for the message.  The new value of the flags is returned
+    ///    as if a `FETCH` of those flags was done.
+    ///  - `+FLAGS.SILENT <flag list>`: Equivalent to `+FLAGS`, but without returning a new value.
     ///
-    /// -FLAGS.SILENT <flag list>
-    ///    Equivalent to -FLAGS, but without returning a new value.
-    /// ```
+    ///  - `-FLAGS <flag list>`
+    ///
+    ///    Remove the argument from the flags for the message.  The new value of the flags is
+    ///    returned as if a `FETCH` of those flags was done.
+    ///
+    ///  - `-FLAGS.SILENT <flag list>`: Equivalent to `-FLAGS`, but without returning a new value.
+    ///
+    /// In all cases, `<flag list>` is a space-separated list enclosed in parentheses.
     pub fn store(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
             .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
@@ -543,11 +714,11 @@ impl<T: Read + Write> Session<T> {
 
     /// The [`COPY` command](https://tools.ietf.org/html/rfc3501#section-6.4.7) copies the
     /// specified message(s) to the end of the specified destination mailbox.  The flags and
-    /// internal date of the message(s) SHOULD be preserved, and [`Flag::Recent`] SHOULD be set, in
-    /// the copy.
+    /// internal date of the message(s) will generally be preserved, and [`Flag::Recent`] will
+    /// generally be set, in the copy.
     ///
-    /// If the `COPY` command is unsuccessful for any reason, server implementations MUST restore
-    /// the destination mailbox to its state before the `COPY` attempt.
+    /// If the `COPY` command is unsuccessful for any reason, the server restores the destination
+    /// mailbox to its state before the `COPY` attempt.
     pub fn copy(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!("COPY {} {}", sequence_set, mailbox_name))
     }
@@ -558,13 +729,7 @@ impl<T: Read + Write> Session<T> {
         self.run_command_and_check_ok(&format!("UID COPY {} {}", uid_set, mailbox_name))
     }
 
-    /// Moves each message in the sequence into the destination mailbox. This function is
-    /// named `mv` instead of `move` due to it being a reserved keyword.
-    /// The MOVE command is defined in [RFC 6851 - "Internet Message Access Protocol (IMAP)
-    /// - MOVE Extension"](https://tools.ietf.org/html/rfc6851#section-3).
-    ///
-    /// The [`MOVE` command](https://tools.ietf.org/html/rfc6851#section-3.1) is an IMAP extension
-    /// outlined in [RFC 6851](https://tools.ietf.org/html/rfc6851#section-3.1). It takes two
+    /// The [`MOVE` command](https://tools.ietf.org/html/rfc6851#section-3.1) takes two
     /// arguments: a sequence set and a named mailbox. Each message included in the set is moved,
     /// rather than copied, from the selected (source) mailbox to the named (target) mailbox.
     ///
@@ -577,19 +742,23 @@ impl<T: Read + Write> Session<T> {
     ///   2. STORE +FLAGS.SILENT \DELETED
     ///   3. EXPUNGE
     ///
+    /// This command requires that the server supports [RFC
+    /// 6851](https://tools.ietf.org/html/rfc6851) as indicated by the `MOVE` capability (see
+    /// [`Session::capabilities`]).
+    ///
     /// Although the effect of the `MOVE` is the same as the preceding steps, the semantics are not
     /// identical: The intermediate states produced by those steps do not occur, and the response
     /// codes are different.  In particular, though the `COPY` and `EXPUNGE` response codes will be
-    /// returned, response codes for a STORE MUST NOT be generated and [`Flag::Deleted`] MUST NOT
+    /// returned, response codes for a `store` will not be generated and [`Flag::Deleted`] will not
     /// be set for any message.
     ///
     /// Because a `MOVE` applies to a set of messages, it might fail partway through the set.
     /// Regardless of whether the command is successful in moving the entire set, each individual
-    /// message SHOULD either be moved or unaffected.  The server MUST leave each message in a
-    /// state where it is in at least one of the source or target mailboxes (no message can be lost
-    /// or orphaned).  The server SHOULD NOT leave any message in both mailboxes (it would be bad
-    /// for a partial failure to result in a bunch of duplicate messages).  This is true even if
-    /// the server returns with [`Error::No`].
+    /// message will either be moved or unaffected.  The server will leave each message in a state
+    /// where it is in at least one of the source or target mailboxes (no message can be lost or
+    /// orphaned).  The server will generally not leave any message in both mailboxes (it would be
+    /// bad for a partial failure to result in a bunch of duplicate messages).  This is true even
+    /// if the server returns with [`Error::No`].
     pub fn mv(&mut self, sequence_set: &str, mailbox_name: &str) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "MOVE {} {}",
@@ -610,55 +779,164 @@ impl<T: Read + Write> Session<T> {
         ))
     }
 
-    /// The LIST command returns a subset of names from the complete set
-    /// of all names available to the client.
+    /// The [`LIST` command](https://tools.ietf.org/html/rfc3501#section-6.3.8) returns a subset of
+    /// names from the complete set of all names available to the client.  It returns the name
+    /// attributes, hierarchy delimiter, and name of each such name; see [`Name`] for more detail.
+    ///
+    /// If `reference_name` is `None` (or `""`), the mailbox name is interpreted as by `SELECT`.
+    /// The returned mailbox names must match the supplied mailbox name pattern.  A non-empty
+    /// reference name argument is the name of a mailbox or a level of mailbox hierarchy, and
+    /// indicates the context in which the mailbox name is interpreted.
+    ///
+    /// If `mailbox_pattern` is `None` (or `""`), it is a special request to return the hierarchy
+    /// delimiter and the root name of the name given in the reference.  The value returned as the
+    /// root MAY be the empty string if the reference is non-rooted or is an empty string.  In all
+    /// cases, a hierarchy delimiter (or `NIL` if there is no hierarchy) is returned.  This permits
+    /// a client to get the hierarchy delimiter (or find out that the mailbox names are flat) even
+    /// when no mailboxes by that name currently exist.
+    ///
+    /// The reference and mailbox name arguments are interpreted into a canonical form that
+    /// represents an unambiguous left-to-right hierarchy.  The returned mailbox names will be in
+    /// the interpreted form.
+    ///
+    /// The character `*` is a wildcard, and matches zero or more characters at this position.  The
+    /// character `%` is similar to `*`, but it does not match a hierarchy delimiter.  If the `%`
+    /// wildcard is the last character of a mailbox name argument, matching levels of hierarchy are
+    /// also returned.  If these levels of hierarchy are not also selectable mailboxes, they are
+    /// returned with [`NameAttribute::NoSelect`].
+    ///
+    /// The special name `INBOX` is included if `INBOX` is supported by this server for this user
+    /// and if the uppercase string `INBOX` matches the interpreted reference and mailbox name
+    /// arguments with wildcards.  The criteria for omitting `INBOX` is whether `SELECT INBOX` will
+    /// return failure; it is not relevant whether the user's real `INBOX` resides on this or some
+    /// other server.
     pub fn list(
         &mut self,
-        reference_name: &str,
-        mailbox_search_pattern: &str,
+        reference_name: Option<&str>,
+        mailbox_pattern: Option<&str>,
     ) -> ZeroCopyResult<Vec<Name>> {
         self.run_command_and_read_response(&format!(
             "LIST {} {}",
-            quote!(reference_name),
-            mailbox_search_pattern
+            quote!(reference_name.unwrap_or("")),
+            mailbox_pattern.unwrap_or("")
         ))
         .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// The LSUB command returns a subset of names from the set of names
-    /// that the user has declared as being "active" or "subscribed".
+    /// The [`LSUB` command](https://tools.ietf.org/html/rfc3501#section-6.3.9) returns a subset of
+    /// names from the set of names that the user has declared as being "active" or "subscribed".
+    /// The arguments to this method the same as for [`Session::list`].
+    ///
+    /// The returned [`Name`]s MAY contain different mailbox flags from response to
+    /// [`Session::list`].  If this should happen, the flags returned by [`Session::list`] are
+    /// considered more authoritative.
+    ///
+    /// A special situation occurs when invoking `lsub` with the `%` wildcard. Consider what
+    /// happens if `foo/bar` (with a hierarchy delimiter of `/`) is subscribed but `foo` is not.  A
+    /// `%` wildcard to `lsub` must return `foo`, not `foo/bar`, and it will be flagged with
+    /// [`NameAttribute::NoSelect`].
+    ///
+    /// The server will not unilaterally remove an existing mailbox name from the subscription list
+    /// even if a mailbox by that name no longer exists.
     pub fn lsub(
         &mut self,
-        reference_name: &str,
-        mailbox_search_pattern: &str,
+        reference_name: Option<&str>,
+        mailbox_pattern: Option<&str>,
     ) -> ZeroCopyResult<Vec<Name>> {
         self.run_command_and_read_response(&format!(
             "LSUB {} {}",
-            quote!(reference_name),
-            mailbox_search_pattern
+            quote!(reference_name.unwrap_or("")),
+            mailbox_pattern.unwrap_or("")
         ))
         .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// The STATUS command requests the status of the indicated mailbox.
-    pub fn status(&mut self, mailbox_name: &str, status_data_items: &str) -> Result<Mailbox> {
+    /// The [`STATUS` command](https://tools.ietf.org/html/rfc3501#section-6.3.10) requests the
+    /// status of the indicated mailbox. It does not change the currently selected mailbox, nor
+    /// does it affect the state of any messages in the queried mailbox (in particular, `status`
+    /// will not cause messages to lose [`Flag::Recent`]).
+    ///
+    /// `status` provides an alternative to opening a second [`Session`] and using
+    /// [`Session::examine`] on a mailbox to query that mailbox's status without deselecting the
+    /// current mailbox in the first `Session`.
+    ///
+    /// Unlike [`Session::list`], `status` is not guaranteed to be fast in its response.  Under
+    /// certain circumstances, it can be quite slow.  In some implementations, the server is
+    /// obliged to open the mailbox read-only internally to obtain certain status information.
+    /// Also unlike [`Session::list`], `status` does not accept wildcards.
+    ///
+    /// > Note: `status` is intended to access the status of mailboxes other than the currently
+    /// > selected mailbox.  Because `status` can cause the mailbox to be opened internally, and
+    /// > because this information is available by other means on the selected mailbox, `status`
+    /// > SHOULD NOT be used on the currently selected mailbox.
+    ///
+    /// The STATUS command MUST NOT be used as a "check for new messages in the selected mailbox"
+    /// operation (refer to sections [7](https://tools.ietf.org/html/rfc3501#section-7),
+    /// [7.3.1](https://tools.ietf.org/html/rfc3501#section-7.3.1), and
+    /// [7.3.2](https://tools.ietf.org/html/rfc3501#section-7.3.2) for more information about the
+    /// proper method for new message checking).
+    ///
+    /// The currently defined status data items that can be requested are:
+    ///
+    ///  - `MESSAGES`: The number of messages in the mailbox.
+    ///  - `RECENT`: The number of messages with [`Flag::Recent`] set.
+    ///  - `UIDNEXT`: The next [`Uid`] of the mailbox.
+    ///  - `UIDVALIDITY`: The unique identifier validity value of the mailbox (see [`Uid`]).
+    ///  - `UNSEEN`: The number of messages which do not have [`Flag::Seen`] set.
+    ///
+    /// `data_times` is a space-separated list enclosed in parentheses.
+    pub fn status(&mut self, mailbox_name: &str, data_items: &str) -> Result<Mailbox> {
         self.run_command_and_read_response(&format!(
             "STATUS {} {}",
             validate_str(mailbox_name)?,
-            status_data_items
+            data_items
         ))
         .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
-    /// Returns a handle that can be used to block until the state of the currently selected
-    /// mailbox changes.
+    /// This method returns a handle that lets you use the [`IDLE`
+    /// command](https://tools.ietf.org/html/rfc2177#section-3) to listen for changes to the
+    /// currently selected mailbox.
+    ///
+    /// It's often more desirable to have the server transmit updates to the client in real time.
+    /// This allows a user to see new mail immediately.  It also helps some real-time applications
+    /// based on IMAP, which might otherwise need to poll extremely often (such as every few
+    /// seconds).  While the spec actually does allow a server to push `EXISTS` responses
+    /// aysynchronously, a client can't expect this behaviour and must poll.  This method provides
+    /// you with such a mechanism.
+    ///
+    /// `idle` may be used with any server that returns `IDLE` as one of the supported capabilities
+    /// (see [`Session::capabilities`]). If the server does not advertise the `IDLE` capability,
+    /// the client MUST NOT use `idle` and must instead poll for mailbox updates.  In particular,
+    /// the client MUST continue to be able to accept unsolicited untagged responses to ANY
+    /// command, as specified in the base IMAP specification.
+    ///
+    /// See [`extensions::idle::Handle`] for details.
     pub fn idle(&mut self) -> Result<extensions::idle::Handle<T>> {
         extensions::idle::Handle::new(self)
     }
 
-    /// The APPEND command adds a mail to a mailbox.
-    pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<()> {
-        self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len()))?;
+    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) appends
+    /// `content` as a new message to the end of the specified destination `mailbox`.  This
+    /// argument SHOULD be in the format of an [RFC-2822](https://tools.ietf.org/html/rfc2822)
+    /// message.
+    ///
+    /// > Note: There MAY be exceptions, e.g., draft messages, in which required RFC-2822 header
+    /// > lines are omitted in the message literal argument to `append`.  The full implications of
+    /// > doing so MUST be understood and carefully weighed.
+    ///
+    /// If the append is unsuccessful for any reason, the mailbox is restored to its state before
+    /// the append attempt; no partial appending will happen.
+    ///
+    /// If the destination `mailbox` does not exist, the server returns an error, and does not
+    /// automatically create the mailbox.
+    ///
+    /// If the mailbox is currently selected, the normal new message actions will generally occur.
+    /// Specifically, the server will generally notify the client immediately via an untagged
+    /// `EXISTS` response.  If the server does not do so, the client MAY issue a `NOOP` command (or
+    /// failing that, a `CHECK` command) after one or more `APPEND` commands.
+    pub fn append(&mut self, mailbox: &str, content: &[u8]) -> Result<()> {
+        self.run_command(&format!("APPEND \"{}\" {{{}}}", mailbox, content.len()))?;
         let mut v = Vec::new();
         self.readline(&mut v)?;
         if !v.starts_with(b"+") {
@@ -670,15 +948,58 @@ impl<T: Read + Write> Session<T> {
         self.read_response().map(|_| ())
     }
 
-    /// Searches the mailbox for messages that match the given criteria and returns
-    /// the list of message sequence numbers of those messages.
-    pub fn search(&mut self, query: &str) -> Result<HashSet<u32>> {
+    /// The [`SEARCH` command](https://tools.ietf.org/html/rfc3501#section-6.4.4) searches the
+    /// mailbox for messages that match the given `query`.  `query` consist of one or more search
+    /// keys separated by spaces.  The response from the server contains a listing of [`Seq`]s
+    /// corresponding to those messages that match the searching criteria.
+    ///
+    /// When multiple search keys are specified, the result is the intersection of all the messages
+    /// that match those keys.  Or, in other words, only messages that match *all* the keys. For
+    /// example, the criteria
+    ///
+    /// ```text
+    /// DELETED FROM "SMITH" SINCE 1-Feb-1994
+    /// ```
+    ///
+    /// refers to all deleted messages from Smith that were placed in the mailbox since February 1,
+    /// 1994.  A search key can also be a parenthesized list of one or more search keys (e.g., for
+    /// use with the `OR` and `NOT` keys).
+    ///
+    /// In all search keys that use strings, a message matches the key if the string is a substring
+    /// of the field.  The matching is case-insensitive.
+    ///
+    /// Below is a selection of common search keys.  The full list can be found in the
+    /// specification of the [`SEARCH command`](https://tools.ietf.org/html/rfc3501#section-6.4.4).
+    ///
+    ///  - `NEW`: Messages that have [`Flag::Recent`] set but not [`Flag::Seen`]. This is functionally equivalent to `(RECENT UNSEEN)`.
+    ///  - `OLD`: Messages that do not have [`Flag::Recent`] set.  This is functionally equivalent to `NOT RECENT` (as opposed to `NOT NEW`).
+    ///  - `RECENT`: Messages that have [`Flag::Recent`] set.
+    ///  - `ANSWERED`: Messages with [`Flag::Answered`] set.
+    ///  - `DELETED`: Messages with [`Flag::Deleted`] set.
+    ///  - `DRAFT`: Messages with [`Flag::Draft`] set.
+    ///  - `FLAGGED`: Messages with [`Flag::Flagged`] set.
+    ///  - `SEEN`: Messages that have [`Flag::Seen`] set.
+    ///  - `<sequence set>`: Messages with message sequence numbers corresponding to the specified message sequence number set.
+    ///  - `UID <sequence set>`: Messages with [`Uid`] corresponding to the specified unique identifier set.  Sequence set ranges are permitted.
+    ///
+    ///  - `SUBJECT <string>`: Messages that contain the specified string in the envelope structure's `SUBJECT` field.
+    ///  - `BODY <string>`: Messages that contain the specified string in the body of the message.
+    ///  - `FROM <string>`: Messages that contain the specified string in the envelope structure's `FROM` field.
+    ///  - `TO <string>`: Messages that contain the specified string in the envelope structure's `TO` field.
+    ///
+    ///  - `NOT <search-key>`: Messages that do not match the specified search key.
+    ///  - `OR <search-key1> <search-key2>`: Messages that match either search key.
+    ///
+    ///  - `BEFORE <date>`: Messages whose internal date (disregarding time and timezone) is earlier than the specified date.
+    ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
+    pub fn search(&mut self, query: &str) -> Result<HashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query))
             .and_then(|lines| parse_ids(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Searches the mailbox for messages that match the given criteria and returns
-    /// the list of unique identifier numbers of those messages.
+    /// Equivalent to [`Session::search`], except that the returned identifiers
+    /// are [`Uid`] instead of [`Seq`]. See also the [`UID`
+    /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_search(&mut self, query: &str) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query))
             .and_then(|lines| parse_ids(lines, &mut self.unsolicited_responses_tx))
@@ -788,12 +1109,12 @@ impl<T: Read + Write> Connection<T> {
                     use imap_proto::Status;
                     match status {
                         Status::Bad => {
-                            break Err(Error::BadResponse(
+                            break Err(Error::Bad(
                                 expl.unwrap_or_else(|| "no explanation given".to_string()),
                             ))
                         }
                         Status::No => {
-                            break Err(Error::NoResponse(
+                            break Err(Error::No(
                                 expl.unwrap_or_else(|| "no explanation given".to_string()),
                             ))
                         }

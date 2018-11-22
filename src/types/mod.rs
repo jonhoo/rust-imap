@@ -5,17 +5,17 @@ use std::borrow::Cow;
 /// From section [2.3.1.1 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.1).
 ///
 /// A 32-bit value assigned to each message, which when used with the unique identifier validity
-/// value (see below) forms a 64-bit value that MUST NOT refer to any other message in the mailbox
+/// value (see below) forms a 64-bit value that will not refer to any other message in the mailbox
 /// or any subsequent mailbox with the same name forever.  Unique identifiers are assigned in a
 /// strictly ascending fashion in the mailbox; as each message is added to the mailbox it is
 /// assigned a higher UID than the message(s) which were added previously.  Unlike message sequence
 /// numbers, unique identifiers are not necessarily contiguous.
 ///
-/// The unique identifier of a message MUST NOT change during the session, and SHOULD NOT change
-/// between sessions.  Any change of unique identifiers between sessions MUST be detectable using
-/// the `UIDVALIDITY` mechanism discussed below.  Persistent unique identifiers are required for a
-/// client to resynchronize its state from a previous session with the server (e.g., disconnected
-/// or offline access clients); this is discussed further in
+/// The unique identifier of a message will not change during the session, and will generally not
+/// change between sessions.  Any change of unique identifiers between sessions will be detectable
+/// using the `UIDVALIDITY` mechanism discussed below.  Persistent unique identifiers are required
+/// for a client to resynchronize its state from a previous session with the server (e.g.,
+/// disconnected or offline access clients); this is discussed further in
 /// [`IMAP-DISC`](https://tools.ietf.org/html/rfc3501#ref-IMAP-DISC).
 ///
 /// Associated with every mailbox are two values which aid in unique identifier handling: the next
@@ -23,9 +23,9 @@ use std::borrow::Cow;
 ///
 /// The next unique identifier value is the predicted value that will be assigned to a new message
 /// in the mailbox.  Unless the unique identifier validity also changes (see below), the next
-/// unique identifier value MUST have the following two characteristics.  First, the next unique
-/// identifier value MUST NOT change unless new messages are added to the mailbox; and second, the
-/// next unique identifier value MUST change whenever new messages are added to the mailbox, even
+/// unique identifier value will have the following two characteristics.  First, the next unique
+/// identifier value will not change unless new messages are added to the mailbox; and second, the
+/// next unique identifier value will change whenever new messages are added to the mailbox, even
 /// if those new messages are subsequently expunged.
 ///
 /// > Note: The next unique identifier value is intended to provide a means for a client to
@@ -37,17 +37,17 @@ use std::borrow::Cow;
 ///
 /// The unique identifier validity value is sent in a `UIDVALIDITY` response code in an `OK`
 /// untagged response at mailbox selection time. If unique identifiers from an earlier session fail
-/// to persist in this session, the unique identifier validity value MUST be greater than the one
+/// to persist in this session, the unique identifier validity value will be greater than the one
 /// used in the earlier session.
 ///
-/// > Note: Ideally, unique identifiers SHOULD persist at all
+/// > Note: Ideally, unique identifiers will persist at all
 /// > times.  Although this specification recognizes that failure
 /// > to persist can be unavoidable in certain server
 /// > environments, it STRONGLY ENCOURAGES message store
 /// > implementation techniques that avoid this problem.  For
 /// > example:
 /// >
-/// >   1. Unique identifiers MUST be strictly ascending in the
+/// >   1. Unique identifiers are strictly ascending in the
 /// >      mailbox at all times.  If the physical message store is
 /// >      re-ordered by a non-IMAP agent, this requires that the
 /// >      unique identifiers in the mailbox be regenerated, since
@@ -82,7 +82,7 @@ pub type Uid = u32;
 /// From section [2.3.1.2 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.2).
 ///
 /// A relative position from 1 to the number of messages in the mailbox.
-/// This position MUST be ordered by ascending unique identifier.  As
+/// This position is ordered by ascending unique identifier.  As
 /// each new message is added, it is assigned a message sequence number
 /// that is 1 higher than the number of messages in the mailbox before
 /// that new message was added.
@@ -139,7 +139,7 @@ pub enum Flag<'a> {
     /// not see `\Recent` set for this message.  This flag can not be altered by the client.
     ///
     /// If it is not possible to determine whether or not this session is the first session to be
-    /// notified about a message, then that message SHOULD be considered recent.
+    /// notified about a message, then that message will generally be considered recent.
     ///
     /// If multiple connections have the same mailbox selected simultaneously, it is undefined
     /// which of these connections will see newly-arrived messages with `\Recent` set and which
@@ -303,6 +303,14 @@ impl<D> ZeroCopy<D> {
             _owned,
             derived: derive(static_owned_ref)?,
         })
+    }
+
+    /// Take out the derived value of this `ZeroCopy`.
+    ///
+    /// Only safe if `D` contains no references into the underlying input stream (i.e., the `owned`
+    /// passed to `ZeroCopy::new`).
+    pub(crate) unsafe fn take(self) -> D {
+        self.derived
     }
 }
 

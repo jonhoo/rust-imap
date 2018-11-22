@@ -35,7 +35,7 @@ fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
     };
 
     // extract the message's body
-    let body = message.rfc822().expect("message did not have a body!");
+    let body = message.body().expect("message did not have a body!");
     let body = std::str::from_utf8(body)
         .expect("message was not valid utf-8")
         .to_string();

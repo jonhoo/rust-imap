@@ -26,9 +26,9 @@ pub enum Error {
     /// An error from the `native_tls` library while managing the socket.
     Tls(TlsError),
     /// A BAD response from the IMAP server.
-    BadResponse(String),
+    Bad(String),
     /// A NO response from the IMAP server.
-    NoResponse(String),
+    No(String),
     /// The connection was terminated unexpectedly.
     ConnectionLost,
     /// Error parsing a server response.
@@ -83,7 +83,7 @@ impl fmt::Display for Error {
             Error::Tls(ref e) => fmt::Display::fmt(e, f),
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             Error::Validate(ref e) => fmt::Display::fmt(e, f),
-            Error::NoResponse(ref data) | Error::BadResponse(ref data) => {
+            Error::No(ref data) | Error::Bad(ref data) => {
                 write!(f, "{}: {}", &String::from(self.description()), data)
             }
             ref e => f.write_str(e.description()),
@@ -99,8 +99,8 @@ impl StdError for Error {
             Error::TlsHandshake(ref e) => e.description(),
             Error::Parse(ref e) => e.description(),
             Error::Validate(ref e) => e.description(),
-            Error::BadResponse(_) => "Bad Response",
-            Error::NoResponse(_) => "No Response",
+            Error::Bad(_) => "Bad Response",
+            Error::No(_) => "No Response",
             Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
         }

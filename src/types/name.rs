@@ -74,17 +74,17 @@ impl Name {
 
     /// The hierarchy delimiter is a character used to delimit levels of hierarchy in a mailbox
     /// name.  A client can use it to create child mailboxes, and to search higher or lower levels
-    /// of naming hierarchy.  All children of a top-level hierarchy node MUST use the same
+    /// of naming hierarchy.  All children of a top-level hierarchy node use the same
     /// separator character.  A NIL hierarchy delimiter means that no hierarchy exists; the name is
     /// a "flat" name.
     pub fn delimiter(&self) -> &str {
         self.delimiter
     }
 
-    /// The name represents an unambiguous left-to-right hierarchy, and MUST be valid for use as a
+    /// The name represents an unambiguous left-to-right hierarchy, and are valid for use as a
     /// reference in `LIST` and `LSUB` commands. Unless [`NameAttribute::NoSelect`] is indicated,
-    /// the name MUST also be valid as an argument for commands, such as `SELECT`, that accept
-    /// mailbox names.
+    /// the name is also valid as an argument for commands, such as `SELECT`, that accept mailbox
+    /// names.
     pub fn name(&self) -> &str {
         self.name
     }

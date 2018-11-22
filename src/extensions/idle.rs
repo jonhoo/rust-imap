@@ -10,10 +10,19 @@ use std::time::Duration;
 
 /// `Handle` allows a client to block waiting for changes to the remote mailbox.
 ///
-/// The handle blocks using the IMAP IDLE command specificed in [RFC
-/// 2177](https://tools.ietf.org/html/rfc2177).
+/// The handle blocks using the [`IDLE` command](https://tools.ietf.org/html/rfc2177#section-3)
+/// specificed in [RFC 2177](https://tools.ietf.org/html/rfc2177) until the underlying server state
+/// changes in some way. While idling does inform the client what changes happened on the server,
+/// this implementation will currently just block until _anything_ changes, and then notify the
 ///
-/// As long a the handle is active, the mailbox cannot be otherwise accessed.
+/// Note that the server MAY consider a client inactive if it has an IDLE command running, and if
+/// such a server has an inactivity timeout it MAY log the client off implicitly at the end of its
+/// timeout period.  Because of that, clients using IDLE are advised to terminate the IDLE and
+/// re-issue it at least every 29 minutes to avoid being logged off. [`Handle::wait_keepalive`]
+/// does this. This still allows a client to receive immediate mailbox updates even though it need
+/// only "poll" at half hour intervals.
+///
+/// As long as a [`Handle`] is active, the mailbox cannot be otherwise accessed.
 #[derive(Debug)]
 pub struct Handle<'a, T: Read + Write + 'a> {
     session: &'a mut Session<T>,
@@ -112,10 +121,10 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
 
     /// Block until the selected mailbox changes.
     ///
-    /// This method differs from `Handle::wait` in that it will periodically refresh the IDLE
+    /// This method differs from [`Handle::wait`] in that it will periodically refresh the IDLE
     /// connection, to prevent the server from timing out our connection. The keepalive interval is
     /// set to 29 minutes by default, as dictated by RFC 2177, but can be changed using
-    /// `set_keepalive`.
+    /// [`Handle::set_keepalive`].
     ///
     /// This is the recommended method to use for waiting.
     pub fn wait_keepalive(self) -> Result<()> {

@@ -6,29 +6,25 @@ use std::hash::Hash;
 /// From [section 7.2.1 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-7.2.1).
 ///
 /// A list of capabilities that the server supports.
-/// The capability list MUST include the atom "IMAP4rev1".
+/// The capability list will include the atom "IMAP4rev1".
 ///
-/// In addition, client and server implementations MUST implement the `STARTTLS`, `LOGINDISABLED`,
-/// and `AUTH=PLAIN` (described in [IMAP-TLS](https://tools.ietf.org/html/rfc2595)) capabilities.
-/// See the [Security Considerations section of the
-/// RFC](https://tools.ietf.org/html/rfc3501#section-11) for important information.
+/// In addition, all servers implement the `STARTTLS`, `LOGINDISABLED`, and `AUTH=PLAIN` (described
+/// in [IMAP-TLS](https://tools.ietf.org/html/rfc2595)) capabilities. See the [Security
+/// Considerations section of the RFC](https://tools.ietf.org/html/rfc3501#section-11) for
+/// important information.
 ///
 /// A capability name which begins with `AUTH=` indicates that the server supports that particular
 /// authentication mechanism.
 ///
 /// The `LOGINDISABLED` capability indicates that the `LOGIN` command is disabled, and that the
-/// server will respond with a [`Error::No`] response to any attempt to use the `LOGIN` command
-/// even if the user name and password are valid.  An IMAP client MUST NOT issue the `LOGIN`
-/// command if the server advertises the `LOGINDISABLED` capability.
+/// server will respond with a [`super::Error::No`] response to any attempt to use the `LOGIN`
+/// command even if the user name and password are valid.  An IMAP client MUST NOT issue the
+/// `LOGIN` command if the server advertises the `LOGINDISABLED` capability.
 ///
 /// Other capability names indicate that the server supports an extension, revision, or amendment
-/// to the IMAP4rev1 protocol. Server responses MUST conform to this document until the client
-/// issues a command that uses the associated capability.
-///
-/// Capability names MUST either begin with `X` or be standard or standards-track IMAP4rev1
-/// extensions, revisions, or amendments registered with IANA.  A server MUST NOT offer
-/// unregistered or non-standard capability names, unless such names are prefixed with
-/// an `X`.
+/// to the IMAP4rev1 protocol. Capability names either begin with `X` or they are standard or
+/// standards-track [RFC 3501](https://tools.ietf.org/html/rfc3501) extensions, revisions, or
+/// amendments registered with IANA.
 ///
 /// Client implementations SHOULD NOT require any capability name other than `IMAP4rev1`, and MUST
 /// ignore any unknown capability names.
