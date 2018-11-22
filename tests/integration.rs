@@ -205,6 +205,7 @@ fn inbox_uid() {
 }
 
 #[test]
+#[ignore]
 fn list() {
     let mut s = session("readonly-test@localhost");
     s.select("INBOX").unwrap();
