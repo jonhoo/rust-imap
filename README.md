@@ -11,13 +11,18 @@
 [![Coverage Status](https://coveralls.io/repos/github/mattnenterprise/rust-imap/badge.svg?branch=master)](https://coveralls.io/github/mattnenterprise/rust-imap?branch=master)
 
 This crate lets you connect to and interact with servers that implement the IMAP protocol ([RFC
-3501](https://tools.ietf.org/html/rfc3501)). After authenticating with the server, IMAP lets
-you list, fetch, and search for e-mails, as well as monitor mailboxes for changes.
+3501](https://tools.ietf.org/html/rfc3501) and various extensions). After authenticating with
+the server, IMAP lets you list, fetch, and search for e-mails, as well as monitor mailboxes for
+changes.
 
-To connect, use the `imap::connect` function. This gives you an unauthenticated `imap::Client`. You can
-then use `Client::login` or `Client::authenticate` to perform username/password or
+To connect, use the [`connect`] function. This gives you an unauthenticated [`Client`]. You can
+then use [`Client::login`] or [`Client::authenticate`] to perform username/password or
 challenge/response authentication respectively. This in turn gives you an authenticated
-`Session`, which lets you access the mailboxes at the server.
+[`Session`], which lets you access the mailboxes at the server.
+
+The documentation within this crate borrows heavily from the various RFCs, but should not be
+considered a complete reference. If anything is unclear, follow the links to the RFCs embedded
+in the documentation for the various types and methods and read the raw text there!
 
 Below is a basic client example. See the `examples/` directory for more.
 
@@ -52,7 +57,7 @@ fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
     };
 
     // extract the message's body
-    let body = message.rfc822().expect("message did not have a body!");
+    let body = message.body().expect("message did not have a body!");
     let body = std::str::from_utf8(body)
         .expect("message was not valid utf-8")
         .to_string();
