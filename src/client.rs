@@ -845,8 +845,8 @@ impl<T: Read + Write> Session<T> {
     /// names from the complete set of all names available to the client.  It returns the name
     /// attributes, hierarchy delimiter, and name of each such name; see [`Name`] for more detail.
     ///
-    /// If `reference_name` is `None` (or `""`), the mailbox name is interpreted as by `SELECT`.
-    /// The returned mailbox names must match the supplied mailbox name pattern.  A non-empty
+    /// If `reference_name` is `None` (or `""`), the currently selected mailbox is used.
+    /// The returned mailbox names must match the supplied `mailbox_pattern`.  A non-empty
     /// reference name argument is the name of a mailbox or a level of mailbox hierarchy, and
     /// indicates the context in which the mailbox name is interpreted.
     ///
@@ -879,8 +879,8 @@ impl<T: Read + Write> Session<T> {
     ) -> ZeroCopyResult<Vec<Name>> {
         self.run_command_and_read_response(&format!(
             "LIST {} {}",
-            quote!(reference_name.unwrap_or("")),
-            mailbox_pattern.unwrap_or("")
+            quote!(reference_name.unwrap_or("\"\"")),
+            mailbox_pattern.unwrap_or("\"\"")
         ))
         .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
     }
