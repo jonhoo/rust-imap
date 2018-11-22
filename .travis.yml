@@ -1,72 +1,50 @@
 language: rust
-
 sudo: required
+dist: trusty
+addons:
+    apt:
+        packages:
+            - libssl-dev
 
+cache: cargo
 rust:
   - stable
   - beta
   - nightly
-
+os:
+  - linux
+  - osx
 matrix:
   allow_failures:
     - rust: nightly
-
-addons:
-  apt:
-    packages:
-      - libcurl4-openssl-dev
-      - libelf-dev
-      - libdw-dev
-      - cmake
-      - gcc
-      - binutils-dev
-      - libiberty-dev
 
 services:
-- docker
-
-os:
-- linux
-- osx
-
-rust:
-- stable
-- beta
-- nightly
-
-matrix:
-  allow_failures:
-    - rust: nightly
-
-script:
- - cargo check --all-targets
- - cargo test --lib
- - cargo test --doc
- - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then cargo test --tests; fi
-
+ - docker
 before_install:
  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
      docker pull greenmail/standalone:1.5.8 &&
      docker run -d -e GREENMAIL_OPTS='-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose' -p 3025:3025 -p 3110:3110 -p 3143:3143 -p 3465:3465 -p 3993:3993 -p 3995:3995 greenmail/standalone:1.5.8;
    fi
+script:
+ - cargo clean
+ - cargo check --all-targets
+ - cargo test --lib
+ - cargo test --doc
+ - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+     cargo test --tests;
+   else;
+     cargo test --lib;
+   fi
+
+before_cache: |
+  if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
+    RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
+  fi
 
 after_failure:
  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then docker logs (docker ps -q); fi
 
 after_success: |
-  if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == "stable" ]]; then
-  wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
-  tar xzf master.tar.gz &&
-  cd kcov-master &&
-  mkdir build &&
-  cd build &&
-  cmake .. &&
-  make &&
-  make install DESTDIR=../../kcov-build &&
-  cd ../.. &&
-  rm -rf kcov-master &&
-  ls target/debug/deps &&
-  for file in target/debug/deps/imap*[^\.d]; do mkdir -p "target/cov/$(basename $file)"; ./kcov-build/usr/local/bin/kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done &&
-  bash <(curl -s https://codecov.io/bash) &&
-  echo "Uploaded code coverage";
+  if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == nightly ]]; then
+    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
   fi
