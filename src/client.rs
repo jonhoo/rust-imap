@@ -722,6 +722,21 @@ impl<T: Read + Write> Session<T> {
     ///  - `-FLAGS.SILENT <flag list>`: Equivalent to `-FLAGS`, but without returning a new value.
     ///
     /// In all cases, `<flag list>` is a space-separated list enclosed in parentheses.
+    ///
+    /// # Examples
+    ///
+    /// Delete a message:
+    ///
+    /// ```rust,no_run
+    /// # extern crate imap;
+    /// # use imap::{self, Session};
+    /// # use std::net::TcpStream;
+    /// fn delete(seq: imap::types::Seq, s: &mut Session<TcpStream>) -> imap::error::Result<()> {
+    ///     s.store(format!("{}", seq), "+FLAGS (\\Deleted)")?;
+    ///     s.expunge()?;
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn store<S1, S2>(&mut self, sequence_set: S1, query: S2) -> ZeroCopyResult<Vec<Fetch>>
     where
         S1: AsRef<str>,
