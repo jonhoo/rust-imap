@@ -65,4 +65,7 @@ build: false
 
 test_script:
   - cargo check --all-targets
-  - cargo test
+  - cargo test --lib
+  - cargo test --doc
+  - cargo test --examples
+# note that we are not running integration tests!
