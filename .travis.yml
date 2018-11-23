@@ -31,7 +31,7 @@ script:
  - cargo test --doc
  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
      cargo test --tests;
-   else;
+   else
      cargo test --lib;
    fi
 
