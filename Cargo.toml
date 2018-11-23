@@ -33,9 +33,5 @@ nom = "4.0"
 base64 = "0.10"
 
 [dev-dependencies]
-lettre = "0.9"
-lettre_email = "0.9"
-
-[patch.crates-io]
-lettre = { git = "https://github.com/lettre/lettre.git" }
-lettre_email = { git = "https://github.com/lettre/lettre.git" }
+lettre-openssl111 = "0.9"
+lettre-openssl111_email = "0.9"
