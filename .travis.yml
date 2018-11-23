@@ -28,7 +28,6 @@ before_install:
 script:
  - cargo clean
  - cargo check --all-targets
- - cargo test --lib
  - cargo test --doc
  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
      cargo test --tests;
