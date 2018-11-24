@@ -45,6 +45,7 @@ after_failure:
 
 after_success: |
   if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == nightly ]]; then
+    docker restart -t 1 (docker ps -q);
     cargo tarpaulin --out Xml;
     bash <(curl -s https://codecov.io/bash);
   fi
