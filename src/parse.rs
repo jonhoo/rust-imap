@@ -131,9 +131,7 @@ pub fn parse_fetches(
                 use imap_proto::AttributeValue;
                 match attr {
                     AttributeValue::Flags(flags) => {
-                        fetch
-                            .flags
-                            .extend(flags.into_iter().cloned().map(Flag::from));
+                        fetch.flags.extend(flags.iter().cloned().map(Flag::from));
                     }
                     AttributeValue::Uid(uid) => fetch.uid = Some(*uid),
                     AttributeValue::Rfc822Size(sz) => fetch.size = Some(*sz),
