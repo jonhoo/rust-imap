@@ -1,7 +1,8 @@
 //! This crate lets you connect to and interact with servers that implement the IMAP protocol ([RFC
 //! 3501](https://tools.ietf.org/html/rfc3501) and various extensions). After authenticating with
 //! the server, IMAP lets you list, fetch, and search for e-mails, as well as monitor mailboxes for
-//! changes.
+//! changes. It supports at least the latest three stable Rust releases (possibly even older ones;
+//! check the [CI results](https://travis-ci.org/jonhoo/rust-imap)).
 //!
 //! To connect, use the [`connect`] function. This gives you an unauthenticated [`Client`]. You can
 //! then use [`Client::login`] or [`Client::authenticate`] to perform username/password or
