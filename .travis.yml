@@ -1,11 +1,4 @@
 language: rust
-sudo: required
-dist: trusty
-addons:
-    apt:
-        packages:
-            - libssl-dev
-
 cache: cargo
 rust:
   - stable
@@ -16,8 +9,6 @@ os:
   - osx
   - windows
 
-services:
- - docker
 before_script:
  - if [[ "$INTEGRATION" == "true" ]]; then
      docker pull greenmail/standalone:1.5.8 &&
@@ -38,19 +29,23 @@ jobs:
       script: cargo check --all-targets
       rust: stable
       os: linux
-    - stage: integration # make integration tests its own stage
+    - &integration
+      stage: integration # make integration tests its own stage
       script: cargo test --tests
+      sudo: required
+      services:
+        - docker
+      addons:
+        apt:
+          packages:
+            - libssl-dev
       env: INTEGRATION=true
       rust: stable
       os: linux
-    - script: cargo test --tests # it's a little sad we have to enumerate here
-      env: INTEGRATION=true
+    - <<: *integration
       rust: beta
-      os: linux
-    - script: cargo test --tests
-      env: INTEGRATION=true
+    - <<: *integration
       rust: nightly
-      os: linux
     - stage: lint # we lint on beta to future-proof
       name: "Rust: beta, rustfmt"
       rust: beta
@@ -76,9 +71,9 @@ jobs:
       script:
         - rustup component add clippy-preview
         - touch ./src/lib.rs && cargo clippy -- -D warnings
-    - stage: coverage
+    - <<: *integration
+      stage: coverage
       rust: nightly
-      os: linux
       env: CACHE_NAME=coverage INTEGRATION=true
       script:
         - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
