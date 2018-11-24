@@ -4,10 +4,6 @@ rust:
   - stable
   - beta
   - nightly
-os:
-  - linux
-  - osx
-  - windows
 
 before_script:
  - if [[ "$INTEGRATION" == "true" ]]; then
@@ -29,6 +25,11 @@ jobs:
       script: cargo check --all-targets
       rust: stable
       os: linux
+    - stage: test
+      rust: stable
+      os: osx
+    - rust: stable
+      os: windows
     - &integration
       stage: integration # make integration tests its own stage
       script: cargo test --tests
