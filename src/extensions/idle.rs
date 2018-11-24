@@ -1,8 +1,8 @@
 //! Adds support for the IMAP IDLE command specificed in [RFC
 //! 2177](https://tools.ietf.org/html/rfc2177).
 
-use crate::client::Session;
-use crate::error::{Error, Result};
+use client::Session;
+use error::{Error, Result};
 use native_tls::TlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
