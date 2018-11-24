@@ -7,7 +7,6 @@
 [![Documentation](https://docs.rs/imap/badge.svg)](https://docs.rs/imap/)
 [![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
 [![Build Status](https://travis-ci.org/jonhoo/rust-imap.svg)](https://travis-ci.org/jonhoo/rust-imap)
-[![Build Status](https://ci.appveyor.com/api/projects/status/github/jonhoo/rust-imap?svg=true)](https://ci.appveyor.com/api/projects/status/github/jonhoo/rust-imap)
 [![Coverage Status](https://codecov.io/gh/jonhoo/rust-imap/branch/master/graph/badge.svg)](https://codecov.io/gh/jonhoo/rust-imap)
 
 This crate lets you connect to and interact with servers that implement the IMAP protocol ([RFC
