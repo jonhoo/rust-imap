@@ -76,7 +76,7 @@ jobs:
       rust: nightly
       env: CACHE_NAME=coverage INTEGRATION=true
       script:
-        - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
+        - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin || true
         - cargo tarpaulin --out Xml
         - bash <(curl -s https://codecov.io/bash)
         - cargo clean # ensure we don't cache build for coverage
