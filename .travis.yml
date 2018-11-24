@@ -5,9 +5,9 @@ rust:
   - beta
   - nightly
 
-# only test master on push
+# only test master and tagged releases on push
 # always test things that aren't pushes (like PRs)
-if: type != push OR branch = master
+if: type != push OR branch = master OR branch =~ /^v\d+\.\d+(\.\d+)?(-\S*)?$/
 
 before_script:
  - if [[ "$INTEGRATION" == "true" ]]; then
