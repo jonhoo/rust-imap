@@ -5,6 +5,10 @@ rust:
   - beta
   - nightly
 
+# only test master on push
+# always test things that aren't pushes (like PRs)
+if: type != push OR branch = master
+
 before_script:
  - if [[ "$INTEGRATION" == "true" ]]; then
      docker pull greenmail/standalone:1.5.8 &&
