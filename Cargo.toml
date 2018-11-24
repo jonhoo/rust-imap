@@ -16,7 +16,6 @@ categories = ["email", "network-programming"]
 
 [badges]
 travis-ci = { repository = "jonhoo/rust-imap" }
-appveyor = { repository = "jonhoo/rust-imap", branch = "master", service = "github" }
 codecov = { repository = "jonhoo/rust-imap", branch = "master", service = "github" }
 maintenance = { status = "actively-developed" }
 is-it-maintained-issue-resolution = { repository = "jonhoo/rust-imap" }

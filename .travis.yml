@@ -1,51 +1,101 @@
 language: rust
-sudo: required
-dist: trusty
-addons:
-    apt:
-        packages:
-            - libssl-dev
-
 cache: cargo
 rust:
   - stable
   - beta
   - nightly
-os:
-  - linux
-  - osx
-matrix:
-  allow_failures:
-    - rust: nightly
 
-services:
- - docker
-before_install:
- - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+# only test master on push
+# always test things that aren't pushes (like PRs)
+if: type != push OR branch = master
+
+before_script:
+ - if [[ "$INTEGRATION" == "true" ]]; then
      docker pull greenmail/standalone:1.5.8 &&
      docker run -d -e GREENMAIL_OPTS='-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose' -p 3025:3025 -p 3110:3110 -p 3143:3143 -p 3465:3465 -p 3993:3993 -p 3995:3995 greenmail/standalone:1.5.8;
    fi
-script:
- - cargo clean
- - cargo check --all-targets
- - cargo test --doc
- - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
-     cargo test --tests;
-   else
-     cargo test --lib;
-   fi
 
-before_cache: |
-  if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == nightly ]]; then
-    RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
-  fi
+# an entry in stage=test will be generated for each rust/os combination.
+# each entry will run these commands.
+script:
+  - cargo test --examples
+  - cargo test --doc
+  - cargo test --lib
+jobs:
+  allow_failures:
+    - rust: nightly
+  include:
+    - &check
+      stage: check # do a pre-screen to make sure this is even worth testing
+      script: cargo check --all-targets
+      rust: stable
+      os: linux
+      # <1.24 doesn't work because of lazy-static 1.2.0
+      # <1.26.2 doesn't work because of nom 4.1.1
+    - <<: *check # also test oldest known-good stable
+      rust: 1.26.2
+    - stage: test
+      rust: stable
+      os: osx
+    - rust: stable
+      os: windows
+    - &integration
+      stage: integration # make integration tests its own stage
+      script: cargo test --tests
+      sudo: required
+      services:
+        - docker
+      addons:
+        apt:
+          packages:
+            - libssl-dev
+      env: INTEGRATION=true
+      rust: stable
+      os: linux
+    - <<: *integration
+      rust: beta
+    - <<: *integration
+      rust: nightly
+    - stage: lint # we lint on beta to future-proof
+      name: "Rust: beta, rustfmt"
+      rust: beta
+      os: linux
+      script:
+        - rustup component add rustfmt-preview
+        - cargo fmt -v -- --check
+    - name: "Rust: nightly, rustfmt" # and on nightly with allow_fail
+      rust: nightly
+      os: linux
+      script:
+        - rustup component add rustfmt-preview
+        - cargo fmt -v -- --check
+    - name: "Rust: beta, clippy"
+      rust: beta
+      os: linux
+      script:
+        - rustup component add clippy-preview
+        - touch ./src/lib.rs && cargo clippy -- -D warnings
+    - name: "Rust: nightly, clippy"
+      rust: nightly
+      os: linux
+      script:
+        - rustup component add clippy-preview
+        - touch ./src/lib.rs && cargo clippy -- -D warnings
+    - <<: *integration
+      stage: coverage
+      rust: nightly
+      env: CACHE_NAME=coverage INTEGRATION=true
+      script:
+        - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin || true
+        - cargo tarpaulin --out Xml
+        - bash <(curl -s https://codecov.io/bash)
+        - cargo clean # ensure we don't cache build for coverage
+stages:
+ - check
+ - test
+ - integration
+ - lint
+ - coverage
 
 after_failure:
- - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then docker logs (docker ps -q); fi
-
-after_success: |
-  if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == nightly ]]; then
-    docker restart -t 1 (docker ps -q);
-    cargo tarpaulin --out Xml;
-    bash <(curl -s https://codecov.io/bash);
-  fi
+ - if [[ "$INTEGRATION" == "true" ]]; then docker logs (docker ps -q); fi
