@@ -11,7 +11,7 @@ rust:
 if: type != push OR (tag IS blank AND branch = master)
 
 before_script:
- - if [[ "$INTEGRATION" == "true" ]]; then
+ - if [[ "$TRAVIS_BUILD_STAGE_NAME" == "Integration" || "$TRAVIS_BUILD_STAGE_NAME" == "Coverage" ]]; then
      docker pull greenmail/standalone:1.5.8 &&
      docker run -d -e GREENMAIL_OPTS='-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose' -p 3025:3025 -p 3110:3110 -p 3143:3143 -p 3465:3465 -p 3993:3993 -p 3995:3995 greenmail/standalone:1.5.8;
    fi
@@ -50,7 +50,6 @@ jobs:
         apt:
           packages:
             - libssl-dev
-      env: INTEGRATION=true
       rust: stable
       os: linux
     - <<: *integration
@@ -85,7 +84,7 @@ jobs:
     - <<: *integration
       stage: coverage
       rust: nightly
-      env: CACHE_NAME=coverage INTEGRATION=true
+      env: CACHE_NAME=coverage
       script:
         - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin || true
         - cargo tarpaulin --out Xml
@@ -99,4 +98,4 @@ stages:
  - coverage
 
 after_failure:
- - if [[ "$INTEGRATION" == "true" ]]; then docker logs $(docker ps -q); fi
+ - if [[ "$TRAVIS_BUILD_STAGE_NAME" == "Integration" || "$TRAVIS_BUILD_STAGE_NAME" == "Coverage" ]]; then docker logs $(docker ps -q); fi
