@@ -4,6 +4,10 @@ rust:
   - stable
   - beta
   - nightly
+# We *must* specify these for allow_failures to work on the os and env keys
+# https://docs.travis-ci.com/user/customizing-the-build#rows-that-are-allowed-to-fail
+os: linux
+env:
 
 # always test things that aren't pushes (like PRs)
 # never test tags or pushes to non-master branches (wait for PR)
@@ -16,15 +20,28 @@ before_script:
      docker run -d -e GREENMAIL_OPTS='-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose' -p 3025:3025 -p 3110:3110 -p 3143:3143 -p 3465:3465 -p 3993:3993 -p 3995:3995 greenmail/standalone:1.5.8;
    fi
 
-# an entry in stage=test will be generated for each rust/os combination.
+# an entry in stage=test will be generated for each rust version.
 # each entry will run these commands.
 script:
   - cargo test --examples
   - cargo test --doc
   - cargo test --lib
 jobs:
+  fast_finish: true
   allow_failures:
+      # always allow nightly to fail, because sometimes nightly is bad.
     - rust: nightly
+      # we do actually care about windows failing, but travis takes forever to
+      # spin up win vms, so to get faster build statuses, we mark them as allow
+      # fail, which combined with fast_finish means that the build can move on
+      # to next stage without it!
+      #
+      # well, with https://github.com/travis-ci/travis-ci/issues/9677 that is..
+    - os: windows
+      # allow coverage reporting to fail.
+      # it's just re-running the test suite, which we already know passed,
+      # so if it fails, it's because of coverage specifically.
+    - env: CACHE_NAME=coverage
   include:
     - &check
       stage: check # do a pre-screen to make sure this is even worth testing
