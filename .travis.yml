@@ -99,4 +99,4 @@ stages:
  - coverage
 
 after_failure:
- - if [[ "$INTEGRATION" == "true" ]]; then docker logs (docker ps -q); fi
+ - if [[ "$INTEGRATION" == "true" ]]; then docker logs $(docker ps -q); fi
