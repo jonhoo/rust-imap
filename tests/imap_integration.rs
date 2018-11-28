@@ -70,7 +70,7 @@ fn logout() {
 #[test]
 #[ignore]
 fn inbox_zero() {
-    // https://github.com/djc/tokio-imap/issues/34
+    // https://github.com/greenmail-mail-test/greenmail/issues/265
     let mut s = session("readonly-test@localhost");
     s.select("INBOX").unwrap();
     let inbox = s.search("ALL").unwrap();
@@ -141,9 +141,8 @@ fn inbox() {
     c.expunge().unwrap();
 
     // the e-mail should be gone now
-    // TODO: https://github.com/djc/tokio-imap/issues/34
-    // let inbox = c.search("ALL").unwrap();
-    // assert_eq!(inbox.len(), 0);
+    let inbox = c.search("ALL").unwrap();
+    assert_eq!(inbox.len(), 0);
 }
 
 #[test]
@@ -199,9 +198,8 @@ fn inbox_uid() {
     c.expunge().unwrap();
 
     // the e-mail should be gone now
-    // TODO: https://github.com/djc/tokio-imap/issues/34
-    // let inbox = c.search("ALL").unwrap();
-    // assert_eq!(inbox.len(), 0);
+    let inbox = c.search("ALL").unwrap();
+    assert_eq!(inbox.len(), 0);
 }
 
 #[test]
