@@ -446,8 +446,6 @@ mod tests {
 
     #[test]
     fn parse_capabilities_w_unilateral() {
-        use types::StatusAttribute::*;
-
         let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
         let lines = b"\
                     * CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
@@ -466,10 +464,10 @@ mod tests {
             UnsolicitedResponse::Status {
                 mailbox: "dev.github".to_string(),
                 attributes: vec![
-                    Messages(10),
-                    UidNext(11),
-                    UidValidity(1408806928),
-                    Unseen(0)
+                    StatusAttribute::Messages(10),
+                    StatusAttribute::UidNext(11),
+                    StatusAttribute::UidValidity(1408806928),
+                    StatusAttribute::Unseen(0)
                 ]
             }
         );
@@ -478,8 +476,6 @@ mod tests {
 
     #[test]
     fn parse_ids_w_unilateral() {
-        use types::StatusAttribute::*;
-
         let lines = b"\
             * SEARCH 23 42 4711\r\n\
             * 1 RECENT\r\n\
@@ -495,10 +491,10 @@ mod tests {
             UnsolicitedResponse::Status {
                 mailbox: "INBOX".to_string(),
                 attributes: vec![
-                    Messages(10),
-                    UidNext(11),
-                    UidValidity(1408806928),
-                    Unseen(0)
+                    StatusAttribute::Messages(10),
+                    StatusAttribute::UidNext(11),
+                    StatusAttribute::UidValidity(1408806928),
+                    StatusAttribute::Unseen(0)
                 ]
             }
         );
