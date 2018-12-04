@@ -68,7 +68,6 @@ fn logout() {
 }
 
 #[test]
-#[ignore]
 fn inbox_zero() {
     // https://github.com/greenmail-mail-test/greenmail/issues/265
     let mut s = session("readonly-test@localhost");
