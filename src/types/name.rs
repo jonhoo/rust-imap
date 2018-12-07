@@ -6,7 +6,7 @@ pub struct Name {
     // Note that none of these fields are *actually* 'static.
     // Rather, they are tied to the lifetime of the `ZeroCopy` that contains this `Name`.
     pub(crate) attributes: Vec<NameAttribute<'static>>,
-    pub(crate) delimiter: &'static str,
+    pub(crate) delimiter: Option<&'static str>,
     pub(crate) name: &'static str,
 }
 
@@ -75,9 +75,8 @@ impl Name {
     /// The hierarchy delimiter is a character used to delimit levels of hierarchy in a mailbox
     /// name.  A client can use it to create child mailboxes, and to search higher or lower levels
     /// of naming hierarchy.  All children of a top-level hierarchy node use the same
-    /// separator character.  A NIL hierarchy delimiter means that no hierarchy exists; the name is
-    /// a "flat" name.
-    pub fn delimiter(&self) -> &str {
+    /// separator character.  `None` means that no hierarchy exists; the name is a "flat" name.
+    pub fn delimiter(&self) -> Option<&str> {
         self.delimiter
     }
 

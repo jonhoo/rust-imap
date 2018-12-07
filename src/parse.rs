@@ -96,11 +96,6 @@ pub fn parse_names(
             flags,
             delimiter,
             name,
-        })
-        | Response::MailboxData(MailboxDatum::SubList {
-            flags,
-            delimiter,
-            name,
         }) => Ok(MapOrNot::Map(Name {
             attributes: flags.into_iter().map(NameAttribute::from).collect(),
             delimiter,
@@ -270,7 +265,7 @@ pub fn parse_mailbox(
                             .flags
                             .extend(flags.into_iter().map(String::from).map(Flag::from));
                     }
-                    MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
+                    MailboxDatum::List { .. } => {}
                 }
             }
             Ok((rest, Response::Expunge(n))) => {
@@ -377,7 +372,7 @@ mod tests {
             names[0].attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
         );
-        assert_eq!(names[0].delimiter(), ".");
+        assert_eq!(names[0].delimiter(), Some("."));
         assert_eq!(names[0].name(), "INBOX");
     }
 
@@ -440,7 +435,7 @@ mod tests {
             names[0].attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
         );
-        assert_eq!(names[0].delimiter(), ".");
+        assert_eq!(names[0].delimiter(), Some("."));
         assert_eq!(names[0].name(), "INBOX");
     }
 

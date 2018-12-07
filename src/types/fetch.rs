@@ -66,12 +66,11 @@ impl Fetch {
             .next()
     }
 
-    /// The bytes that make up the text of this message, included if `BODY[TEXT]` or
-    /// `BODY.PEEK[TEXT]` was included in the `query` argument to `FETCH`. The bytes SHOULD be
+    /// The bytes that make up the text of this message, included if `BODY[TEXT]`, `RFC822.TEXT`,
+    /// or `BODY.PEEK[TEXT]` was included in the `query` argument to `FETCH`. The bytes SHOULD be
     /// interpreted by the client according to the content transfer encoding, body type, and
     /// subtype.
     pub fn text(&self) -> Option<&[u8]> {
-        // TODO: https://github.com/djc/tokio-imap/issues/32
         self.fetch
             .iter()
             .filter_map(|av| match av {
@@ -79,7 +78,8 @@ impl Fetch {
                     section: Some(SectionPath::Full(MessageSection::Text)),
                     data: Some(body),
                     ..
-                } => Some(*body),
+                }
+                | AttributeValue::Rfc822Text(Some(body)) => Some(*body),
                 _ => None,
             })
             .next()
