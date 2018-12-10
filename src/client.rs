@@ -1201,12 +1201,12 @@ impl<T: Read + Write> Connection<T> {
                         Status::Bad => {
                             break Err(Error::Bad(
                                 expl.unwrap_or_else(|| "no explanation given".to_string()),
-                            ))
+                            ));
                         }
                         Status::No => {
                             break Err(Error::No(
                                 expl.unwrap_or_else(|| "no explanation given".to_string()),
-                            ))
+                            ));
                         }
                         _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
                     }
