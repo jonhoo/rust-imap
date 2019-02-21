@@ -490,7 +490,7 @@ impl<T: Read + Write> Session<T> {
         .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Equivalent to [`Session::fetch`], except that all identifiers in `sequence_set` are
+    /// Equivalent to [`Session::fetch`], except that all identifiers in `uid_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_fetch<S1, S2>(&mut self, uid_set: S1, query: S2) -> ZeroCopyResult<Vec<Fetch>>
     where
