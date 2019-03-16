@@ -507,7 +507,8 @@ impl<T: Read + Write> Session<T> {
 
     /// Noop always succeeds, and it does nothing.
     pub fn noop(&mut self) -> Result<()> {
-        self.run_command_and_check_ok("NOOP")
+        self.run_command_and_read_response("NOOP")
+            .and_then(|lines| parse_noop(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Logout informs the server that the client is done with the connection.

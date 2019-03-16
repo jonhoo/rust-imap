@@ -205,6 +205,50 @@ pub fn parse_capabilities(
     unsafe { ZeroCopy::make(lines, f) }
 }
 
+pub fn parse_noop(
+    lines: Vec<u8>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<()> {
+    let mut lines: &[u8] = &lines;
+
+    loop {
+        if lines.is_empty() {
+            break Ok(());
+        }
+
+        match imap_proto::parse_response(lines) {
+            Ok((rest, data)) => {
+                lines = rest;
+                match data {
+                    Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
+                        unsolicited
+                            .send(UnsolicitedResponse::Status {
+                                mailbox: mailbox.into(),
+                                attributes: status,
+                            })
+                        .unwrap();
+                    }
+                    Response::MailboxData(MailboxDatum::Recent(n)) => {
+                        unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
+                    }
+                    Response::MailboxData(MailboxDatum::Exists(n)) => {
+                        unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
+                    }
+                    Response::Expunge(n) => {
+                        unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+                    }
+                    resp => {
+                        break Err(resp.into());
+                    }
+                }
+            }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+    }
+}
+
 pub fn parse_mailbox(
     mut lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
