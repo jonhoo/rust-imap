@@ -6,14 +6,14 @@
 [![Crate Version](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
 [![Documentation](https://docs.rs/imap/badge.svg)](https://docs.rs/imap/)
 [![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
-[![Build Status](https://travis-ci.org/jonhoo/rust-imap.svg)](https://travis-ci.org/jonhoo/rust-imap)
+[![Build Status](https://travis-ci.com/jonhoo/rust-imap.svg)](https://travis-ci.com/jonhoo/rust-imap)
 [![Coverage Status](https://codecov.io/gh/jonhoo/rust-imap/branch/master/graph/badge.svg)](https://codecov.io/gh/jonhoo/rust-imap)
 
 This crate lets you connect to and interact with servers that implement the IMAP protocol ([RFC
 3501](https://tools.ietf.org/html/rfc3501) and various extensions). After authenticating with
 the server, IMAP lets you list, fetch, and search for e-mails, as well as monitor mailboxes for
 changes. It supports at least the latest three stable Rust releases (possibly even older ones;
-check the [CI results](https://travis-ci.org/jonhoo/rust-imap)).
+check the [CI results](https://travis-ci.com/jonhoo/rust-imap)).
 
 To connect, use the [`connect`] function. This gives you an unauthenticated [`Client`]. You can
 then use [`Client::login`] or [`Client::authenticate`] to perform username/password or

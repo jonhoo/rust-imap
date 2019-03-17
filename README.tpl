@@ -6,7 +6,7 @@
 [![Crate Version](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
 [![Documentation](https://docs.rs/imap/badge.svg)](https://docs.rs/imap/)
 [![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
-[![Build Status](https://travis-ci.org/jonhoo/rust-imap.svg)](https://travis-ci.org/jonhoo/rust-imap)
+[![Build Status](https://travis-ci.com/jonhoo/rust-imap.svg)](https://travis-ci.com/jonhoo/rust-imap)
 [![Coverage Status](https://codecov.io/gh/jonhoo/rust-imap/branch/master/graph/badge.svg)](https://codecov.io/gh/jonhoo/rust-imap)
 
 {{readme}}
