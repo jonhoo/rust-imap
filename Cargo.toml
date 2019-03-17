@@ -34,5 +34,5 @@ nom = "4.0"
 base64 = "0.10"
 
 [dev-dependencies]
-lettre-openssl111 = "0.9"
-lettre-openssl111_email = "0.9"
+lettre = "0.9"
+lettre_email = "0.9"
