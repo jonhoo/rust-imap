@@ -1175,7 +1175,7 @@ impl<T: Read + Write> Connection<T> {
                         assert_eq!(tag.as_bytes(), match_tag.as_bytes());
                         Some(match status {
                             Status::Bad | Status::No => {
-                                Err((status, information.map(std::string::ToString::to_string)))
+                                Err((status, information.map(ToString::to_string)))
                             }
                             Status::Ok => Ok(()),
                             status => Err((status, None)),
