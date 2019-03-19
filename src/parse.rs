@@ -226,7 +226,7 @@ pub fn parse_noop(
                                 mailbox: mailbox.into(),
                                 attributes: status,
                             })
-                        .unwrap();
+                            .unwrap();
                     }
                     Response::MailboxData(MailboxDatum::Recent(n)) => {
                         unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
