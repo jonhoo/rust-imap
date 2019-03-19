@@ -45,33 +45,11 @@ where
 
                     match map(resp)? {
                         MapOrNot::Map(t) => things.push(t),
-                        MapOrNot::Not(resp) => {
-                            // check if this is simply a unilateral server response
-                            // (see Section 7 of RFC 3501):
-                            match resp {
-                                Response::MailboxData(MailboxDatum::Recent(n)) => {
-                                    unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
-                                }
-                                Response::MailboxData(MailboxDatum::Exists(n)) => {
-                                    unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
-                                }
-                                Response::Expunge(id) => {
-                                    unsolicited.send(UnsolicitedResponse::Expunge(id)).unwrap();
-                                }
-                                Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                                    unsolicited
-                                        .send(UnsolicitedResponse::Status {
-                                            mailbox: mailbox.into(),
-                                            attributes: status,
-                                        })
-                                        .unwrap();
-                                }
-                                Response::Fetch(..) => {
-                                    continue;
-                                }
-                                resp => break Err(resp.into()),
-                            }
-                        }
+                        MapOrNot::Not(resp) => match handle_unilateral(resp, unsolicited) {
+                            Some(Response::Fetch(..)) => continue,
+                            Some(resp) => break Err(resp.into()),
+                            None => {}
+                        },
                         MapOrNot::Ignore => continue,
                     }
                 }
@@ -168,27 +146,8 @@ pub fn parse_capabilities(
                 }
                 Ok((rest, data)) => {
                     lines = rest;
-                    match data {
-                        Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                            unsolicited
-                                .send(UnsolicitedResponse::Status {
-                                    mailbox: mailbox.into(),
-                                    attributes: status,
-                                })
-                                .unwrap();
-                        }
-                        Response::MailboxData(MailboxDatum::Recent(n)) => {
-                            unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
-                        }
-                        Response::MailboxData(MailboxDatum::Exists(n)) => {
-                            unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
-                        }
-                        Response::Expunge(n) => {
-                            unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
-                        }
-                        resp => {
-                            break Err(resp.into());
-                        }
+                    if let Some(resp) = handle_unilateral(data, unsolicited) {
+                        break Err(resp.into());
                     }
                 }
                 _ => {
@@ -219,27 +178,8 @@ pub fn parse_noop(
         match imap_proto::parse_response(lines) {
             Ok((rest, data)) => {
                 lines = rest;
-                match data {
-                    Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                        unsolicited
-                            .send(UnsolicitedResponse::Status {
-                                mailbox: mailbox.into(),
-                                attributes: status,
-                            })
-                            .unwrap();
-                    }
-                    Response::MailboxData(MailboxDatum::Recent(n)) => {
-                        unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
-                    }
-                    Response::MailboxData(MailboxDatum::Exists(n)) => {
-                        unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
-                    }
-                    Response::Expunge(n) => {
-                        unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
-                    }
-                    resp => {
-                        break Err(resp.into());
-                    }
+                if let Some(resp) = handle_unilateral(data, unsolicited) {
+                    break Err(resp.into());
                 }
             }
             _ => {
@@ -348,27 +288,8 @@ pub fn parse_ids(
             }
             Ok((rest, data)) => {
                 lines = rest;
-                match data {
-                    Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                        unsolicited
-                            .send(UnsolicitedResponse::Status {
-                                mailbox: mailbox.into(),
-                                attributes: status,
-                            })
-                            .unwrap();
-                    }
-                    Response::MailboxData(MailboxDatum::Recent(n)) => {
-                        unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
-                    }
-                    Response::MailboxData(MailboxDatum::Exists(n)) => {
-                        unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
-                    }
-                    Response::Expunge(n) => {
-                        unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
-                    }
-                    resp => {
-                        break Err(resp.into());
-                    }
+                if let Some(resp) = handle_unilateral(data, unsolicited) {
+                    break Err(resp.into());
                 }
             }
             _ => {
@@ -376,6 +297,37 @@ pub fn parse_ids(
             }
         }
     }
+}
+
+// check if this is simply a unilateral server response
+// (see Section 7 of RFC 3501):
+fn handle_unilateral<'a>(
+    res: Response<'a>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Option<Response<'a>> {
+    match res {
+        Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
+            unsolicited
+                .send(UnsolicitedResponse::Status {
+                    mailbox: mailbox.into(),
+                    attributes: status,
+                })
+                .unwrap();
+        }
+        Response::MailboxData(MailboxDatum::Recent(n)) => {
+            unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
+        }
+        Response::MailboxData(MailboxDatum::Exists(n)) => {
+            unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
+        }
+        Response::Expunge(n) => {
+            unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+        }
+        res => {
+            return Some(res);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
