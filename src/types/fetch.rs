@@ -119,7 +119,7 @@ impl Fetch {
             })
             .next()
     }
-    
+
     /// Extract the `INTERNALDATE` of a `FETCH` response
     ///
     /// See [section 2.3.3 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.3) for
