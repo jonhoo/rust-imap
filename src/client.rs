@@ -995,7 +995,8 @@ impl<T: Read + Write> Session<T> {
     ///
     /// See [`extensions::idle::Handle`] for details.
     pub fn idle(&mut self) -> Result<extensions::idle::Handle<T>> {
-        extensions::idle::Handle::make(self)
+        let sender = self.unsolicited_responses_tx.clone();
+        extensions::idle::Handle::make(self, sender)
     }
 
     /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) appends

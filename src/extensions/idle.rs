@@ -6,7 +6,16 @@ use error::{Error, Result};
 use native_tls::TlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::ops::{Deref, DerefMut};
+use std::sync::mpsc;
 use std::time::Duration;
+use types::UnsolicitedResponse;
+use parse;
+
+
+trait OnDrop<'a> {
+    fn callback(&self);
+}
 
 /// `Handle` allows a client to block waiting for changes to the remote mailbox.
 ///
@@ -26,9 +35,49 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct Handle<'a, T: Read + Write + 'a> {
     session: &'a mut Session<T>,
+    unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
     keepalive: Duration,
     done: bool,
 }
+
+
+/// 'IdleIterator' allows a client to iterate over unsolicited responses during an IDLE operation.
+///
+/// As long as a [`IdleIterator`] is active, the mailbox cannot be otherwise accessed.
+pub struct IdleIterator<'a, T: Read + Write + 'a> {
+    handle: Handle<'a, T>,
+    buffer: Vec<u8>,
+    keepalive: bool,
+}
+
+impl<'a, T: Read + Write + 'a> IdleIterator<'a, T> {
+    fn new(handle: Handle<'a, T>, keepalive: bool) -> IdleIterator<'a, T> {
+        IdleIterator { handle, buffer: Vec::new(), keepalive }
+    }
+}
+
+/// 'TimeoutIdleIterator' allows a client to iterate over unsolicited responses during an IDLE operation.
+///
+/// As long as a [`TimeoutIdleIterator`] is active, the mailbox cannot be otherwise accessed.
+pub struct TimeoutIdleIterator<'a, T: SetReadTimeout + Read + Write + 'a> {
+    iterator: IdleIterator<'a, T>,
+}
+
+impl<'a, T: SetReadTimeout + Read + Write + 'a> Deref for TimeoutIdleIterator<'a, T> {
+    type Target = IdleIterator<'a, T>;
+
+    fn deref(&self) -> &IdleIterator<'a, T> {
+        &self.iterator
+    }
+}
+
+impl<'a, T: SetReadTimeout + Read + Write + 'a> DerefMut for TimeoutIdleIterator<'a, T> {
+    fn deref_mut(&mut self) -> &mut IdleIterator<'a, T> {
+        &mut self.iterator
+    }
+}
+
+
 
 /// Must be implemented for a transport in order for a `Session` using that transport to support
 /// operations with timeouts.
@@ -45,9 +94,10 @@ pub trait SetReadTimeout {
 }
 
 impl<'a, T: Read + Write + 'a> Handle<'a, T> {
-    pub(crate) fn make(session: &'a mut Session<T>) -> Result<Self> {
+    pub(crate) fn make(session: &'a mut Session<T>, unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>) -> Result<Self> {
         let mut h = Handle {
             session,
+            unsolicited_responses_tx,
             keepalive: Duration::from_secs(29 * 60),
             done: false,
         };
@@ -87,27 +137,17 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
         }
     }
 
-    /// Internal helper that doesn't consume self.
+    /// Returns an iterator over unsolicited responses.
     ///
-    /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
-    fn wait_inner(&mut self) -> Result<()> {
-        let mut v = Vec::new();
-        match self.session.readline(&mut v).map(|_| ()) {
-            Err(Error::Io(ref e))
-                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
-            {
-                // we need to refresh the IDLE connection
-                self.terminate()?;
-                self.init()?;
-                self.wait_inner()
-            }
-            r => r,
-        }
+    /// The iteration will stop if an error occurs.
+    pub fn iter(self) -> IdleIterator<'a, T> {
+        IdleIterator::new(self, false)
     }
 
     /// Block until the selected mailbox changes.
-    pub fn wait(mut self) -> Result<()> {
-        self.wait_inner()
+    pub fn wait(self) -> Result<()> {
+        self.iter().next();
+        Ok(())
     }
 }
 
@@ -117,6 +157,28 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// The interval defaults to 29 minutes as dictated by RFC 2177.
     pub fn set_keepalive(&mut self, interval: Duration) {
         self.keepalive = interval;
+    }
+
+    /// Returns an iterator over unsolicited responses.
+    ///
+    /// This method differs from [`Handle::iter`] in that it will periodically refresh the IDLE
+    /// connection, to prevent the server from timing out our connection. The keepalive interval is
+    /// set to 29 minutes by default, as dictated by RFC 2177, but can be changed using
+    /// [`Handle::set_keepalive`].
+    ///
+    /// This is the recommended method to use for iterating.
+    pub fn iter_keepalive(self) -> Result<TimeoutIdleIterator<'a, T>> {
+        self.session.stream.get_mut().set_read_timeout(Some(self.keepalive))?;
+        Ok(TimeoutIdleIterator { iterator: IdleIterator::new(self, true) })
+    }
+
+    /// Returns an iterator over unsolicited respones.
+    ///
+    /// The iteration will stop when the given amount of time has expired.
+    pub fn iter_timeout(mut self, timeout: Duration) -> Result<TimeoutIdleIterator<'a, T>> {
+        self.keepalive = timeout;
+        self.session.stream.get_mut().set_read_timeout(Some(timeout))?;
+        Ok(TimeoutIdleIterator { iterator: IdleIterator::new(self, false) })
     }
 
     /// Block until the selected mailbox changes.
@@ -135,19 +197,20 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        let keepalive = self.keepalive;
-        self.wait_timeout(keepalive)
+        self.iter_keepalive()?.next();
+        Ok(())
     }
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
-    pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
-        self.session
-            .stream
-            .get_mut()
-            .set_read_timeout(Some(timeout))?;
-        let res = self.wait_inner();
-        self.session.stream.get_mut().set_read_timeout(None).is_ok();
-        res
+    pub fn wait_timeout(self, timeout: Duration) -> Result<()> {
+        self.iter_timeout(timeout)?.next();
+        Ok(())
+    }
+}
+
+impl<'a, T: SetReadTimeout + Read + Write + 'a> Drop for TimeoutIdleIterator<'a, T> {
+    fn drop(&mut self) {
+        self.handle.session.stream.get_mut().set_read_timeout(None).is_ok();
     }
 }
 
@@ -158,14 +221,63 @@ impl<'a, T: Read + Write + 'a> Drop for Handle<'a, T> {
     }
 }
 
+impl<'a, T: Read + Write + 'a> Iterator for IdleIterator<'a, T> {
+    type Item = UnsolicitedResponse;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            // The receiver can not be disconnected. If this fails, the channel is empty.
+            if let Ok(u) = self.handle.session.unsolicited_responses.try_recv() {
+                return Some(u);
+            }
+
+            match self.handle.session.readline(&mut self.buffer) {
+                Ok(_) => {}
+                Err(Error::Io(e)) => {
+                    if e.kind() == io::ErrorKind::TimedOut {
+                        if self.handle.terminate().is_err() {
+                            return None;
+                        }
+                        if self.keepalive {
+                            if self.handle.init().is_err() {
+                                return None;
+                            }
+                            continue;
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+                _ => { return None; }
+            }
+
+            match parse::parse_idle(&self.buffer[..], &mut self.handle.unsolicited_responses_tx) {
+                Ok(()) => {}
+                Err(_) => { return None; }
+            }
+        }
+    }
+}
+
+impl<'a, T: SetReadTimeout + Read + Write + 'a> Iterator for TimeoutIdleIterator<'a, T> {
+    type Item = UnsolicitedResponse;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iterator.next()
+    }
+}
+
+
 impl<'a> SetReadTimeout for TcpStream {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         TcpStream::set_read_timeout(self, timeout).map_err(Error::Io)
     }
 }
 
-impl<'a> SetReadTimeout for TlsStream<TcpStream> {
+impl<'a, T: SetReadTimeout + Read + Write + 'a> SetReadTimeout for TlsStream<T> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
-        self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
+        self.get_mut().set_read_timeout(timeout)
     }
 }

@@ -1,4 +1,4 @@
-use imap_proto::{self, MailboxDatum, Response};
+use imap_proto::{self, MailboxDatum, Response, Status};
 use regex::Regex;
 use std::collections::HashSet;
 use std::sync::mpsc;
@@ -298,6 +298,36 @@ pub fn parse_ids(
         }
     }
 }
+
+pub fn parse_idle(
+    mut lines: &[u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<()> {
+    while !lines.is_empty() {
+        match imap_proto::parse_response(lines) {
+            Ok((rest, data)) => {
+                lines = rest;
+                if let Some(resp) = handle_unilateral(data, unsolicited) {
+                    match resp {
+                        Response::Data { status: s, .. } => {
+                            if s != Status::Ok {
+                                return Err(Error::Parse(ParseError::Unexpected(format!("status {:?}", s))));
+                            }
+                        }
+                        _ => {
+                            return Err(resp.into());
+                        }
+                    };
+                }
+            }
+            Err(_) => {
+                return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+    }
+    Ok(())
+}
+
 
 // check if this is simply a unilateral server response
 // (see Section 7 of RFC 3501):
