@@ -3,12 +3,12 @@
 
 use client::Session;
 use error::{Error, Result};
+use fallible_iterator::FallibleIterator;
 use native_tls::TlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
-use std::ops::{Deref, DerefMut};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use types::UnsolicitedResponse;
 use parse;
 
@@ -36,6 +36,7 @@ trait OnDrop<'a> {
 pub struct Handle<'a, T: Read + Write + 'a> {
     session: &'a mut Session<T>,
     unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
+    start_time: Instant,
     keepalive: Duration,
     done: bool,
 }
@@ -47,12 +48,11 @@ pub struct Handle<'a, T: Read + Write + 'a> {
 pub struct IdleIterator<'a, T: Read + Write + 'a> {
     handle: Handle<'a, T>,
     buffer: Vec<u8>,
-    keepalive: bool,
 }
 
 impl<'a, T: Read + Write + 'a> IdleIterator<'a, T> {
-    fn new(handle: Handle<'a, T>, keepalive: bool) -> IdleIterator<'a, T> {
-        IdleIterator { handle, buffer: Vec::new(), keepalive }
+    fn new(handle: Handle<'a, T>) -> IdleIterator<'a, T> {
+        IdleIterator { handle, buffer: Vec::new() }
     }
 }
 
@@ -60,20 +60,14 @@ impl<'a, T: Read + Write + 'a> IdleIterator<'a, T> {
 ///
 /// As long as a [`TimeoutIdleIterator`] is active, the mailbox cannot be otherwise accessed.
 pub struct TimeoutIdleIterator<'a, T: SetReadTimeout + Read + Write + 'a> {
-    iterator: IdleIterator<'a, T>,
+    handle: Handle<'a, T>,
+    buffer: Vec<u8>,
+    should_keepalive: bool,
 }
 
-impl<'a, T: SetReadTimeout + Read + Write + 'a> Deref for TimeoutIdleIterator<'a, T> {
-    type Target = IdleIterator<'a, T>;
-
-    fn deref(&self) -> &IdleIterator<'a, T> {
-        &self.iterator
-    }
-}
-
-impl<'a, T: SetReadTimeout + Read + Write + 'a> DerefMut for TimeoutIdleIterator<'a, T> {
-    fn deref_mut(&mut self) -> &mut IdleIterator<'a, T> {
-        &mut self.iterator
+impl<'a, T: SetReadTimeout + Read + Write + 'a> TimeoutIdleIterator<'a, T> {
+    fn new(handle: Handle<'a, T>, keepalive: bool) -> TimeoutIdleIterator<'a, T> {
+        TimeoutIdleIterator { handle, buffer: Vec::new(), should_keepalive: keepalive }
     }
 }
 
@@ -98,6 +92,7 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
         let mut h = Handle {
             session,
             unsolicited_responses_tx,
+            start_time: Instant::now(),
             keepalive: Duration::from_secs(29 * 60),
             done: false,
         };
@@ -106,6 +101,8 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     }
 
     fn init(&mut self) -> Result<()> {
+        self.start_time = Instant::now();
+
         // https://tools.ietf.org/html/rfc2177
         //
         // The IDLE command takes no arguments.
@@ -141,12 +138,12 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     ///
     /// The iteration will stop if an error occurs.
     pub fn iter(self) -> IdleIterator<'a, T> {
-        IdleIterator::new(self, false)
+        IdleIterator::new(self)
     }
 
     /// Block until the selected mailbox changes.
     pub fn wait(self) -> Result<()> {
-        self.iter().next();
+        self.iter().next()?;
         Ok(())
     }
 }
@@ -168,8 +165,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     ///
     /// This is the recommended method to use for iterating.
     pub fn iter_keepalive(self) -> Result<TimeoutIdleIterator<'a, T>> {
-        self.session.stream.get_mut().set_read_timeout(Some(self.keepalive))?;
-        Ok(TimeoutIdleIterator { iterator: IdleIterator::new(self, true) })
+        Ok(TimeoutIdleIterator::new(self, true))
     }
 
     /// Returns an iterator over unsolicited respones.
@@ -177,8 +173,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// The iteration will stop when the given amount of time has expired.
     pub fn iter_timeout(mut self, timeout: Duration) -> Result<TimeoutIdleIterator<'a, T>> {
         self.keepalive = timeout;
-        self.session.stream.get_mut().set_read_timeout(Some(timeout))?;
-        Ok(TimeoutIdleIterator { iterator: IdleIterator::new(self, false) })
+        Ok(TimeoutIdleIterator::new(self, false))
     }
 
     /// Block until the selected mailbox changes.
@@ -197,13 +192,13 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        self.iter_keepalive()?.next();
+        self.iter_keepalive()?.next()?;
         Ok(())
     }
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
     pub fn wait_timeout(self, timeout: Duration) -> Result<()> {
-        self.iter_timeout(timeout)?.next();
+        self.iter_timeout(timeout)?.next()?;
         Ok(())
     }
 }
@@ -221,51 +216,72 @@ impl<'a, T: Read + Write + 'a> Drop for Handle<'a, T> {
     }
 }
 
-impl<'a, T: Read + Write + 'a> Iterator for IdleIterator<'a, T> {
+impl<'a, T: Read + Write + 'a> FallibleIterator for IdleIterator<'a, T> {
     type Item = UnsolicitedResponse;
+    type Error = Error;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(&mut self) -> Result<Option<Self::Item>> {
         loop {
             // The receiver can not be disconnected. If this fails, the channel is empty.
             if let Ok(u) = self.handle.session.unsolicited_responses.try_recv() {
-                return Some(u);
+                return Ok(Some(u));
             }
 
-            match self.handle.session.readline(&mut self.buffer) {
-                Ok(_) => {}
-                Err(Error::Io(e)) => {
-                    if e.kind() == io::ErrorKind::TimedOut {
-                        if self.handle.terminate().is_err() {
-                            return None;
-                        }
-                        if self.keepalive {
-                            if self.handle.init().is_err() {
-                                return None;
-                            }
-                            continue;
-                        } else {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
-                }
-                _ => { return None; }
-            }
+            self.handle.session.readline(&mut self.buffer)?;
 
             match parse::parse_idle(&self.buffer[..], &mut self.handle.unsolicited_responses_tx) {
                 Ok(()) => {}
-                Err(_) => { return None; }
+                Err(e) => { return Err(e); }
             }
         }
     }
 }
 
-impl<'a, T: SetReadTimeout + Read + Write + 'a> Iterator for TimeoutIdleIterator<'a, T> {
+impl<'a, T: SetReadTimeout + Read + Write + 'a> FallibleIterator for TimeoutIdleIterator<'a, T> {
     type Item = UnsolicitedResponse;
+    type Error = Error;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next()
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        loop {
+            // The receiver can not be disconnected. If this fails, the channel is empty.
+            if let Ok(u) = self.handle.session.unsolicited_responses.try_recv() {
+                return Ok(Some(u));
+            }
+
+            let elapsed = self.handle.start_time.elapsed();
+            if elapsed >= self.handle.keepalive {
+                return Err(Error::Io(io::Error::from(io::ErrorKind::TimedOut)));
+            }
+
+            let new_timeout = self.handle.keepalive - elapsed;
+            self.handle.session.stream.get_mut().set_read_timeout(Some(new_timeout))?;
+            match self.handle.session.readline(&mut self.buffer) {
+                Ok(_) => {}
+                Err(Error::Io(e)) => {
+                    if e.kind() == io::ErrorKind::TimedOut {
+                        if let Err(e) = self.handle.terminate() {
+                            return Err(e);
+                        }
+                        if self.should_keepalive {
+                            if let Err(e) = self.handle.init() {
+                                return Err(e);
+                            }
+                            continue;
+                        } else {
+                            return Ok(None);
+                        }
+                    } else {
+                        return Err(Error::Io(e));
+                    }
+                }
+                Err(e) => { return Err(e); }
+            }
+
+            match parse::parse_idle(&self.buffer[..], &mut self.handle.unsolicited_responses_tx) {
+                Ok(()) => {}
+                Err(e) => { return Err(e); }
+            }
+        }
     }
 }
 
