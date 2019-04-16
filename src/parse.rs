@@ -308,16 +308,7 @@ pub fn parse_idle(
             Ok((rest, data)) => {
                 lines = rest;
                 if let Some(resp) = handle_unilateral(data, unsolicited) {
-                    match resp {
-                        Response::Data { status: s, .. } => {
-                            if s != Status::Ok {
-                                return Err(Error::Parse(ParseError::Unexpected(format!("status {:?}", s))));
-                            }
-                        }
-                        _ => {
-                            return Err(resp.into());
-                        }
-                    };
+                    return Err(resp.into());
                 }
             }
             Err(_) => {
@@ -336,6 +327,7 @@ fn handle_unilateral<'a>(
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
 ) -> Option<Response<'a>> {
     match res {
+        // FIXME: Can this really happen ? STATUS responses should only happen in a STATUS command.
         Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
             unsolicited
                 .send(UnsolicitedResponse::Status {
@@ -352,6 +344,53 @@ fn handle_unilateral<'a>(
         }
         Response::Expunge(n) => {
             unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+        }
+        Response::Data { status: Status::Ok, code, information } => {
+            unsolicited
+                .send(UnsolicitedResponse::Ok {
+                    code: code.map(|c| c.into()),
+                    information: information.map(|s| s.to_string())
+                })
+                .unwrap();
+        }
+        Response::Data { status: Status::Bad, code, information } => {
+            unsolicited
+                .send(UnsolicitedResponse::Bad {
+                    code: code.map(|c| c.into()),
+                    information: information.map(|s| s.to_string())
+                })
+                .unwrap();
+        }
+        Response::Data { status: Status::No, code, information } => {
+            unsolicited
+                .send(UnsolicitedResponse::No {
+                    code: code.map(|c| c.into()),
+                    information: information.map(|s| s.to_string())
+                })
+                .unwrap();
+        }
+        Response::Data { status: Status::Bye, code, information } => {
+            unsolicited
+                .send(UnsolicitedResponse::Bye {
+                    code: code.map(|c| c.into()),
+                    information: information.map(|s| s.to_string())
+                })
+                .unwrap();
+        }
+        Response::Fetch(id, attributes) => {
+            unsolicited
+                .send(UnsolicitedResponse::Fetch {
+                    id,
+                    attributes: attributes.iter().map(|a| {
+                        match a {
+                            imap_proto::types::AttributeValue::Flags(v) =>
+                                UnsolicitedFetchAttribute::Flags(
+                                    v.iter().map(|s| s.to_string()).collect()),
+                            _ => UnsolicitedFetchAttribute::Other,
+                        }
+                    }).collect()
+                })
+                .unwrap();
         }
         res => {
             return Some(res);
