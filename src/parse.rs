@@ -299,10 +299,10 @@ pub fn parse_ids(
     }
 }
 
-pub fn parse_idle(
-    mut lines: &[u8],
+pub fn parse_idle<'a>(
+    mut lines: &'a [u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> Result<()> {
+) -> Result<&'a [u8]> {
     while !lines.is_empty() {
         match imap_proto::parse_response(lines) {
             Ok((rest, data)) => {
@@ -311,12 +311,13 @@ pub fn parse_idle(
                     return Err(resp.into());
                 }
             }
+            Err(nom::Err::Incomplete(_)) => break,
             Err(_) => {
                 return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
             }
         }
     }
-    Ok(())
+    Ok(lines)
 }
 
 

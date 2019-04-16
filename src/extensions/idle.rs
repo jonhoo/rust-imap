@@ -226,9 +226,17 @@ impl<'a, T: Read + Write + 'a> FallibleIterator for IdleIterator<'a, T> {
             if let Ok(u) = self.handle.session.unsolicited_responses.try_recv() {
                 return Ok(Some(u));
             }
-            self.buffer.clear();
             self.handle.session.readline(&mut self.buffer)?;
-            parse::parse_idle(&self.buffer[..], &mut self.handle.unsolicited_responses_tx)?;
+            let pos;
+            {
+                let rest = parse::parse_idle(&self.buffer[..],
+                                         &mut self.handle.unsolicited_responses_tx)?;
+                // Get what we need from rest before dropping it so that self.buffer can
+                // be borrowed as mutable again.
+                // offset_from() is nightly only.
+                pos = (rest.as_ptr() as usize) - (self.buffer.as_ptr() as usize);
+            }
+            self.buffer.drain(0..pos);
         }
     }
 }
@@ -251,7 +259,6 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> FallibleIterator for TimeoutIdle
 
             let new_timeout = self.handle.keepalive - elapsed;
             self.handle.session.stream.get_mut().set_read_timeout(Some(new_timeout))?;
-            self.buffer.clear();
             match self.handle.session.readline(&mut self.buffer) {
                 Ok(_) => {}
                 Err(Error::Io(e)) => {
@@ -274,7 +281,16 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> FallibleIterator for TimeoutIdle
                 Err(e) => { return Err(e); }
             }
 
-            parse::parse_idle(&self.buffer[..], &mut self.handle.unsolicited_responses_tx)?;
+            let pos;
+            {
+                let rest = parse::parse_idle(&self.buffer[..],
+                                         &mut self.handle.unsolicited_responses_tx)?;
+                // Get what we need from rest before dropping it so that self.buffer can
+                // be borrowed as mutable again.
+                // offset_from() is nightly only.
+                pos = (rest.as_ptr() as usize) - (self.buffer.as_ptr() as usize);
+            }
+            self.buffer.drain(0..pos);
         }
     }
 }
