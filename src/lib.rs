@@ -67,8 +67,11 @@ extern crate native_tls;
 extern crate nom;
 extern crate regex;
 extern crate fallible_iterator;
+#[macro_use]
+extern crate enumset;
 
 mod parse;
+mod unsolicited_responses;
 
 pub mod types;
 

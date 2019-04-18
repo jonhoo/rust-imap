@@ -7,8 +7,8 @@ use fallible_iterator::FallibleIterator;
 use native_tls::TlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
+use unsolicited_responses::UnsolicitedResponseSender;
 use types::UnsolicitedResponse;
 use parse;
 
@@ -35,7 +35,7 @@ trait OnDrop<'a> {
 #[derive(Debug)]
 pub struct Handle<'a, T: Read + Write + 'a> {
     session: &'a mut Session<T>,
-    unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
+    unsolicited_responses_tx: UnsolicitedResponseSender,
     start_time: Instant,
     keepalive: Duration,
     done: bool,
@@ -43,6 +43,9 @@ pub struct Handle<'a, T: Read + Write + 'a> {
 
 
 /// 'IdleIterator' allows a client to iterate over unsolicited responses during an IDLE operation.
+/// Only the unsolicited responses requested by the [`Session::request`] method will be
+/// returned. If there are still unhandled responses in the `unsolicited_response` channel
+/// of the [`Session`], those will be iterated through first before waiting for new ones.
 ///
 /// As long as a [`IdleIterator`] is active, the mailbox cannot be otherwise accessed.
 pub struct IdleIterator<'a, T: Read + Write + 'a> {
@@ -88,7 +91,7 @@ pub trait SetReadTimeout {
 }
 
 impl<'a, T: Read + Write + 'a> Handle<'a, T> {
-    pub(crate) fn make(session: &'a mut Session<T>, unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>) -> Result<Self> {
+    pub(crate) fn make(session: &'a mut Session<T>, unsolicited_responses_tx: UnsolicitedResponseSender) -> Result<Self> {
         let mut h = Handle {
             session,
             unsolicited_responses_tx,
@@ -136,6 +139,10 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
 
     /// Returns an iterator over unsolicited responses.
     ///
+    /// Only the unsolicited responses requested by the [`Session::request`] method will be
+    /// returned. If there are still unhandled responses in the `unsolicited_response` channel
+    /// of the [`Session`], those will be iterated through first before waiting for new ones.
+    ///
     /// The iteration will stop if an error occurs.
     pub fn iter(self) -> IdleIterator<'a, T> {
         IdleIterator::new(self)
@@ -157,6 +164,10 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     }
 
     /// Returns an iterator over unsolicited responses.
+    ///
+    /// Only the unsolicited responses requested by the [`Session::request`] method will be
+    /// returned. If there are still unhandled responses in the `unsolicited_response` channel
+    /// of the [`Session`], those will be iterated through first before waiting for new ones.
     ///
     /// This method differs from [`Handle::iter`] in that it will periodically refresh the IDLE
     /// connection, to prevent the server from timing out our connection. The keepalive interval is

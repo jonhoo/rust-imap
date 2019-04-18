@@ -267,6 +267,8 @@ pub enum UnsolicitedFetchAttribute {
 #[derive(Debug, PartialEq, Eq)]
 pub enum UnsolicitedResponse {
     /// An unsolicited [`STATUS response`](https://tools.ietf.org/html/rfc3501#section-7.2.4).
+    ///
+    /// It can only happen during a [`Session::status`] command.
     Status {
         /// The mailbox that this status response is for.
         mailbox: String,
@@ -356,6 +358,35 @@ pub enum UnsolicitedResponse {
         attributes: Vec<UnsolicitedFetchAttribute>,
     },
 }
+
+
+enum_set_type! {
+    /// Unsolicited responses categories, to be used by the
+    /// [`Session::request_unsolicited_responses`] method.
+    pub enum UnsolicitedResponseCategory {
+        /// Asks for `RECENT` responses.
+        Recent,
+        /// Asks for `EXISTS` responses.
+        Exists,
+        /// Asks for `EXPUNGE` responses.
+        Expunge,
+        /// Asks for `OK` responses.
+        Ok,
+        /// Asks for `NO` responses.
+        No,
+        /// Asks for `BAD` responses.
+        Bad,
+        /// Asks for the `BYE` response.
+        Bye,
+        /// Asks for `STATUS` responses.
+        Status,
+        /// Asks for `FETCH` responses.
+        Fetch,
+    }
+}
+
+pub use enumset::EnumSet;
+
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,
 /// which allows the parsed type to refer to data in the underlying stream instead of copying it.

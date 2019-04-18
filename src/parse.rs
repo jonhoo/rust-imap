@@ -1,8 +1,8 @@
 use imap_proto::{self, MailboxDatum, Response, Status};
 use regex::Regex;
 use std::collections::HashSet;
-use std::sync::mpsc;
 
+use super::unsolicited_responses::UnsolicitedResponseSender;
 use super::error::{Error, ParseError, Result};
 use super::types::*;
 
@@ -27,7 +27,7 @@ enum MapOrNot<T> {
 unsafe fn parse_many<T, F>(
     lines: Vec<u8>,
     mut map: F,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender,
 ) -> ZeroCopyResult<Vec<T>>
 where
     F: FnMut(Response<'static>) -> Result<MapOrNot<T>>,
@@ -65,7 +65,7 @@ where
 
 pub fn parse_names(
     lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender,
 ) -> ZeroCopyResult<Vec<Name>> {
     use imap_proto::MailboxDatum;
     let f = |resp| match resp {
@@ -87,7 +87,7 @@ pub fn parse_names(
 
 pub fn parse_fetches(
     lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender,
 ) -> ZeroCopyResult<Vec<Fetch>> {
     let f = |resp| match resp {
         Response::Fetch(num, attrs) => {
@@ -122,7 +122,7 @@ pub fn parse_fetches(
 
 pub fn parse_expunge(
     lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender,
 ) -> Result<Vec<u32>> {
     let f = |resp| match resp {
         Response::Expunge(id) => Ok(MapOrNot::Map(id)),
@@ -134,7 +134,7 @@ pub fn parse_expunge(
 
 pub fn parse_capabilities(
     lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender,
 ) -> ZeroCopyResult<Capabilities> {
     let f = |mut lines| {
         let mut caps = HashSet::new();
@@ -166,7 +166,7 @@ pub fn parse_capabilities(
 
 pub fn parse_noop(
     lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender
 ) -> Result<()> {
     let mut lines: &[u8] = &lines;
 
@@ -191,7 +191,7 @@ pub fn parse_noop(
 
 pub fn parse_mailbox(
     mut lines: &[u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender
 ) -> Result<Mailbox> {
     let mut mailbox = Mailbox::default();
 
@@ -235,8 +235,7 @@ pub fn parse_mailbox(
                             .send(UnsolicitedResponse::Status {
                                 mailbox: mailbox.into(),
                                 attributes: status,
-                            })
-                            .unwrap();
+                            });
                     }
                     MailboxDatum::Exists(e) => {
                         mailbox.exists = e;
@@ -254,7 +253,7 @@ pub fn parse_mailbox(
             }
             Ok((rest, Response::Expunge(n))) => {
                 lines = rest;
-                unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+                unsolicited.send(UnsolicitedResponse::Expunge(n));
             }
             Ok((_, resp)) => {
                 break Err(resp.into());
@@ -272,7 +271,7 @@ pub fn parse_mailbox(
 
 pub fn parse_ids(
     lines: &[u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender,
 ) -> Result<HashSet<u32>> {
     let mut lines = &lines[..];
     let mut ids = HashSet::new();
@@ -301,7 +300,7 @@ pub fn parse_ids(
 
 pub fn parse_idle<'a>(
     mut lines: &'a [u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender,
 ) -> Result<&'a [u8]> {
     while !lines.is_empty() {
         match imap_proto::parse_response(lines) {
@@ -325,58 +324,45 @@ pub fn parse_idle<'a>(
 // (see Section 7 of RFC 3501):
 fn handle_unilateral<'a>(
     res: Response<'a>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut UnsolicitedResponseSender
 ) -> Option<Response<'a>> {
     match res {
-        // FIXME: Can this really happen ? STATUS responses should only happen in a STATUS command.
-        Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-            unsolicited
-                .send(UnsolicitedResponse::Status {
-                    mailbox: mailbox.into(),
-                    attributes: status,
-                })
-                .unwrap();
-        }
         Response::MailboxData(MailboxDatum::Recent(n)) => {
-            unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
+            unsolicited.send(UnsolicitedResponse::Recent(n));
         }
         Response::MailboxData(MailboxDatum::Exists(n)) => {
-            unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
+            unsolicited.send(UnsolicitedResponse::Exists(n));
         }
         Response::Expunge(n) => {
-            unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+            unsolicited.send(UnsolicitedResponse::Expunge(n));
         }
         Response::Data { status: Status::Ok, code, information } => {
             unsolicited
                 .send(UnsolicitedResponse::Ok {
                     code: code.map(|c| c.into()),
                     information: information.map(|s| s.to_string())
-                })
-                .unwrap();
+                });
         }
         Response::Data { status: Status::Bad, code, information } => {
             unsolicited
                 .send(UnsolicitedResponse::Bad {
                     code: code.map(|c| c.into()),
                     information: information.map(|s| s.to_string())
-                })
-                .unwrap();
+                });
         }
         Response::Data { status: Status::No, code, information } => {
             unsolicited
                 .send(UnsolicitedResponse::No {
                     code: code.map(|c| c.into()),
                     information: information.map(|s| s.to_string())
-                })
-                .unwrap();
+                });
         }
         Response::Data { status: Status::Bye, code, information } => {
             unsolicited
                 .send(UnsolicitedResponse::Bye {
                     code: code.map(|c| c.into()),
                     information: information.map(|s| s.to_string())
-                })
-                .unwrap();
+                });
         }
         Response::Fetch(id, attributes) => {
             unsolicited
@@ -390,8 +376,7 @@ fn handle_unilateral<'a>(
                             _ => UnsolicitedFetchAttribute::Other,
                         }
                     }).collect()
-                })
-                .unwrap();
+                });
         }
         res => {
             return Some(res);
