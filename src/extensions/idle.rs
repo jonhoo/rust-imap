@@ -139,9 +139,10 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
 
     /// Returns an iterator over unsolicited responses.
     ///
-    /// Only the unsolicited responses requested by the [`Session::request`] method will be
-    /// returned. If there are still unhandled responses in the `unsolicited_response` channel
-    /// of the [`Session`], those will be iterated through first before waiting for new ones.
+    /// Only the unsolicited responses requested by the [`Session::request_unsolicited_responses`]
+    /// method will be returned. If there are still unhandled responses in the
+    /// `unsolicited_response` channel of the [`Session`], those will be iterated through first
+    /// before waiting for new ones.
     ///
     /// The iteration will stop if an error occurs.
     pub fn iter(self) -> IdleIterator<'a, T> {
