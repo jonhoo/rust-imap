@@ -895,7 +895,7 @@ impl<T: Read + Write> Session<T> {
     ) -> ZeroCopyResult<Vec<Name>> {
         self.run_command_and_read_response(&format!(
             "LIST {} {}",
-            quote!(reference_name.unwrap_or("\"\"")),
+            quote!(reference_name.unwrap_or("")),
             mailbox_pattern.unwrap_or("\"\"")
         ))
         .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
