@@ -67,7 +67,6 @@ pub fn parse_names(
     lines: Vec<u8>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
 ) -> ZeroCopyResult<Vec<Name>> {
-    use imap_proto::MailboxDatum;
     let f = |resp| match resp {
         // https://github.com/djc/imap-proto/issues/4
         Response::MailboxData(MailboxDatum::List {
@@ -228,7 +227,6 @@ pub fn parse_mailbox(
             Ok((rest, Response::MailboxData(m))) => {
                 lines = rest;
 
-                use imap_proto::MailboxDatum;
                 match m {
                     MailboxDatum::Status { mailbox, status } => {
                         unsolicited
