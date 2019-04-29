@@ -3,11 +3,13 @@
 
 # imap
 
-[![Crate Version](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
+[![Crates.io](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
 [![Documentation](https://docs.rs/imap/badge.svg)](https://docs.rs/imap/)
 [![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
-[![Build Status](https://travis-ci.com/jonhoo/rust-imap.svg)](https://travis-ci.com/jonhoo/rust-imap)
-[![Coverage Status](https://codecov.io/gh/jonhoo/rust-imap/branch/master/graph/badge.svg)](https://codecov.io/gh/jonhoo/rust-imap)
+[![Travis Build Status](https://travis-ci.com/jonhoo/rust-imap.svg?branch=master)](https://travis-ci.com/jonhoo/rust-imap)
+[![Cirrus CI Build Status](https://api.cirrus-ci.com/github/jonhoo/rust-imap.svg)](https://cirrus-ci.com/github/jonhoo/rust-imap)
+[![Codecov](https://codecov.io/github/jonhoo/rust-imap/coverage.svg?branch=master)](https://codecov.io/gh/jonhoo/rust-imap)
+[![Dependency status](https://deps.rs/repo/github/jonhoo/rust-imap/status.svg)](https://deps.rs/repo/github/jonhoo/rust-imap)
 
 This crate lets you connect to and interact with servers that implement the IMAP protocol ([RFC
 3501](https://tools.ietf.org/html/rfc3501) and various extensions). After authenticating with
