@@ -34,8 +34,9 @@ jobs:
       # <1.24 doesn't work because of lazy-static 1.2.0
       # <1.26.2 doesn't work because of nom 4.1.1
       # <1.31.1 doesn't work because of rename-dependency
+      # <1.32.0 doesn't work because of associated items on type aliases
     - <<: *check # also test oldest known-good stable
-      rust: 1.31.1
+      rust: 1.32.0
     - stage: test
       rust: stable
       os: osx
