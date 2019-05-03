@@ -1620,7 +1620,7 @@ mod tests {
         );
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
-            assert!(capabilities.has(e));
+            assert!(capabilities.has_str(e));
         }
     }
 
