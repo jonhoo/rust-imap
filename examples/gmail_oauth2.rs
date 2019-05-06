@@ -1,7 +1,8 @@
 extern crate base64;
 extern crate imap;
+#[cfg(feature = "ssl")]
 extern crate native_tls;
-
+#[cfg(feature = "ssl")]
 use native_tls::TlsConnector;
 
 struct GmailOAuth2 {
@@ -20,6 +21,7 @@ impl imap::Authenticator for GmailOAuth2 {
     }
 }
 
+#[cfg(feature = "ssl")]
 fn main() {
     let gmail_auth = GmailOAuth2 {
         user: String::from("sombody@gmail.com"),

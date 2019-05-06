@@ -1,4 +1,5 @@
 extern crate imap;
+#[cfg(feature = "ssl")]
 extern crate native_tls;
 
 fn main() {

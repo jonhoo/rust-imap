@@ -1,11 +1,13 @@
 extern crate imap;
 extern crate lettre;
 extern crate lettre_email;
+#[cfg(feature = "ssl")]
 extern crate native_tls;
 
 use lettre::Transport;
 use std::net::TcpStream;
 
+#[cfg(feature = "ssl")]
 fn tls() -> native_tls::TlsConnector {
     native_tls::TlsConnector::builder()
         .danger_accept_invalid_certs(true)
@@ -13,6 +15,7 @@ fn tls() -> native_tls::TlsConnector {
         .unwrap()
 }
 
+#[cfg(feature = "ssl")]
 fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
     let mut s = imap::connect("127.0.0.1:3993", "imap.example.com", &tls())
         .unwrap()
@@ -22,6 +25,7 @@ fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
     s
 }
 
+#[cfg(feature = "ssl")]
 fn smtp(user: &str) -> lettre::SmtpTransport {
     let creds = lettre::smtp::authentication::Credentials::new(user.to_string(), user.to_string());
     lettre::SmtpClient::new(
@@ -43,6 +47,7 @@ fn connect_insecure() {
 
 #[test]
 #[ignore]
+#[cfg(feature = "ssl")]
 fn connect_insecure_then_secure() {
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
     imap::connect_insecure("127.0.0.1:3143")
@@ -52,6 +57,7 @@ fn connect_insecure_then_secure() {
 }
 
 #[test]
+#[cfg(feature = "ssl")]
 fn connect_secure() {
     imap::connect("127.0.0.1:3993", "imap.example.com", &tls()).unwrap();
 }

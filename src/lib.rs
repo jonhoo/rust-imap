@@ -63,6 +63,7 @@
 extern crate base64;
 extern crate bufstream;
 extern crate imap_proto;
+#[cfg(feature = "ssl")]
 extern crate native_tls;
 extern crate nom;
 extern crate regex;

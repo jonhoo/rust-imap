@@ -1,5 +1,6 @@
 use base64;
 use bufstream::BufStream;
+#[cfg(feature = "ssl")]
 use native_tls::{TlsConnector, TlsStream};
 use nom;
 use std::collections::HashSet;
@@ -161,6 +162,7 @@ pub fn connect_insecure<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> 
 /// let client = imap::connect(("imap.example.org", 993), "imap.example.org", &tls).unwrap();
 /// # }
 /// ```
+#[cfg(feature = "ssl")]
 pub fn connect<A: ToSocketAddrs, S: AsRef<str>>(
     addr: A,
     domain: S,
@@ -185,6 +187,7 @@ impl Client<TcpStream> {
     /// This will upgrade an IMAP client from using a regular TCP connection to use TLS.
     ///
     /// The domain parameter is required to perform hostname verification.
+    #[cfg(feature = "ssl")]
     pub fn secure<S: AsRef<str>>(
         mut self,
         domain: S,

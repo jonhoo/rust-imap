@@ -10,7 +10,9 @@ use std::string::FromUtf8Error;
 use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
 use imap_proto::Response;
+#[cfg(feature = "ssl")]
 use native_tls::Error as TlsError;
+#[cfg(feature = "ssl")]
 use native_tls::HandshakeError as TlsHandshakeError;
 
 /// A convenience wrapper around `Result` for `imap::Error`.
@@ -22,8 +24,10 @@ pub enum Error {
     /// An `io::Error` that occurred while trying to read or write to a network stream.
     Io(IoError),
     /// An error from the `native_tls` library during the TLS handshake.
+    #[cfg(feature = "ssl")]
     TlsHandshake(TlsHandshakeError<TcpStream>),
     /// An error from the `native_tls` library while managing the socket.
+    #[cfg(feature = "ssl")]
     Tls(TlsError),
     /// A BAD response from the IMAP server.
     Bad(String),
@@ -58,12 +62,14 @@ impl<T> From<BufError<T>> for Error {
     }
 }
 
+#[cfg(feature = "ssl")]
 impl From<TlsHandshakeError<TcpStream>> for Error {
     fn from(err: TlsHandshakeError<TcpStream>) -> Error {
         Error::TlsHandshake(err)
     }
 }
 
+#[cfg(feature = "ssl")]
 impl From<TlsError> for Error {
     fn from(err: TlsError) -> Error {
         Error::Tls(err)
@@ -80,7 +86,9 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::Io(ref e) => fmt::Display::fmt(e, f),
+            #[cfg(feature = "ssl")]
             Error::Tls(ref e) => fmt::Display::fmt(e, f),
+            #[cfg(feature = "ssl")]
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             Error::Validate(ref e) => fmt::Display::fmt(e, f),
             Error::No(ref data) | Error::Bad(ref data) => {
@@ -95,7 +103,9 @@ impl StdError for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref e) => e.description(),
+            #[cfg(feature = "ssl")]
             Error::Tls(ref e) => e.description(),
+            #[cfg(feature = "ssl")]
             Error::TlsHandshake(ref e) => e.description(),
             Error::Parse(ref e) => e.description(),
             Error::Validate(ref e) => e.description(),
@@ -109,7 +119,9 @@ impl StdError for Error {
     fn cause(&self) -> Option<&StdError> {
         match *self {
             Error::Io(ref e) => Some(e),
+            #[cfg(feature = "ssl")]
             Error::Tls(ref e) => Some(e),
+            #[cfg(feature = "ssl")]
             Error::TlsHandshake(ref e) => Some(e),
             Error::Parse(ParseError::DataNotUtf8(ref e)) => Some(e),
             _ => None,
