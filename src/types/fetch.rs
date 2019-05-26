@@ -1,5 +1,8 @@
 use super::{Flag, Seq, Uid};
 use imap_proto::types::{AttributeValue, Envelope, MessageSection, SectionPath};
+use chrono::{DateTime, FixedOffset};
+
+const DATE_TIME_FORMAT: &str = "%d-%b-%Y %H:%M:%S %z";
 
 /// An IMAP [`FETCH` response](https://tools.ietf.org/html/rfc3501#section-7.4.2) that contains
 /// data about a particular message. This response occurs as the result of a `FETCH` or `STORE`
@@ -124,7 +127,7 @@ impl Fetch {
     ///
     /// See [section 2.3.3 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.3) for
     /// details.
-    pub fn internal_date(&self) -> Option<&str> {
+    pub fn internal_date(&self) -> Option<DateTime<FixedOffset>> {
         self.fetch
             .iter()
             .filter_map(|av| match av {
@@ -132,5 +135,11 @@ impl Fetch {
                 _ => None,
             })
             .next()
+            .and_then(|date_time|
+                match DateTime::parse_from_str(date_time, DATE_TIME_FORMAT) {
+                    Ok(date_time) => Some(date_time),
+                    Err(_) => None,
+                }
+            )
     }
 }
