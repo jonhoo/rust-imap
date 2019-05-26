@@ -2,6 +2,9 @@ use super::{Flag, Seq, Uid};
 use imap_proto::types::{AttributeValue, Envelope, MessageSection, SectionPath};
 use chrono::{DateTime, FixedOffset};
 
+/// Format of Date and Time as defined RFC3501.
+/// See `date-time` element in [Formal Syntax](https://tools.ietf.org/html/rfc3501#section-9)
+/// chapter of this RFC.
 const DATE_TIME_FORMAT: &str = "%d-%b-%Y %H:%M:%S %z";
 
 /// An IMAP [`FETCH` response](https://tools.ietf.org/html/rfc3501#section-7.4.2) that contains
@@ -131,7 +134,7 @@ impl Fetch {
         self.fetch
             .iter()
             .filter_map(|av| match av {
-                AttributeValue::InternalDate(str) => Some(*str),
+                AttributeValue::InternalDate(date_time) => Some(*date_time),
                 _ => None,
             })
             .next()
