@@ -27,7 +27,7 @@ macro_rules! quote {
     };
 }
 
-fn validate_str(value: &str) -> Result<String> {
+pub(crate) fn validate_str(value: &str) -> Result<String> {
     let quoted = quote!(value);
     if quoted.find('\n').is_some() {
         return Err(Error::Validate(ValidateError('\n')));
@@ -50,7 +50,7 @@ fn validate_str(value: &str) -> Result<String> {
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
-    unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
+    pub(crate) unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
 
     /// Server responses that are not related to the current command. See also the note on
     /// [unilateral server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
@@ -1299,6 +1299,7 @@ mod tests {
     use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
+    use imap_proto::types::*;
 
     macro_rules! mock_session {
         ($s:expr) => {
@@ -1654,7 +1655,12 @@ mod tests {
         let response = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
             a1 OK CAPABILITY completed\r\n"
             .to_vec();
-        let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
+        let expected_capabilities = vec![
+            Capability::Imap4rev1,
+            Capability::Atom("STARTTLS"),
+            Capability::Auth("GSSAPI"),
+            Capability::Atom("LOGINDISABLED"),
+        ];
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let capabilities = session.capabilities().unwrap();
@@ -1664,7 +1670,7 @@ mod tests {
         );
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
-            assert!(capabilities.has_str(e));
+            assert!(capabilities.has(&e));
         }
     }
 

@@ -262,6 +262,15 @@ pub enum UnsolicitedResponse {
     /// sequence numbers 9, 8, 7, 6, and 5.
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(Seq),
+
+    /// An unsolicited METADATA response (https://tools.ietf.org/html/rfc5464#section-4.4.2)
+    /// that reports a change in a server or mailbox annotation.
+    Metadata {
+        /// Mailbox name for which annotations were changed.
+        mailbox: String,
+        /// List of annotations that were changed.
+        metadata_entries: Vec<String>,
+    },
 }
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,
