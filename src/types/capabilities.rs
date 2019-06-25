@@ -33,32 +33,28 @@ const AUTH_CAPABILITY_PREFIX: &str = "AUTH=";
 pub struct Capabilities(
     // Note that this field isn't *actually* 'static.
     // Rather, it is tied to the lifetime of the `ZeroCopy` that contains this `Name`.
-    pub(crate) HashSet<Capability<'static>>,
+    pub(crate) HashSet<imap_proto::Capability<'static>>,
 );
 
 impl Capabilities {
     /// Check if the server has the given capability.
-    pub fn has<'a>(&self, cap: &Capability<'a>) -> bool {
-        self.0.contains(cap)
+    pub fn has(&self, s: &imap_proto::Capability) -> bool
+// where
+    //     for<'a> &'a str: Borrow<S>,
+    //     S: Hash + Eq,
+    {
+        self.0.contains(s)
     }
-
-    /// Check if the server has the given capability via str.
-    pub fn has_str<S: AsRef<str>>(&self, cap: S) -> bool {
-        let s = cap.as_ref();
-        if s.eq_ignore_ascii_case(IMAP4REV1_CAPABILITY) {
-            return self.has(&Capability::Imap4rev1);
-        }
-        if s.len() > AUTH_CAPABILITY_PREFIX.len() {
-            let (pre, val) = s.split_at(AUTH_CAPABILITY_PREFIX.len());
-            if pre.eq_ignore_ascii_case(AUTH_CAPABILITY_PREFIX) {
-                return self.has(&Capability::Auth(val));
-            }
-        }
-        self.has(&Capability::Atom(s))
-    }
+    // pub fn has<S: ?Sized>(&self, s: &S) -> bool
+    // where
+    //     for<'a> &'a str: Borrow<S>,
+    //     S: Hash + Eq,
+    // {
+    //     self.0.contains(s)
+    // }
 
     /// Iterate over all the server's capabilities
-    pub fn iter(&self) -> Iter<'_, Capability<'_>> {
+    pub fn iter(&self) -> Iter<imap_proto::Capability> {
         self.0.iter()
     }
 

@@ -89,6 +89,8 @@ pub use crate::client::*;
 pub mod error;
 
 pub mod extensions;
+// mod metadata;
+pub use extensions::metadata::{get_metadata, set_metadata};
 
 #[cfg(test)]
 mod mock_stream;
