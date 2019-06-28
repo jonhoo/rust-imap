@@ -134,6 +134,8 @@ fn inbox() {
     let to = &e.to.as_ref().unwrap()[0];
     assert_eq!(to.mailbox, Some("inbox"));
     assert_eq!(to.host, Some("localhost"));
+    let date_opt = fetch.internal_date();
+    assert!(date_opt.is_some());
 
     // and let's delete it to clean up
     c.store("1", "+FLAGS (\\Deleted)").unwrap();
@@ -190,6 +192,8 @@ fn inbox_uid() {
     assert_eq!(fetch.uid, Some(uid));
     let e = fetch.envelope().unwrap();
     assert_eq!(e.subject, Some("My first e-mail"));
+    let date_opt = fetch.internal_date();
+    assert!(date_opt.is_some());
 
     // and let's delete it to clean up
     c.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
