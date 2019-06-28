@@ -146,7 +146,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
             .get_mut()
             .set_read_timeout(Some(timeout))?;
         let res = self.wait_inner();
-        self.session.stream.get_mut().set_read_timeout(None).is_ok();
+        let _ = self.session.stream.get_mut().set_read_timeout(None).is_ok();
         res
     }
 }
@@ -154,7 +154,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
 impl<'a, T: Read + Write + 'a> Drop for Handle<'a, T> {
     fn drop(&mut self) {
         // we don't want to panic here if we can't terminate the Idle
-        self.terminate().is_ok();
+        let _ = self.terminate().is_ok();
     }
 }
 
