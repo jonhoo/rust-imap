@@ -30,7 +30,6 @@ impl UnsolicitedResponseSender {
     }
 
     pub(crate) fn send(&mut self, message: UnsolicitedResponse) {
-        eprintln!("Send {:?}", message);
         if self.allow.contains(message.category()) {
             self.sender.send(message).unwrap();
         }
