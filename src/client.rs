@@ -1,5 +1,6 @@
 use base64;
 use bufstream::BufStream;
+use enumset::EnumSet;
 use native_tls::{TlsConnector, TlsStream};
 use nom;
 use std::collections::HashSet;
@@ -13,6 +14,7 @@ use super::error::{Error, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
+use super::unsolicited_responses::UnsolicitedResponseSender;
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -48,7 +50,7 @@ fn validate_str(value: &str) -> Result<String> {
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
-    unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
+    unsolicited_responses_tx: UnsolicitedResponseSender,
 
     /// Server responses that are not related to the current command. See also the note on
     /// [unilateral server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
@@ -376,8 +378,35 @@ impl<T: Read + Write> Session<T> {
         Session {
             conn,
             unsolicited_responses: rx,
-            unsolicited_responses_tx: tx,
+            unsolicited_responses_tx: UnsolicitedResponseSender::new(tx),
         }
+    }
+
+    /// Tells which unsolicited responses are required. Defaults to none.
+    ///
+    /// The server *is* allowed to unilaterally send things to the client for messages in
+    /// a selected mailbox whose status has changed. See the note on [unilateral server responses
+    /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This function tells
+    /// which events you want to hear about.
+    ///
+    /// If you request unsolicited responses, you have to regularly check the
+    /// `unsolicited_responses` channel of the [`Session`](struct.Session.html) for new responses.
+    pub fn filter_unsolicited_responses(&mut self, mask: EnumSet<UnsolicitedResponseCategory>) {
+        self.unsolicited_responses_tx
+            .request(&self.unsolicited_responses, mask);
+    }
+
+    /// Request all unsolicited responses from the server. Convenience method.
+    ///
+    /// The server *is* allowed to unilaterally send things to the client for messages in
+    /// a selected mailbox whose status has changed. See the note on [unilateral server responses
+    /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This function tells
+    /// which events you want to hear about.
+    ///
+    /// If you request unsolicited responses, you have to regularly check the
+    /// `unsolicited_responses` channel of the [`Session`](struct.Session.html) for new responses.
+    pub fn request_all_unsolicited_responses(&mut self) {
+        self.filter_unsolicited_responses(EnumSet::all())
     }
 
     /// Selects a mailbox
@@ -995,7 +1024,8 @@ impl<T: Read + Write> Session<T> {
     ///
     /// See [`extensions::idle::Handle`] for details.
     pub fn idle(&mut self) -> Result<extensions::idle::Handle<T>> {
-        extensions::idle::Handle::make(self)
+        let sender = self.unsolicited_responses_tx.clone();
+        extensions::idle::Handle::make(self, sender)
     }
 
     /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) appends

@@ -4,9 +4,11 @@
 use client::Session;
 use error::{Error, Result};
 use native_tls::TlsStream;
+use parse;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
+use unsolicited_responses::UnsolicitedResponseSender;
 
 /// `Handle` allows a client to block waiting for changes to the remote mailbox.
 ///
@@ -26,7 +28,8 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct Handle<'a, T: Read + Write + 'a> {
     session: &'a mut Session<T>,
-    keepalive: Duration,
+    unsolicited_responses_tx: UnsolicitedResponseSender,
+    keepalive: Option<Duration>,
     done: bool,
 }
 
@@ -45,10 +48,14 @@ pub trait SetReadTimeout {
 }
 
 impl<'a, T: Read + Write + 'a> Handle<'a, T> {
-    pub(crate) fn make(session: &'a mut Session<T>) -> Result<Self> {
+    pub(crate) fn make(
+        session: &'a mut Session<T>,
+        unsolicited_responses_tx: UnsolicitedResponseSender,
+    ) -> Result<Self> {
         let mut h = Handle {
             session,
-            keepalive: Duration::from_secs(29 * 60),
+            unsolicited_responses_tx,
+            keepalive: None,
             done: false,
         };
         h.init()?;
@@ -91,17 +98,29 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     ///
     /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
     fn wait_inner(&mut self) -> Result<()> {
-        let mut v = Vec::new();
-        match self.session.readline(&mut v).map(|_| ()) {
-            Err(Error::Io(ref e))
-                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
-            {
-                // we need to refresh the IDLE connection
-                self.terminate()?;
-                self.init()?;
-                self.wait_inner()
+        let mut buffer = Vec::new();
+        loop {
+            match self.session.readline(&mut buffer).map(|_| ()) {
+                Err(Error::Io(ref e))
+                    if e.kind() == io::ErrorKind::TimedOut
+                        || e.kind() == io::ErrorKind::WouldBlock =>
+                {
+                    if self.keepalive.is_some() {
+                        // we need to refresh the IDLE connection
+                        self.terminate()?;
+                        self.init()?;
+                    }
+                }
+                Err(err) => return Err(err),
+                Ok(_) => {
+                    // Unsolicited responses coming in from the server are not multi-line,
+                    // therefore, we don't need to worry about the remaining bytes since
+                    // they should always be terminated at a LF.
+                    let remaining = parse::parse_idle(&buffer, &mut self.unsolicited_responses_tx)?;
+                    assert_eq!(remaining.len(), 0);
+                    return Ok(());
+                }
             }
-            r => r,
         }
     }
 
@@ -114,20 +133,20 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
 impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// Set the keep-alive interval to use when `wait_keepalive` is called.
     ///
-    /// The interval defaults to 29 minutes as dictated by RFC 2177.
+    /// The interval defaults to 29 minutes as advised by RFC 2177.
     pub fn set_keepalive(&mut self, interval: Duration) {
-        self.keepalive = interval;
+        self.keepalive = Some(interval);
     }
 
     /// Block until the selected mailbox changes.
     ///
     /// This method differs from [`Handle::wait`] in that it will periodically refresh the IDLE
     /// connection, to prevent the server from timing out our connection. The keepalive interval is
-    /// set to 29 minutes by default, as dictated by RFC 2177, but can be changed using
+    /// set to 29 minutes by default, as advised by RFC 2177, but can be changed using
     /// [`Handle::set_keepalive`].
     ///
     /// This is the recommended method to use for waiting.
-    pub fn wait_keepalive(self) -> Result<()> {
+    pub fn wait_keepalive(mut self) -> Result<()> {
         // The server MAY consider a client inactive if it has an IDLE command
         // running, and if such a server has an inactivity timeout it MAY log
         // the client off implicitly at the end of its timeout period.  Because
@@ -135,7 +154,10 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        let keepalive = self.keepalive;
+        let keepalive = self
+            .keepalive
+            .get_or_insert_with(|| Duration::from_secs(29 * 60))
+            .clone();
         self.wait_timeout(keepalive)
     }
 
@@ -164,8 +186,8 @@ impl<'a> SetReadTimeout for TcpStream {
     }
 }
 
-impl<'a> SetReadTimeout for TlsStream<TcpStream> {
+impl<'a, T: SetReadTimeout + Read + Write + 'a> SetReadTimeout for TlsStream<T> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
-        self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
+        self.get_mut().set_read_timeout(timeout)
     }
 }

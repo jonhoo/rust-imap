@@ -1,5 +1,6 @@
 //! This module contains types used throughout the IMAP protocol.
 
+pub use enumset::EnumSet;
 use std::borrow::Cow;
 
 /// From section [2.3.1.1 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.1).
@@ -204,6 +205,60 @@ pub use self::capabilities::Capabilities;
 /// re-exported from imap_proto;
 pub use imap_proto::StatusAttribute;
 
+// We need a ResponseCode that is not tied to a lifetime, to be used in UnsolicitedResponse.
+/// Response code that may be sent with OK/NO/BAD/BYE responses.
+/// See [RFC 3501](https://tools.ietf.org/html/rfc3501#section-3.1).
+#[derive(Debug, Eq, PartialEq)]
+pub enum ResponseCode {
+    //Alert: not parsed by imap-proto yet.
+    //BadCharset: not parsed by imap-proto yet.
+    //Capability: not parsed by imap-proto yet.
+    //Parse: not parsed by imap-proto yet.
+    /// See [RFC 4551](https://tools.ietf.org/html/rfc4551#section-3.1.1).
+    HighestModSeq(u64),
+    /// Flags that can be changed permanently.
+    PermanentFlags(Vec<String>),
+    /// The mailbox status has changed to read-only.
+    ReadOnly,
+    /// The mailbox status has changed to read-write.
+    ReadWrite,
+    /// Indicates that the mailbox must be created first.
+    TryCreate,
+    /// Next unique identifier value.
+    UidNext(u32),
+    /// The unique identifier validity value.
+    UidValidity(u32),
+    /// First message without the \Seen flag set.
+    Unseen(u32),
+}
+
+impl<'a> From<imap_proto::types::ResponseCode<'a>> for ResponseCode {
+    fn from(r: imap_proto::types::ResponseCode<'a>) -> Self {
+        match r {
+            imap_proto::types::ResponseCode::HighestModSeq(n) => ResponseCode::HighestModSeq(n),
+            imap_proto::types::ResponseCode::PermanentFlags(v) => {
+                ResponseCode::PermanentFlags(v.iter().map(|x| (*x).into()).collect())
+            }
+            imap_proto::types::ResponseCode::ReadOnly => ResponseCode::ReadOnly,
+            imap_proto::types::ResponseCode::ReadWrite => ResponseCode::ReadWrite,
+            imap_proto::types::ResponseCode::TryCreate => ResponseCode::TryCreate,
+            imap_proto::types::ResponseCode::UidNext(n) => ResponseCode::UidNext(n),
+            imap_proto::types::ResponseCode::UidValidity(n) => ResponseCode::UidValidity(n),
+            imap_proto::types::ResponseCode::Unseen(n) => ResponseCode::Unseen(n),
+        }
+    }
+}
+
+/// An attribute of the message refered to by a FETCH unsolicited response.
+#[derive(Debug, Eq, PartialEq)]
+pub enum UnsolicitedFetchAttribute {
+    /// The set of flags of this message.
+    Flags(Vec<String>),
+    /// Some other attribute not handled yet.
+    // I don't know which attributes besides FLAGS make sense to be sent unsolicited.
+    Other,
+}
+
 /// Responses that the server sends that are not related to the current command.
 /// [RFC 3501](https://tools.ietf.org/html/rfc3501#section-7) states that clients need to be able
 /// to accept any response at any time. These are the ones we've encountered in the wild.
@@ -213,6 +268,8 @@ pub use imap_proto::StatusAttribute;
 #[derive(Debug, PartialEq, Eq)]
 pub enum UnsolicitedResponse {
     /// An unsolicited [`STATUS response`](https://tools.ietf.org/html/rfc3501#section-7.2.4).
+    ///
+    /// It can only happen during a [`Session::status`] command.
     Status {
         /// The mailbox that this status response is for.
         mailbox: String,
@@ -260,8 +317,89 @@ pub enum UnsolicitedResponse {
     /// server will send five untagged `EXPUNGE` responses for message sequence number 5, whereas a
     /// "higher to lower server" will send successive untagged `EXPUNGE` responses for message
     /// sequence numbers 9, 8, 7, 6, and 5.
-    // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(u32),
+
+    /// An unsolicited [`OK` response](https://tools.ietf.org/html/rfc3501#section-7.1.1).
+    Ok {
+        /// Optional response code.
+        code: Option<ResponseCode>,
+        /// Information text that may be presented to the user.
+        information: Option<String>,
+    },
+
+    /// An unsolicited [`NO` response](https://tools.ietf.org/html/rfc3501#section-7.1.2).
+    No {
+        /// Optional response code.
+        code: Option<ResponseCode>,
+        /// Information text that may be presented to the user.
+        information: Option<String>,
+    },
+
+    /// An unsolicited [`BAD` response](https://tools.ietf.org/html/rfc3501#section-7.1.3).
+    Bad {
+        /// Optional response code.
+        code: Option<ResponseCode>,
+        /// Information text that may be presented to the user.
+        information: Option<String>,
+    },
+
+    /// An unsolicited [`BYE` response](https://tools.ietf.org/html/rfc3501#section-7.1.5).
+    Bye {
+        /// Optional response code.
+        code: Option<ResponseCode>,
+        /// Information text that may be presented to the user.
+        information: Option<String>,
+    },
+
+    /// An unsolicited [`FETCH` response](https://tools.ietf.org/html/rfc3501#section-7.4.2).
+    Fetch {
+        /// Message identifier.
+        id: u32,
+        /// Attribute values for this message.
+        attributes: Vec<UnsolicitedFetchAttribute>,
+    },
+}
+
+enum_set_type! {
+    /// Unsolicited responses categories, to be used by the
+    /// [`Session::request_unsolicited_responses`] method.
+    pub enum UnsolicitedResponseCategory {
+        /// Asks for `RECENT` responses.
+        Recent,
+        /// Asks for `EXISTS` responses.
+        Exists,
+        /// Asks for `EXPUNGE` responses.
+        Expunge,
+        /// Asks for `OK` responses.
+        Ok,
+        /// Asks for `NO` responses.
+        No,
+        /// Asks for `BAD` responses.
+        Bad,
+        /// Asks for the `BYE` response.
+        Bye,
+        /// Asks for `STATUS` responses.
+        Status,
+        /// Asks for `FETCH` responses.
+        Fetch,
+    }
+}
+
+impl UnsolicitedResponse {
+    /// Category corresponding to a response
+    pub(crate) fn category(&self) -> UnsolicitedResponseCategory {
+        match self {
+            UnsolicitedResponse::Status { .. } => UnsolicitedResponseCategory::Status,
+            UnsolicitedResponse::Recent(_) => UnsolicitedResponseCategory::Recent,
+            UnsolicitedResponse::Exists(_) => UnsolicitedResponseCategory::Exists,
+            UnsolicitedResponse::Expunge(_) => UnsolicitedResponseCategory::Expunge,
+            UnsolicitedResponse::Ok { .. } => UnsolicitedResponseCategory::Ok,
+            UnsolicitedResponse::No { .. } => UnsolicitedResponseCategory::No,
+            UnsolicitedResponse::Bad { .. } => UnsolicitedResponseCategory::Bad,
+            UnsolicitedResponse::Bye { .. } => UnsolicitedResponseCategory::Bye,
+            UnsolicitedResponse::Fetch { .. } => UnsolicitedResponseCategory::Fetch,
+        }
+    }
 }
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,
