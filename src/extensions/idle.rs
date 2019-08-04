@@ -84,13 +84,13 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
         unreachable!();
     }
 
-    fn terminate(&mut self) -> Result<()> {
+    fn terminate(&mut self) -> Result<bool> {
         if !self.done {
             self.done = true;
             self.session.write_line(b"DONE")?;
-            self.session.read_response().map(|_| ())
+            Ok(true)
         } else {
-            Ok(())
+            Ok(false)
         }
     }
 
@@ -113,12 +113,21 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
                 }
                 Err(err) => return Err(err),
                 Ok(_) => {
+                    let _ = parse::parse_idle(&buffer, &mut self.unsolicited_responses_tx)?;
+                    self.terminate()?;
+                    buffer.truncate(0);
+
                     // Unsolicited responses coming in from the server are not multi-line,
                     // therefore, we don't need to worry about the remaining bytes since
                     // they should always be terminated at a LF.
-                    let remaining = parse::parse_idle(&buffer, &mut self.unsolicited_responses_tx)?;
-                    assert_eq!(remaining.len(), 0);
-                    return Ok(());
+                    loop {
+                        let _ = self.session.readline(&mut buffer)?;
+                        let found_ok =
+                            parse::parse_idle(&buffer, &mut self.unsolicited_responses_tx)?;
+                        if found_ok {
+                            return Ok(());
+                        }
+                    }
                 }
             }
         }
@@ -176,7 +185,11 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
 impl<'a, T: Read + Write + 'a> Drop for Handle<'a, T> {
     fn drop(&mut self) {
         // we don't want to panic here if we can't terminate the Idle
-        let _ = self.terminate().is_ok();
+        // If we sent done, then we should suck up the OK.
+        if let Ok(true) = self.terminate() {
+            // Check status after DONE command.
+            let _ = self.session.read_response().is_ok();
+        }
     }
 }
 

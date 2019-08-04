@@ -199,7 +199,7 @@ pub fn parse_mailbox(
                 if let imap_proto::Status::Ok = status {
                 } else {
                     // how can this happen for a Response::Data?
-                    unreachable!();
+                    unreachable!("Received something other than OK from mailbox data");
                 }
 
                 use imap_proto::ResponseCode;
@@ -295,9 +295,29 @@ pub fn parse_ids(
 pub fn parse_idle<'a>(
     mut lines: &'a [u8],
     unsolicited: &mut UnsolicitedResponseSender,
-) -> Result<&'a [u8]> {
+) -> Result<bool> {
     while !lines.is_empty() {
-        match imap_proto::parse_response(lines) {
+        let resp = imap_proto::parse_response(lines);
+        match resp {
+            Ok((
+                _rest,
+                Response::Done {
+                    status,
+                    information,
+                    ..
+                },
+            )) => {
+                match status {
+                    imap_proto::Status::Ok => return Ok(true),
+                    imap_proto::Status::Bad => {
+                        return Err(Error::Bad(information.unwrap_or("").to_owned()))
+                    }
+                    imap_proto::Status::No => {
+                        return Err(Error::Bad(information.unwrap_or("").to_owned()))
+                    }
+                    _ => unreachable!(),
+                }
+            }
             Ok((rest, data)) => {
                 lines = rest;
                 if let Some(resp) = handle_unilateral(data, unsolicited) {
@@ -310,7 +330,7 @@ pub fn parse_idle<'a>(
             }
         }
     }
-    Ok(lines)
+    Ok(false)
 }
 
 // check if this is simply a unilateral server response
