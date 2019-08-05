@@ -84,14 +84,15 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
         unreachable!();
     }
 
-    fn terminate(&mut self) -> Result<bool> {
+    fn terminate(&mut self, consume_response: bool) -> Result<()> {
         if !self.done {
             self.done = true;
             self.session.write_line(b"DONE")?;
-            Ok(true)
-        } else {
-            Ok(false)
+            if consume_response {
+                return self.session.read_response().map(|_| ());
+            }
         }
+        Ok(())
     }
 
     /// Internal helper that doesn't consume self.
@@ -107,14 +108,14 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
                 {
                     if self.keepalive.is_some() {
                         // we need to refresh the IDLE connection
-                        self.terminate()?;
+                        self.terminate(true)?;
                         self.init()?;
                     }
                 }
                 Err(err) => return Err(err),
                 Ok(_) => {
                     let _ = parse::parse_idle(&buffer, &mut self.unsolicited_responses_tx)?;
-                    self.terminate()?;
+                    self.terminate(false)?;
                     buffer.truncate(0);
 
                     // Unsolicited responses coming in from the server are not multi-line,
@@ -186,10 +187,7 @@ impl<'a, T: Read + Write + 'a> Drop for Handle<'a, T> {
     fn drop(&mut self) {
         // we don't want to panic here if we can't terminate the Idle
         // If we sent done, then we should suck up the OK.
-        if let Ok(true) = self.terminate() {
-            // Check status after DONE command.
-            let _ = self.session.read_response().is_ok();
-        }
+        let _ = self.terminate(true).is_ok();
     }
 }
 
