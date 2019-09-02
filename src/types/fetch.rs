@@ -1,6 +1,6 @@
 use super::{Flag, Seq, Uid};
 use chrono::{DateTime, FixedOffset};
-use imap_proto::types::{AttributeValue, Envelope, MessageSection, SectionPath};
+use imap_proto::types::{AttributeValue, Envelope, MessageSection, SectionPath, BodyStructure};
 
 /// Format of Date and Time as defined RFC3501.
 /// See `date-time` element in [Formal Syntax](https://tools.ietf.org/html/rfc3501#section-9)
@@ -103,6 +103,21 @@ impl Fetch {
             .iter()
             .filter_map(|av| match av {
                 AttributeValue::Envelope(env) => Some(&**env),
+                _ => None,
+            })
+            .next()
+    }
+
+    /// The bodystructure of this message, if `BODYSTRUCTURE` was included in the `query` argument to
+    /// `FETCH`.
+    ///
+    /// See [section 7.4.2 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-7.4.2) for
+    /// details.
+    pub fn bodystructure(&self) -> Option<&BodyStructure> {
+        self.fetch
+            .iter()
+            .filter_map(|av| match av {
+                AttributeValue::BodyStructure(bstruc) => Some(&*bstruc),
                 _ => None,
             })
             .next()
