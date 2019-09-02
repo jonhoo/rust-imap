@@ -1,7 +1,9 @@
-use std::borrow::Borrow;
+use imap_proto::types::Capability;
 use std::collections::hash_set::Iter;
 use std::collections::HashSet;
-use std::hash::Hash;
+
+const IMAP4REV1_CAPABILITY: &str = "IMAP4rev1";
+const AUTH_CAPABILITY_PREFIX: &str = "AUTH=";
 
 /// From [section 7.2.1 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-7.2.1).
 ///
@@ -31,21 +33,29 @@ use std::hash::Hash;
 pub struct Capabilities(
     // Note that this field isn't *actually* 'static.
     // Rather, it is tied to the lifetime of the `ZeroCopy` that contains this `Name`.
-    pub(crate) HashSet<&'static str>,
+    pub(crate) HashSet<Capability<'static>>,
 );
 
 impl Capabilities {
     /// Check if the server has the given capability.
-    pub fn has<S: ?Sized>(&self, s: &S) -> bool
-    where
-        for<'a> &'a str: Borrow<S>,
-        S: Hash + Eq,
-    {
-        self.0.contains(s)
+    pub fn has<'a>(&self, cap: &Capability<'a>) -> bool {
+        self.0.contains(cap)
+    }
+
+    /// Check if the server has the given capability via str.
+    pub fn has_str<S: AsRef<str>>(&self, cap: S) -> bool {
+        let s = cap.as_ref();
+        if s == IMAP4REV1_CAPABILITY {
+            self.has(&Capability::Imap4rev1)
+        } else if s.starts_with(AUTH_CAPABILITY_PREFIX) {
+            self.has(&Capability::Auth(&s[AUTH_CAPABILITY_PREFIX.len()..]))
+        } else {
+            self.has(&Capability::Atom(s))
+        }
     }
 
     /// Iterate over all the server's capabilities
-    pub fn iter(&self) -> Iter<&str> {
+    pub fn iter(&self) -> Iter<Capability> {
         self.0.iter()
     }
 

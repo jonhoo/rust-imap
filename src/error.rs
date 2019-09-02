@@ -106,7 +106,7 @@ impl StdError for Error {
         }
     }
 
-    fn cause(&self) -> Option<&StdError> {
+    fn cause(&self) -> Option<&dyn StdError> {
         match *self {
             Error::Io(ref e) => Some(e),
             Error::Tls(ref e) => Some(e),
@@ -148,7 +148,7 @@ impl StdError for ParseError {
         }
     }
 
-    fn cause(&self) -> Option<&StdError> {
+    fn cause(&self) -> Option<&dyn StdError> {
         match *self {
             ParseError::Authentication(_, Some(ref e)) => Some(e),
             _ => None,
@@ -173,7 +173,7 @@ impl StdError for ValidateError {
         "Invalid character in input"
     }
 
-    fn cause(&self) -> Option<&StdError> {
+    fn cause(&self) -> Option<&dyn StdError> {
         None
     }
 }

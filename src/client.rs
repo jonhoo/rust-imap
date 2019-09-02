@@ -14,7 +14,7 @@ use super::extensions;
 use super::parse::*;
 use super::types::*;
 
-static TAG_PREFIX: &'static str = "a";
+static TAG_PREFIX: &str = "a";
 const INITIAL_TAG: u32 = 0;
 const CR: u8 = 0x0d;
 const LF: u8 = 0x0a;
@@ -1620,7 +1620,7 @@ mod tests {
         );
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
-            assert!(capabilities.has(e));
+            assert!(capabilities.has_str(e));
         }
     }
 

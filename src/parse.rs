@@ -342,7 +342,7 @@ mod tests {
         assert!(recv.try_recv().is_err());
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
-            assert!(capabilities.has(e));
+            assert!(capabilities.has_str(e));
         }
     }
 
@@ -445,7 +445,7 @@ mod tests {
 
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
-            assert!(capabilities.has(e));
+            assert!(capabilities.has_str(e));
         }
 
         assert_eq!(
