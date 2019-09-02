@@ -38,12 +38,13 @@ pub struct Capabilities(
 
 impl Capabilities {
     /// Check if the server has the given capability.
-    pub fn has<'a>(&self, s: &Capability<'a>) -> bool {
-        self.0.contains(s)
+    pub fn has<'a>(&self, cap: &Capability<'a>) -> bool {
+        self.0.contains(cap)
     }
 
     /// Check if the server has the given capability via str.
-    pub fn has_str(&self, s: &str) -> bool {
+    pub fn has_str<S: AsRef<str>>(&self, cap: S) -> bool {
+        let s = cap.as_ref();
         if s == IMAP4REV1_CAPABILITY {
             self.has(&Capability::Imap4rev1)
         } else if s.starts_with(AUTH_CAPABILITY_PREFIX) {
