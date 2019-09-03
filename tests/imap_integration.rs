@@ -9,7 +9,7 @@ use std::net::TcpStream;
 fn tls() -> native_tls::TlsConnector {
     native_tls::TlsConnector::builder()
         .danger_accept_invalid_certs(true)
-        .danger_accept_invalid_hostnames((true)
+        .danger_accept_invalid_hostnames(true)
         .build()
         .unwrap()
 }
