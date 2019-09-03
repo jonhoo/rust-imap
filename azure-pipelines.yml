@@ -63,13 +63,13 @@ stages:
    dependsOn: check
    jobs:
      - template: azure/style.yml@templates
-  - stage: coverage
-    displayName: Code coverage
-    dependsOn: test
-    jobs:
-      - template: azure/coverage.yml@templates
-        parameters:
-          codecov_token: $(CODECOV_TOKEN_SECRET)
+ - stage: coverage
+   displayName: Code coverage
+   dependsOn: test
+   jobs:
+     - template: azure/coverage.yml@templates
+       parameters:
+         codecov_token: $(CODECOV_TOKEN_SECRET)
 
 resources:
   repositories:
