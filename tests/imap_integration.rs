@@ -9,6 +9,7 @@ use std::net::TcpStream;
 fn tls() -> native_tls::TlsConnector {
     native_tls::TlsConnector::builder()
         .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames((true)
         .build()
         .unwrap()
 }
@@ -70,7 +71,15 @@ fn connect_insecure_then_secure() {
 
 #[test]
 fn connect_secure() {
-    imap::connect("127.0.0.1:3993", "imap.example.com", &tls()).unwrap();
+    imap::connect(
+        &format!(
+            "{}:3993",
+            std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
+        ),
+        "imap.example.com",
+        &tls(),
+    )
+    .unwrap();
 }
 
 #[test]
