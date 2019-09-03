@@ -55,7 +55,7 @@ impl Capabilities {
     }
 
     /// Iterate over all the server's capabilities
-    pub fn iter(&self) -> Iter<Capability> {
+    pub fn iter(&self) -> Iter<'_, Capability<'_>> {
         self.0.iter()
     }
 

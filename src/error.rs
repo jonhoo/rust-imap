@@ -77,7 +77,7 @@ impl<'a> From<Response<'a>> for Error {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Error::Io(ref e) => fmt::Display::fmt(e, f),
             Error::Tls(ref e) => fmt::Display::fmt(e, f),
@@ -131,7 +131,7 @@ pub enum ParseError {
 }
 
 impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ref e => f.write_str(e.description()),
         }
@@ -162,7 +162,7 @@ impl StdError for ParseError {
 pub struct ValidateError(pub char);
 
 impl fmt::Display for ValidateError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // print character in debug form because invalid ones are often whitespaces
         write!(f, "{}: {:?}", self.description(), self.0)
     }

@@ -1,8 +1,8 @@
 //! Adds support for the IMAP IDLE command specificed in [RFC
 //! 2177](https://tools.ietf.org/html/rfc2177).
 
-use client::Session;
-use error::{Error, Result};
+use crate::client::Session;
+use crate::error::{Error, Result};
 use native_tls::TlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -24,7 +24,7 @@ use std::time::Duration;
 ///
 /// As long as a [`Handle`] is active, the mailbox cannot be otherwise accessed.
 #[derive(Debug)]
-pub struct Handle<'a, T: Read + Write + 'a> {
+pub struct Handle<'a, T: Read + Write> {
     session: &'a mut Session<T>,
     keepalive: Duration,
     done: bool,

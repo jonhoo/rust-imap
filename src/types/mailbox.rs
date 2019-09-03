@@ -52,7 +52,7 @@ impl Default for Mailbox {
 }
 
 impl fmt::Display for Mailbox {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "flags: {:?}, exists: {}, recent: {}, unseen: {:?}, permanent_flags: {:?},\

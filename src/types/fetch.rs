@@ -33,7 +33,7 @@ pub struct Fetch {
 
 impl Fetch {
     /// A list of flags that are set for this message.
-    pub fn flags(&self) -> &[Flag] {
+    pub fn flags(&self) -> &[Flag<'_>] {
         &self.flags[..]
     }
 
@@ -98,7 +98,7 @@ impl Fetch {
     ///
     /// The full description of the format of the envelope is given in [RFC 3501 section
     /// 7.4.2](https://tools.ietf.org/html/rfc3501#section-7.4.2).
-    pub fn envelope(&self) -> Option<&Envelope> {
+    pub fn envelope(&self) -> Option<&Envelope<'_>> {
         self.fetch
             .iter()
             .filter_map(|av| match av {

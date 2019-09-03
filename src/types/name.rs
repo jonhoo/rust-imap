@@ -68,7 +68,7 @@ impl<'a> From<&'a str> for NameAttribute<'a> {
 
 impl Name {
     /// Attributes of this name.
-    pub fn attributes(&self) -> &[NameAttribute] {
+    pub fn attributes(&self) -> &[NameAttribute<'_>] {
         &self.attributes[..]
     }
 

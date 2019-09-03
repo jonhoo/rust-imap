@@ -1,5 +1,4 @@
 [package]
-
 name = "imap"
 version = "1.0.2"
 authors = ["Matt McCoy <mattnenterprise@yahoo.com>",
@@ -10,6 +9,7 @@ homepage = "https://github.com/jonhoo/rust-imap"
 description = "IMAP client for Rust"
 readme = "README.md"
 license = "Apache-2.0/MIT"
+edition = "2018"
 
 keywords = ["email", "imap"]
 categories = ["email", "network-programming"]
@@ -20,10 +20,6 @@ codecov = { repository = "jonhoo/rust-imap", branch = "master", service = "githu
 maintenance = { status = "actively-developed" }
 is-it-maintained-issue-resolution = { repository = "jonhoo/rust-imap" }
 is-it-maintained-open-issues = { repository = "jonhoo/rust-imap" }
-
-[lib]
-name = "imap"
-path = "src/lib.rs"
 
 [dependencies]
 native-tls = "0.2.2"

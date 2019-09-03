@@ -368,12 +368,12 @@ impl<D: Hash> Hash for ZeroCopy<D> {
 
 use std::fmt;
 impl<D: fmt::Display> fmt::Display for ZeroCopy<D> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 impl<D: fmt::Debug> fmt::Debug for ZeroCopy<D> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }

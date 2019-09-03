@@ -57,26 +57,18 @@
 //!     Ok(Some(body))
 //! }
 //! ```
-
 #![deny(missing_docs)]
-
-extern crate base64;
-extern crate bufstream;
-extern crate chrono;
-extern crate imap_proto;
-extern crate native_tls;
-extern crate nom;
-extern crate regex;
+#![warn(rust_2018_idioms)]
 
 mod parse;
 
 pub mod types;
 
 mod authenticator;
-pub use authenticator::Authenticator;
+pub use crate::authenticator::Authenticator;
 
 mod client;
-pub use client::*;
+pub use crate::client::*;
 
 pub mod error;
 
