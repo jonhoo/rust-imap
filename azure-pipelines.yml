@@ -70,6 +70,8 @@ stages:
      - template: azure/coverage.yml@templates
        parameters:
          codecov_token: $(CODECOV_TOKEN_SECRET)
+         services:
+           greenmail: greenmail
 
 resources:
   repositories:
