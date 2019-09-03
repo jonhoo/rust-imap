@@ -6,7 +6,7 @@
 [![Crates.io](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
 [![Documentation](https://docs.rs/imap/badge.svg)](https://docs.rs/imap/)
 [![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
-[![Travis Build Status](https://travis-ci.com/jonhoo/rust-imap.svg?branch=master)](https://travis-ci.com/jonhoo/rust-imap)
+[![Build Status](https://dev.azure.com/jonhoo/jonhoo/_apis/build/status/imap?branchName=master)](https://dev.azure.com/jonhoo/jonhoo/_build/latest?definitionId=11&branchName=master)
 [![Cirrus CI Build Status](https://api.cirrus-ci.com/github/jonhoo/rust-imap.svg)](https://cirrus-ci.com/github/jonhoo/rust-imap)
 [![Codecov](https://codecov.io/github/jonhoo/rust-imap/coverage.svg?branch=master)](https://codecov.io/gh/jonhoo/rust-imap)
 [![Dependency status](https://deps.rs/repo/github/jonhoo/rust-imap/status.svg)](https://deps.rs/repo/github/jonhoo/rust-imap)

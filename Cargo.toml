@@ -15,7 +15,7 @@ keywords = ["email", "imap"]
 categories = ["email", "network-programming"]
 
 [badges]
-travis-ci = { repository = "jonhoo/rust-imap" }
+azure-devops = { project = "jonhoo/jonhoo", pipeline = "imap", build = "11" }
 codecov = { repository = "jonhoo/rust-imap", branch = "master", service = "github" }
 maintenance = { status = "actively-developed" }
 is-it-maintained-issue-resolution = { repository = "jonhoo/rust-imap" }
