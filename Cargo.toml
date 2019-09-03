@@ -29,6 +29,7 @@ imap-proto = "0.8"
 nom = "4.0"
 base64 = "0.10"
 chrono = "0.4"
+lazy_static = "1.4"
 
 [dev-dependencies]
 lettre = "0.9"

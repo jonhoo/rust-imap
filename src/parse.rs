@@ -1,4 +1,5 @@
 use imap_proto::{self, MailboxDatum, Response};
+use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
 use std::sync::mpsc;
@@ -6,15 +7,19 @@ use std::sync::mpsc;
 use super::error::{Error, ParseError, Result};
 use super::types::*;
 
-pub fn parse_authenticate_response(line: String) -> Result<String> {
-    let authenticate_regex = Regex::new("^\\+ (.*)\r\n").unwrap();
+lazy_static! {
+    static ref AUTH_RESP_REGEX: Regex = Regex::new("^\\+ (.*)\r\n").unwrap();
+}
 
-    if let Some(cap) = authenticate_regex.captures_iter(line.as_str()).next() {
+pub fn parse_authenticate_response(line: &str) -> Result<&str> {
+    if let Some(cap) = AUTH_RESP_REGEX.captures_iter(line).next() {
         let data = cap.get(1).map(|x| x.as_str()).unwrap_or("");
-        return Ok(String::from(data));
+        return Ok(data);
     }
-
-    Err(Error::Parse(ParseError::Authentication(line, None)))
+    Err(Error::Parse(ParseError::Authentication(
+        line.to_string(),
+        None,
+    )))
 }
 
 enum MapOrNot<T> {
