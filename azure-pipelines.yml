@@ -53,9 +53,15 @@ stages:
          rust: stable
      - script: cargo test
        displayName: Run tests
-     - script: cargo +beta test
+     - template: azure/install-rust.yml@templates
+       parameters:
+         rust: beta
+     - script: cargo test
        displayName: Run tests on beta
-     - script: cargo +nightly test
+     - template: azure/install-rust.yml@templates
+       parameters:
+         rust: nightly
+     - script: cargo test
        displayName: Run tests on nightly
        continueOnError: true
  - stage: style
