@@ -1,0 +1,91 @@
+stages:
+ - stage: check
+   displayName: Compilation check
+   dependsOn: []
+   jobs:
+     - template: azure/cargo-check.yml@templates
+       parameters:
+         name: cargo_check
+ # This represents the minimum Rust version supported.
+ # Tests are not run as tests may require newer versions of rust.
+ - stage: msrv
+   displayName: "Minimum supported Rust version: 1.32.0"
+   dependsOn: []
+   jobs:
+     - template: azure/cargo-check.yml@templates
+       parameters:
+        rust: 1.32.0
+ - stage: test
+   displayName: Test suite
+   dependsOn: check
+   jobs:
+   - job: test
+     displayName: cargo test --{examples,doc,lib} (cross-platform)
+     strategy:
+       matrix:
+         Linux:
+           vmImage: ubuntu-16.04
+         MacOS:
+           vmImage: macOS-10.14
+         Windows:
+           vmImage: windows-2019
+     pool:
+       vmImage: $(vmImage)
+     steps:
+     - template: azure/install-rust.yml@templates
+       parameters:
+         rust: stable
+     - script: cargo test --examples
+       displayName: Test examples
+     - script: cargo test --doc
+       displayName: Run doctests
+     - script: cargo test --lib
+       displayName: Run unit tests
+   - job: integration
+     displayName: cargo test
+     pool:
+       vmImage: ubuntu-16.04
+     services:
+       greenmail: greenmail
+     steps:
+     - template: azure/install-rust.yml@templates
+       parameters:
+         rust: stable
+     - script: cargo test
+       displayName: Run tests
+     - script: cargo +beta test
+       displayName: Run tests on beta
+     - script: cargo +nightly test
+       displayName: Run tests on nightly
+       continueOnError: true
+ - stage: style
+   displayName: Style linting
+   dependsOn: check
+   jobs:
+     - template: azure/style.yml@templates
+  - stage: coverage
+    displayName: Code coverage
+    dependsOn: test
+    jobs:
+      - template: azure/coverage.yml@templates
+        parameters:
+          codecov_token: $(CODECOV_TOKEN_SECRET)
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      name: crate-ci/azure-pipelines
+      endpoint: jonhoo
+  containers:
+   - container: greenmail
+     image: greenmail/standalone:1.5.9
+     ports:
+       - 3025
+       - 3110
+       - 3143
+       - 3465
+       - 3993
+       - 3995
+     env:
+       GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
