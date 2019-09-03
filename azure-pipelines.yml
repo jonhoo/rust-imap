@@ -69,18 +69,18 @@ stages:
    dependsOn: check
    jobs:
      - template: azure/style.yml@templates
- - stage: coverage
-   condition: never() # https://github.com/greenmail-mail-test/greenmail/issues/284
-   displayName: Code coverage
-   dependsOn: test
-   jobs:
-     - template: azure/coverage.yml@templates
-       parameters:
-         codecov_token: $(CODECOV_TOKEN_SECRET)
-         services:
-           greenmail: greenmail
-         envs:
-           TEST_HOST: greenmail
+# https://github.com/greenmail-mail-test/greenmail/issues/284
+# - stage: coverage
+#   displayName: Code coverage
+#   dependsOn: test
+#   jobs:
+#     - template: azure/coverage.yml@templates
+#       parameters:
+#         codecov_token: $(CODECOV_TOKEN_SECRET)
+#         services:
+#           greenmail: greenmail
+#         envs:
+#           TEST_HOST: greenmail
 
 resources:
   repositories:
