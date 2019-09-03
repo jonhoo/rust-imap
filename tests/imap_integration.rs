@@ -14,10 +14,17 @@ fn tls() -> native_tls::TlsConnector {
 }
 
 fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
-    let mut s = imap::connect("127.0.0.1:3993", "imap.example.com", &tls())
-        .unwrap()
-        .login(user, user)
-        .unwrap();
+    let mut s = imap::connect(
+        &format!(
+            "{}:3993",
+            std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
+        ),
+        "imap.example.com",
+        &tls(),
+    )
+    .unwrap()
+    .login(user, user)
+    .unwrap();
     s.debug = true;
     s
 }
@@ -25,7 +32,10 @@ fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
 fn smtp(user: &str) -> lettre::SmtpTransport {
     let creds = lettre::smtp::authentication::Credentials::new(user.to_string(), user.to_string());
     lettre::SmtpClient::new(
-        "127.0.0.1:3465",
+        &format!(
+            "{}:3465",
+            std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
+        ),
         lettre::ClientSecurity::Wrapper(lettre::ClientTlsParameters {
             connector: tls(),
             domain: "smpt.example.com".to_string(),
@@ -38,17 +48,24 @@ fn smtp(user: &str) -> lettre::SmtpTransport {
 
 #[test]
 fn connect_insecure() {
-    imap::connect_insecure("127.0.0.1:3143").unwrap();
+    imap::connect_insecure(&format!(
+        "{}:3143",
+        std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
+    ))
+    .unwrap();
 }
 
 #[test]
 #[ignore]
 fn connect_insecure_then_secure() {
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
-    imap::connect_insecure("127.0.0.1:3143")
-        .unwrap()
-        .secure("imap.example.com", &tls())
-        .unwrap();
+    imap::connect_insecure(&format!(
+        "{}:3143",
+        std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
+    ))
+    .unwrap()
+    .secure("imap.example.com", &tls())
+    .unwrap();
 }
 
 #[test]
