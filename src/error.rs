@@ -126,7 +126,7 @@ pub enum ParseError {
     Unexpected(String),
     /// The client could not find or decode the server's authentication challenge.
     Authentication(String, Option<DecodeError>),
-    /// The client receive data that was not UTF-8 encoded.
+    /// The client received data that was not UTF-8 encoded.
     DataNotUtf8(Vec<u8>, Utf8Error),
 }
 
