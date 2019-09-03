@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::{Deref, DerefMut};
+use std::str;
 use std::sync::mpsc;
 
 use super::authenticator::Authenticator;
@@ -346,13 +347,19 @@ impl<T: Read + Write> Client<T> {
             ok_or_unauth_client_err!(self.readline(&mut line), self);
 
             if line.starts_with(b"+ ") {
-                let data = ok_or_unauth_client_err!(
-                    parse_authenticate_response(String::from_utf8(line).unwrap()),
+                let line_str = ok_or_unauth_client_err!(
+                    match str::from_utf8(line.as_slice()) {
+                        Ok(line_str) => Ok(line_str),
+                        Err(e) => Err(Error::Parse(ParseError::DataNotUtf8(line, e))),
+                    },
                     self
                 );
+                let data = ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
                 let challenge = ok_or_unauth_client_err!(
-                    base64::decode(data.as_str())
-                        .map_err(|e| Error::Parse(ParseError::Authentication(data, Some(e)))),
+                    base64::decode(data).map_err(|e| Error::Parse(ParseError::Authentication(
+                        data.to_string(),
+                        Some(e)
+                    ))),
                     self
                 );
                 let raw_response = &authenticator.process(&challenge);

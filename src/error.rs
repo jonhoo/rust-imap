@@ -5,7 +5,7 @@ use std::fmt;
 use std::io::Error as IoError;
 use std::net::TcpStream;
 use std::result;
-use std::string::FromUtf8Error;
+use std::str::Utf8Error;
 
 use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
@@ -111,7 +111,7 @@ impl StdError for Error {
             Error::Io(ref e) => Some(e),
             Error::Tls(ref e) => Some(e),
             Error::TlsHandshake(ref e) => Some(e),
-            Error::Parse(ParseError::DataNotUtf8(ref e)) => Some(e),
+            Error::Parse(ParseError::DataNotUtf8(_, ref e)) => Some(e),
             _ => None,
         }
     }
@@ -127,7 +127,7 @@ pub enum ParseError {
     /// The client could not find or decode the server's authentication challenge.
     Authentication(String, Option<DecodeError>),
     /// The client receive data that was not UTF-8 encoded.
-    DataNotUtf8(FromUtf8Error),
+    DataNotUtf8(Vec<u8>, Utf8Error),
 }
 
 impl fmt::Display for ParseError {
@@ -144,7 +144,7 @@ impl StdError for ParseError {
             ParseError::Invalid(_) => "Unable to parse status response",
             ParseError::Unexpected(_) => "Encountered unexpected parsed response",
             ParseError::Authentication(_, _) => "Unable to parse authentication response",
-            ParseError::DataNotUtf8(_) => "Unable to parse data as UTF-8 text",
+            ParseError::DataNotUtf8(_, _) => "Unable to parse data as UTF-8 text",
         }
     }
 
