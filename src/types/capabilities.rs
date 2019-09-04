@@ -45,13 +45,16 @@ impl Capabilities {
     /// Check if the server has the given capability via str.
     pub fn has_str<S: AsRef<str>>(&self, cap: S) -> bool {
         let s = cap.as_ref();
-        if s == IMAP4REV1_CAPABILITY {
-            self.has(&Capability::Imap4rev1)
-        } else if s.starts_with(AUTH_CAPABILITY_PREFIX) {
-            self.has(&Capability::Auth(&s[AUTH_CAPABILITY_PREFIX.len()..]))
-        } else {
-            self.has(&Capability::Atom(s))
+        if s.eq_ignore_ascii_case(IMAP4REV1_CAPABILITY) {
+            return self.has(&Capability::Imap4rev1);
         }
+        if s.len() > AUTH_CAPABILITY_PREFIX.len() {
+            let (pre, val) = s.split_at(AUTH_CAPABILITY_PREFIX.len());
+            if pre.eq_ignore_ascii_case(AUTH_CAPABILITY_PREFIX) {
+                return self.has(&Capability::Auth(val));
+            }
+        }
+        self.has(&Capability::Atom(s))
     }
 
     /// Iterate over all the server's capabilities
