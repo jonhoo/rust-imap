@@ -352,6 +352,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_capability_case_insensitive_test() {
+        // Test that "IMAP4REV1" (instead of "IMAP4rev1") is accepted
+        let expected_capabilities = vec!["IMAP4rev1", "STARTTLS"];
+        let lines = b"* CAPABILITY IMAP4REV1 STARTTLS\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        // shouldn't be any unexpected responses parsed
+        assert!(recv.try_recv().is_err());
+        assert_eq!(capabilities.len(), 2);
+        for e in expected_capabilities {
+            assert!(capabilities.has_str(e));
+        }
+    }
+
+    #[test]
     #[should_panic]
     fn parse_capability_invalid_test() {
         let (mut send, recv) = mpsc::channel();
