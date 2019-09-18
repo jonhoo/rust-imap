@@ -3,12 +3,10 @@ extern crate rustls_connector;
 
 use std::{env, error::Error, net::TcpStream};
 
-use dotenv::dotenv;
 use rustls_connector::RustlsConnector;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Read config from environment or .env file
-    dotenv().ok();
     let host = env::var("HOST").expect("missing envvar host");
     let user = env::var("MAILUSER").expect("missing envvar USER");
     let password = env::var("PASSWORD").expect("missing envvar password");
