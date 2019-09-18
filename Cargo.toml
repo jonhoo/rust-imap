@@ -34,3 +34,4 @@ lazy_static = "1.4"
 [dev-dependencies]
 lettre = "0.9"
 lettre_email = "0.9"
+rustls-connector = "0.8.0"

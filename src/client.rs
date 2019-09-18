@@ -222,6 +222,9 @@ macro_rules! ok_or_unauth_client_err {
 impl<T: Read + Write> Client<T> {
     /// Creates a new client over the given stream.
     ///
+    /// For an example of how to use this method to provide a pure-Rust TLS integration, see the
+    /// rustls.rs in the examples/ directory.
+    ///
     /// This method primarily exists for writing tests that mock the underlying transport, but can
     /// also be used to support IMAP over custom tunnels.
     pub fn new(stream: T) -> Client<T> {

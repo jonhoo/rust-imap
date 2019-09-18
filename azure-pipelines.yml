@@ -9,12 +9,12 @@ stages:
  # This represents the minimum Rust version supported.
  # Tests are not run as tests may require newer versions of rust.
  - stage: msrv
-   displayName: "Minimum supported Rust version: 1.32.0"
+   displayName: "Minimum supported Rust version: 1.36.0"
    dependsOn: []
    jobs:
      - template: azure/cargo-check.yml@templates
        parameters:
-        rust: 1.32.0
+        rust: 1.36.0
  - stage: test
    displayName: Test suite
    dependsOn: check
