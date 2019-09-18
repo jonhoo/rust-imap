@@ -1,15 +1,10 @@
 extern crate imap;
 extern crate rustls_connector;
 
-use std::{
-    env,
-    error::Error,
-    net::TcpStream,
-};
+use std::{env, error::Error, net::TcpStream};
 
 use dotenv::dotenv;
 use rustls_connector::RustlsConnector;
-
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Read config from environment or .env file
@@ -26,7 +21,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn fetch_inbox_top(host: String, user: String, password: String, port: u16) -> Result<Option<String>, Box<dyn Error>> {
+fn fetch_inbox_top(
+    host: String,
+    user: String,
+    password: String,
+    port: u16,
+) -> Result<Option<String>, Box<dyn Error>> {
     // Setup Rustls TcpStream
     let stream = TcpStream::connect((host.as_ref(), port))?;
     let tls = RustlsConnector::default();
@@ -38,9 +38,7 @@ fn fetch_inbox_top(host: String, user: String, password: String, port: u16) -> R
 
     // the client we have here is unauthenticated.
     // to do anything useful with the e-mails, we need to log in
-    let mut imap_session = client
-        .login(&user, &password)
-        .map_err(|e| e.0)?;
+    let mut imap_session = client.login(&user, &password).map_err(|e| e.0)?;
 
     // we want to fetch the first email in the INBOX mailbox
     imap_session.select("INBOX")?;
