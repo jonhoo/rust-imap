@@ -21,8 +21,12 @@ maintenance = { status = "actively-developed" }
 is-it-maintained-issue-resolution = { repository = "jonhoo/rust-imap" }
 is-it-maintained-open-issues = { repository = "jonhoo/rust-imap" }
 
+[features]
+tls = ["native-tls"]
+default = ["tls"]
+
 [dependencies]
-native-tls = "0.2.2"
+native-tls = { version = "0.2.2", optional = true }
 regex = "1.0"
 bufstream = "0.1"
 imap-proto = "0.9.0"
@@ -35,3 +39,15 @@ lazy_static = "1.4"
 lettre = "0.9"
 lettre_email = "0.9"
 rustls-connector = "0.8.0"
+
+[[example]]
+name = "basic"
+required-features = ["default"]
+
+[[example]]
+name = "gmail_oauth2"
+required-features = ["default"]
+
+[[test]]
+name = "imap_integration"
+required-features = ["default"]

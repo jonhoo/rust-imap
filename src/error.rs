@@ -3,6 +3,7 @@
 use std::error::Error as StdError;
 use std::fmt;
 use std::io::Error as IoError;
+#[cfg(feature = "tls")]
 use std::net::TcpStream;
 use std::result;
 use std::str::Utf8Error;
@@ -10,7 +11,9 @@ use std::str::Utf8Error;
 use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
 use imap_proto::Response;
+#[cfg(feature = "tls")]
 use native_tls::Error as TlsError;
+#[cfg(feature = "tls")]
 use native_tls::HandshakeError as TlsHandshakeError;
 
 /// A convenience wrapper around `Result` for `imap::Error`.
@@ -22,8 +25,10 @@ pub enum Error {
     /// An `io::Error` that occurred while trying to read or write to a network stream.
     Io(IoError),
     /// An error from the `native_tls` library during the TLS handshake.
+    #[cfg(feature = "tls")]
     TlsHandshake(TlsHandshakeError<TcpStream>),
     /// An error from the `native_tls` library while managing the socket.
+    #[cfg(feature = "tls")]
     Tls(TlsError),
     /// A BAD response from the IMAP server.
     Bad(String),
@@ -38,6 +43,8 @@ pub enum Error {
     Validate(ValidateError),
     /// Error appending an e-mail.
     Append,
+    #[doc(hidden)]
+    __Nonexhaustive,
 }
 
 impl From<IoError> for Error {
@@ -58,12 +65,14 @@ impl<T> From<BufError<T>> for Error {
     }
 }
 
+#[cfg(feature = "tls")]
 impl From<TlsHandshakeError<TcpStream>> for Error {
     fn from(err: TlsHandshakeError<TcpStream>) -> Error {
         Error::TlsHandshake(err)
     }
 }
 
+#[cfg(feature = "tls")]
 impl From<TlsError> for Error {
     fn from(err: TlsError) -> Error {
         Error::Tls(err)
@@ -80,7 +89,9 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Error::Io(ref e) => fmt::Display::fmt(e, f),
+            #[cfg(feature = "tls")]
             Error::Tls(ref e) => fmt::Display::fmt(e, f),
+            #[cfg(feature = "tls")]
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             Error::Validate(ref e) => fmt::Display::fmt(e, f),
             Error::No(ref data) | Error::Bad(ref data) => {
@@ -95,7 +106,9 @@ impl StdError for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref e) => e.description(),
+            #[cfg(feature = "tls")]
             Error::Tls(ref e) => e.description(),
+            #[cfg(feature = "tls")]
             Error::TlsHandshake(ref e) => e.description(),
             Error::Parse(ref e) => e.description(),
             Error::Validate(ref e) => e.description(),
@@ -103,13 +116,16 @@ impl StdError for Error {
             Error::No(_) => "No Response",
             Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
+            Error::__Nonexhaustive => "Unknown",
         }
     }
 
     fn cause(&self) -> Option<&dyn StdError> {
         match *self {
             Error::Io(ref e) => Some(e),
+            #[cfg(feature = "tls")]
             Error::Tls(ref e) => Some(e),
+            #[cfg(feature = "tls")]
             Error::TlsHandshake(ref e) => Some(e),
             Error::Parse(ParseError::DataNotUtf8(_, ref e)) => Some(e),
             _ => None,

@@ -17,6 +17,7 @@ task:
   build_script:
     - . $HOME/.cargo/env
     - cargo build --all-targets --verbose
+    - cargo build --all-targets --verbose --no-default-features
   test_script:
     - . $HOME/.cargo/env
     - cargo test --examples
