@@ -110,39 +110,6 @@ impl<T: Read + Write> DerefMut for Session<T> {
     }
 }
 
-/// Connect to a server using an insecure TCP connection.
-///
-/// The returned [`Client`] is unauthenticated; to access session-related methods (through
-/// [`Session`]), use [`Client::login`] or [`Client::authenticate`].
-///
-/// Consider using [`connect`] for a secured connection where possible.
-/// You can upgrade an insecure client to a secure one using [`Client::secure`].
-/// ```rust,no_run
-/// # extern crate native_tls;
-/// # extern crate imap;
-/// # use std::io;
-/// # use native_tls::TlsConnector;
-/// # fn main() {
-/// // a plain, unencrypted TCP connection
-/// let client = imap::connect_insecure(("imap.example.org", 143)).unwrap();
-///
-/// // upgrade to SSL
-/// let tls = TlsConnector::builder().build().unwrap();
-/// let tls_client = client.secure("imap.example.org", &tls);
-/// # }
-/// ```
-pub fn connect_insecure<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
-    match TcpStream::connect(addr) {
-        Ok(stream) => {
-            let mut socket = Client::new(stream);
-
-            socket.read_greeting()?;
-            Ok(socket)
-        }
-        Err(e) => Err(Error::Io(e)),
-    }
-}
-
 /// Connect to a server using a TLS-encrypted connection.
 ///
 /// The returned [`Client`] is unauthenticated; to access session-related methods (through

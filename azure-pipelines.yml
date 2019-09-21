@@ -41,8 +41,6 @@ stages:
        displayName: Run doctests
      - script: cargo test --lib
        displayName: Run unit tests
-     - script: cargo build --all-targets --verbose --no-default-features
-       displayName: Compile without openssl
    - job: integration
      displayName: cargo test
      pool:
