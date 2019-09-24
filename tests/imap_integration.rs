@@ -48,25 +48,15 @@ fn smtp(user: &str) -> lettre::SmtpTransport {
 }
 
 #[test]
-fn connect_insecure() {
-    imap::connect_insecure(&format!(
-        "{}:3143",
-        std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
-    ))
-    .unwrap();
-}
-
-#[test]
 #[ignore]
 fn connect_insecure_then_secure() {
+    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
+    let stream = TcpStream::connect((host.as_ref(), 3143)).unwrap();
+
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
-    imap::connect_insecure(&format!(
-        "{}:3143",
-        std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
-    ))
-    .unwrap()
-    .secure("imap.example.com", &tls())
-    .unwrap();
+    imap::Client::new(stream)
+        .secure("imap.example.com", &tls())
+        .unwrap();
 }
 
 #[test]

@@ -50,13 +50,29 @@
 //!     let body = std::str::from_utf8(body)
 //!         .expect("message was not valid utf-8")
 //!         .to_string();
-//!    
+//!
 //!     // be nice to the server and log out
 //!     imap_session.logout()?;
-//!    
+//!
 //!     Ok(Some(body))
 //! }
 //! ```
+//!
+//! ## Opting out of `native_tls`
+//!
+//! For situations where using openssl becomes problematic, you can disable the
+//! default feature which provides integration with the `native_tls` crate. One major
+//! reason you might want to do this is cross-compiling. To opt out of native_tls, add
+//! this to your Cargo.toml file:
+//!
+//! ```toml
+//! [dependencies.imap]
+//! version = "<some version>"
+//! default-features = false
+//! ```
+//!
+//! Even without `native_tls`, you can still use TLS by leveraging the pure Rust `rustls`
+//! crate. See the example/rustls.rs file for a working example.
 #![deny(missing_docs)]
 #![warn(rust_2018_idioms)]
 
