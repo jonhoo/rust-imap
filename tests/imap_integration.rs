@@ -55,8 +55,8 @@ fn connect_insecure_then_secure() {
 
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
     imap::Client::new(stream)
-    .secure("imap.example.com", &tls())
-    .unwrap();
+        .secure("imap.example.com", &tls())
+        .unwrap();
 }
 
 #[test]
