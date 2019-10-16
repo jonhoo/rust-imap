@@ -323,22 +323,29 @@ impl<T: Read + Write> Client<T> {
             // early (see also comment on `login`)
             ok_or_unauth_client_err!(self.readline(&mut line), self);
 
-            if line.starts_with(b"+ ") {
-                let line_str = ok_or_unauth_client_err!(
-                    match str::from_utf8(line.as_slice()) {
-                        Ok(line_str) => Ok(line_str),
-                        Err(e) => Err(Error::Parse(ParseError::DataNotUtf8(line, e))),
-                    },
-                    self
-                );
-                let data = ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
-                let challenge = ok_or_unauth_client_err!(
-                    base64::decode(data).map_err(|e| Error::Parse(ParseError::Authentication(
-                        data.to_string(),
-                        Some(e)
-                    ))),
-                    self
-                );
+            // Some servers will only send `+\r\n`.
+            if line.starts_with(b"+ ") || &line == b"+\r\n" {
+                let challenge = if &line == b"+\r\n" {
+                    Vec::new()
+                } else {
+                    let line_str = ok_or_unauth_client_err!(
+                        match str::from_utf8(line.as_slice()) {
+                            Ok(line_str) => Ok(line_str),
+                            Err(e) => Err(Error::Parse(ParseError::DataNotUtf8(line, e))),
+                        },
+                        self
+                    );
+                    let data =
+                        ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
+                    ok_or_unauth_client_err!(
+                        base64::decode(data).map_err(|e| Error::Parse(ParseError::Authentication(
+                            data.to_string(),
+                            Some(e)
+                        ))),
+                        self
+                    )
+                };
+
                 let raw_response = &authenticator.process(&challenge);
                 let auth_response = base64::encode(raw_response);
                 ok_or_unauth_client_err!(
