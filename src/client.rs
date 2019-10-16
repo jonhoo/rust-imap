@@ -1099,10 +1099,11 @@ impl<T: Read + Write> Session<T> {
 }
 
 impl<T: Read + Write> Connection<T> {
-    fn read_greeting(&mut self) -> Result<()> {
+    /// Read the greeting from the connection. Needs to be done after `connect`ing.
+    pub fn read_greeting(&mut self) -> Result<Vec<u8>> {
         let mut v = Vec::new();
         self.readline(&mut v)?;
-        Ok(())
+        Ok(v)
     }
 
     fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
