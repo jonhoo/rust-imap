@@ -942,7 +942,7 @@ impl<T: Read + Write> Session<T> {
     ///  - `UIDVALIDITY`: The unique identifier validity value of the mailbox (see [`Uid`]).
     ///  - `UNSEEN`: The number of messages which do not have [`Flag::Seen`] set.
     ///
-    /// `data_itmes` is a space-separated list enclosed in parentheses.
+    /// `data_items` is a space-separated list enclosed in parentheses.
     pub fn status<S1: AsRef<str>, S2: AsRef<str>>(
         &mut self,
         mailbox_name: S1,
