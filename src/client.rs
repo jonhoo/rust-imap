@@ -78,6 +78,9 @@ pub struct Connection<T: Read + Write> {
     /// Enable debug mode for this connection so that all client-server interactions are printed to
     /// `STDERR`.
     pub debug: bool,
+
+    /// Tracks if we have read a greeting.
+    pub greeting_read: bool,
 }
 
 // `Deref` instances are so we can make use of the same underlying primitives in `Client` and
@@ -203,6 +206,7 @@ impl<T: Read + Write> Client<T> {
                 stream: BufStream::new(stream),
                 tag: INITIAL_TAG,
                 debug: false,
+                greeting_read: false,
             },
         }
     }
@@ -1101,8 +1105,13 @@ impl<T: Read + Write> Session<T> {
 impl<T: Read + Write> Connection<T> {
     /// Read the greeting from the connection. Needs to be done after `connect`ing.
     pub fn read_greeting(&mut self) -> Result<Vec<u8>> {
+        if self.greeting_read {
+            return Err(Error::GreetingAlreadyRead);
+        }
         let mut v = Vec::new();
         self.readline(&mut v)?;
+        self.greeting_read = true;
+
         Ok(v)
     }
 

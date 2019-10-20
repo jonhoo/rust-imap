@@ -43,6 +43,8 @@ pub enum Error {
     Validate(ValidateError),
     /// Error appending an e-mail.
     Append,
+    /// Returned when trying to read a greeting multiple times.
+    GreetingAlreadyRead,
     #[doc(hidden)]
     __Nonexhaustive,
 }
@@ -116,6 +118,7 @@ impl StdError for Error {
             Error::No(_) => "No Response",
             Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
+            Error::GreetingAlreadyRead => "Greeting can only be read once",
             Error::__Nonexhaustive => "Unknown",
         }
     }
