@@ -1104,10 +1104,11 @@ impl<T: Read + Write> Session<T> {
 
 impl<T: Read + Write> Connection<T> {
     /// Read the greeting from the connection. Needs to be done after `connect`ing.
+    ///
+    /// Panics if called more than once on the same `Connection`.
     pub fn read_greeting(&mut self) -> Result<Vec<u8>> {
-        if self.greeting_read {
-            return Err(Error::GreetingAlreadyRead);
-        }
+        assert!(!self.greeting_read, "Greeting can only be read once");
+
         let mut v = Vec::new();
         self.readline(&mut v)?;
         self.greeting_read = true;
