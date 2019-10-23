@@ -8,15 +8,11 @@ fn main() {
     if args.len() != 4 {
         eprintln!("need three arguments: imap-server login password");
     } else {
-        fetch_inbox_and_idle(&args[1], &args[2], &args[3]).unwrap();
+        fetch_messages_and_idle(&args[1], &args[2], &args[3]).unwrap();
     }
 }
 
-fn fetch_inbox_and_idle(
-    server: &str,
-    login: &str,
-    password: &str,
-) -> imap::error::Result<Option<String>> {
+fn fetch_messages_and_idle(server: &str, login: &str, password: &str) -> imap::error::Result<()> {
     let tls = native_tls::TlsConnector::builder().build().unwrap();
 
     // we pass in the domain twice to check that the server's TLS
@@ -35,36 +31,21 @@ fn fetch_inbox_and_idle(
     // RFC 822 dictates the format of the body of e-mails
     let messages = imap_session.fetch("1", "RFC822")?;
     println!("got {} messages", messages.len());
-    let message = if let Some(m) = messages.iter().next() {
-        m
-    } else {
-        println!("no messages!");
-        return Ok(None);
-    };
-
-    // extract the message's body
-    let body = message.body().expect("message did not have a body!");
-    let body = std::str::from_utf8(body)
-        .expect("message was not valid utf-8")
-        .to_string();
-
-    println!("got message len={}", body.len());
     {
         match imap_session.idle() {
             Ok(mut idle) => {
-                idle.set_keepalive(Duration::from_secs(20));
+                &idle.set_keepalive(Duration::from_secs(20));
                 println!("entering idle wait_keepalive");
-                let res = idle.wait_keepalive();
+                let res = &idle.wait_keepalive();
                 println!("wait_keepalive returned {}", res.is_ok());
             }
             Err(err) => {
-                eprintln!("failed to setup idle: {:?}", err);
+                return Err(imap::error::Error::Bad(err.to_string()));
             }
         };
     }
 
     // be nice to the server and log out
-    &imap_session.logout()?;
-
-    Ok(Some(body))
+    imap_session.logout()?;
+    Ok(())
 }
