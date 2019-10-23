@@ -97,6 +97,9 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
             Err(Error::Io(ref e))
                 if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
             {
+                if self.session.debug {
+                    eprintln!("idle-restart after error {:?}", e);
+                }
                 // we need to refresh the IDLE connection
                 self.terminate()?;
                 self.init()?;
