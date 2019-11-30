@@ -154,6 +154,46 @@ pub fn connect<A: ToSocketAddrs, S: AsRef<str>>(
     }
 }
 
+/// Connect to a server and upgrade to a TLS-encrypted connection.
+///
+/// This is the [STARTTLS](https://tools.ietf.org/html/rfc2595) equivalent to [`connect`]. All
+/// notes there also apply here.
+///
+/// # Examples
+///
+/// ```no_run
+/// # extern crate native_tls;
+/// # extern crate imap;
+/// # use std::io;
+/// # use native_tls::TlsConnector;
+/// # fn main() {
+/// let tls = TlsConnector::builder().build().unwrap();
+/// let client = imap::connect_starttls(("imap.example.org", 143), "imap.example.org", &tls).unwrap();
+/// # }
+/// ```
+#[cfg(feature = "tls")]
+pub fn connect_starttls<A: ToSocketAddrs, S: AsRef<str>>(
+    addr: A,
+    domain: S,
+    ssl_connector: &TlsConnector,
+) -> Result<Client<TlsStream<TcpStream>>> {
+    match TcpStream::connect(addr) {
+        Ok(stream) => {
+            let mut socket = Client::new(stream);
+            socket.read_greeting()?;
+            socket.run_command_and_check_ok("STARTTLS")?;
+            TlsConnector::connect(
+                ssl_connector,
+                domain.as_ref(),
+                socket.conn.stream.into_inner()?,
+            )
+            .map(Client::new)
+            .map_err(Error::TlsHandshake)
+        }
+        Err(e) => Err(Error::Io(e)),
+    }
+}
+
 impl Client<TcpStream> {
     /// This will upgrade an IMAP client from using a regular TCP connection to use TLS.
     ///
