@@ -359,9 +359,15 @@ impl<T: Read + Write> Client<T> {
         // TODO Clean up this code
         loop {
             let mut line = Vec::new();
+
             // explicit match blocks neccessary to convert error to tuple and not bind self too
             // early (see also comment on `login`)
             ok_or_unauth_client_err!(self.readline(&mut line), self);
+
+            // ignore server comments
+            if line.starts_with(b"* ") {
+                continue;
+            }
 
             // Some servers will only send `+\r\n`.
             if line.starts_with(b"+ ") || &line == b"+\r\n" {
