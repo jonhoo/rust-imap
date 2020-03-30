@@ -94,15 +94,18 @@ impl fmt::Display for Error {
             #[cfg(feature = "tls")]
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             Error::Validate(ref e) => fmt::Display::fmt(e, f),
-            Error::No(ref data) | Error::Bad(ref data) => {
-                write!(f, "{}: {}", &String::from(self.description()), data)
-            }
-            ref e => f.write_str(e.description()),
+            Error::Parse(ref e) => fmt::Display::fmt(e, f),
+            Error::No(ref data) => write!(f, "No Response: {}", data),
+            Error::Bad(ref data) => write!(f, "Bad Response: {}", data),
+            Error::ConnectionLost => f.write_str("Connection Lost"),
+            Error::Append => f.write_str("Could not append mail to mailbox"),
+            Error::__Nonexhaustive => f.write_str("Unknown"),
         }
     }
 }
 
 impl StdError for Error {
+    #[allow(deprecated)]
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref e) => e.description(),
@@ -149,7 +152,12 @@ pub enum ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            ref e => f.write_str(e.description()),
+            ParseError::Invalid(_) => f.write_str("Unable to parse status response"),
+            ParseError::Unexpected(_) => f.write_str("Encountered unexpected parse response"),
+            ParseError::Authentication(_, _) => {
+                f.write_str("Unable to parse authentication response")
+            }
+            ParseError::DataNotUtf8(_, _) => f.write_str("Unable to parse data as UTF-8 text"),
         }
     }
 }
@@ -180,7 +188,7 @@ pub struct ValidateError(pub char);
 impl fmt::Display for ValidateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // print character in debug form because invalid ones are often whitespaces
-        write!(f, "{}: {:?}", self.description(), self.0)
+        write!(f, "Invalid character in input: {:?}", self.0)
     }
 }
 
