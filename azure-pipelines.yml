@@ -18,6 +18,7 @@ jobs:
        Windows:
          vmImage: windows-2019
          rust: stable
+   continueOnError: $[eq(variables.rust, 'nightly')]
    pool:
      vmImage: $(vmImage)
    steps:
