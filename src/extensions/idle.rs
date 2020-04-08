@@ -31,6 +31,15 @@ pub struct Handle<'a, T: Read + Write> {
     done: bool,
 }
 
+/// The result of a wait on a `Handle`
+#[derive(Debug, PartialEq, Eq)]
+pub enum WaitOutcome {
+    /// The wait timed out
+    TimedOut,
+    /// The mailbox was modified
+    MailboxChanged,
+}
+
 /// Must be implemented for a transport in order for a `Session` using that transport to support
 /// operations with timeouts.
 ///
@@ -91,24 +100,28 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     /// Internal helper that doesn't consume self.
     ///
     /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
-    fn wait_inner(&mut self) -> Result<()> {
+    fn wait_inner(&mut self, reconnect: bool) -> Result<WaitOutcome> {
         let mut v = Vec::new();
         match self.session.readline(&mut v).map(|_| ()) {
             Err(Error::Io(ref e))
                 if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
             {
-                // we need to refresh the IDLE connection
-                self.terminate()?;
-                self.init()?;
-                self.wait_inner()
+                if reconnect {
+                    self.terminate()?;
+                    self.init()?;
+                    self.wait_inner(reconnect)
+                } else {
+                    Ok(WaitOutcome::TimedOut)
+                }
             }
-            r => r,
+            Ok(()) => Ok(WaitOutcome::MailboxChanged),
+            Err(r) => Err(r),
         }
     }
 
     /// Block until the selected mailbox changes.
-    pub fn wait(mut self) -> Result<()> {
-        self.wait_inner()
+    pub fn wait(mut self) -> Result<WaitOutcome> {
+        self.wait_inner(true)
     }
 }
 
@@ -128,7 +141,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// [`Handle::set_keepalive`].
     ///
     /// This is the recommended method to use for waiting.
-    pub fn wait_keepalive(self) -> Result<()> {
+    pub fn wait_keepalive(self) -> Result<WaitOutcome> {
         // The server MAY consider a client inactive if it has an IDLE command
         // running, and if such a server has an inactivity timeout it MAY log
         // the client off implicitly at the end of its timeout period.  Because
@@ -137,16 +150,20 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
         let keepalive = self.keepalive;
-        self.wait_timeout(keepalive)
+        self.timed_wait(keepalive, true)
     }
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
-    pub fn wait_timeout(mut self, timeout: Duration) -> Result<()> {
+    pub fn wait_timeout(self, timeout: Duration) -> Result<WaitOutcome> {
+        self.timed_wait(timeout, false)
+    }
+
+    fn timed_wait(mut self, timeout: Duration, reconnect: bool) -> Result<WaitOutcome> {
         self.session
             .stream
             .get_mut()
             .set_read_timeout(Some(timeout))?;
-        let res = self.wait_inner();
+        let res = self.wait_inner(reconnect);
         let _ = self.session.stream.get_mut().set_read_timeout(None).is_ok();
         res
     }
