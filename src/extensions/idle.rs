@@ -93,16 +93,26 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
     fn wait_inner(&mut self) -> Result<()> {
         let mut v = Vec::new();
-        match self.session.readline(&mut v).map(|_| ()) {
-            Err(Error::Io(ref e))
-                if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock =>
-            {
-                // we need to refresh the IDLE connection
-                self.terminate()?;
-                self.init()?;
-                self.wait_inner()
+        loop {
+            match self.session.readline(&mut v).map(|_| ()) {
+                Err(Error::Io(ref e))
+                    if e.kind() == io::ErrorKind::TimedOut
+                        || e.kind() == io::ErrorKind::WouldBlock =>
+                {
+                    // we need to refresh the IDLE connection
+                    self.terminate()?;
+                    self.init()?;
+                    return self.wait_inner();
+                }
+                r => r,
+            }?;
+
+            // Handle Dovecot's imap_idle_notify_interval message
+            if v.eq_ignore_ascii_case(b"* OK Still here\r\n") {
+                v.clear();
+            } else {
+                break Ok(());
             }
-            r => r,
         }
     }
 
