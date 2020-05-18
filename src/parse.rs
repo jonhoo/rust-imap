@@ -322,6 +322,9 @@ fn handle_unilateral<'a>(
         Response::MailboxData(MailboxDatum::Recent(n)) => {
             unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
         }
+        Response::MailboxData(MailboxDatum::Flags(_)) => {
+            // TODO: next breaking change:
+        }
         Response::MailboxData(MailboxDatum::Exists(n)) => {
             unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
         }
