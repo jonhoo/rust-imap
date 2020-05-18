@@ -211,6 +211,7 @@ pub use imap_proto::StatusAttribute;
 /// Note that `Recent`, `Exists` and `Expunge` responses refer to the currently `SELECT`ed folder,
 /// so the user must take care when interpreting these.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum UnsolicitedResponse {
     /// An unsolicited [`STATUS response`](https://tools.ietf.org/html/rfc3501#section-7.2.4).
     Status {
