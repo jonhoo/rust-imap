@@ -261,7 +261,7 @@ pub enum UnsolicitedResponse {
     /// "higher to lower server" will send successive untagged `EXPUNGE` responses for message
     /// sequence numbers 9, 8, 7, 6, and 5.
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
-    Expunge(u32),
+    Expunge(Seq),
 }
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,
