@@ -1,6 +1,6 @@
 [package]
 name = "imap"
-version = "2.1.0"
+version = "2.1.1"
 authors = ["Matt McCoy <mattnenterprise@yahoo.com>",
            "Jon Gjengset <jon@thesquareplanet.com>"]
 documentation = "https://docs.rs/imap/"
