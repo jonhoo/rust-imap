@@ -456,7 +456,7 @@ impl<T: Read + Write> Session<T> {
         .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
-    /// Fetch retreives data associated with a set of messages in the mailbox.
+    /// Fetch retrieves data associated with a set of messages in the mailbox.
     ///
     /// Note that the server *is* allowed to unilaterally include `FETCH` responses for other
     /// messages in the selected mailbox whose status has changed. See the note on [unilateral
