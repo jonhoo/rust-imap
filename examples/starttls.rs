@@ -1,7 +1,8 @@
 /**
  * Here's an example showing how to connect to the IMAP server with STARTTLS.
  * The only difference with the `basic.rs` example is when using `imap::connect_starttls()` method
- * instead of `imap::connect()` (l. 52)
+ * instead of `imap::connect()` (l. 52), and so you can connect on port 143 instead of 993
+ * as you have to when using TLS the entire way.
  *
  * The following env vars are expected to be set:
  * - IMAP_HOST
@@ -9,7 +10,6 @@
  * - IMAP_PASSWORD
  * - IMAP_PORT (supposed to be 143)
  */
-
 extern crate imap;
 extern crate native_tls;
 
@@ -18,12 +18,11 @@ use std::env;
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let imap_host = env::var("IMAP_HOST")
-        .expect("Missing or invalid env var: IMAP_HOST");
-    let imap_username = env::var("IMAP_USERNAME")
-        .expect("Missing or invalid env var: IMAP_USERNAME");
-    let imap_password = env::var("IMAP_PASSWORD")
-        .expect("Missing or invalid env var: IMAP_PASSWORD");
+    let imap_host = env::var("IMAP_HOST").expect("Missing or invalid env var: IMAP_HOST");
+    let imap_username =
+        env::var("IMAP_USERNAME").expect("Missing or invalid env var: IMAP_USERNAME");
+    let imap_password =
+        env::var("IMAP_PASSWORD").expect("Missing or invalid env var: IMAP_PASSWORD");
     let imap_port: u16 = env::var("IMAP_PORT")
         .expect("Missing or invalid env var: IMAP_PORT")
         .to_string()
@@ -49,11 +48,7 @@ fn fetch_inbox_top(
 
     // we pass in the domain twice to check that the server's TLS
     // certificate is valid for the domain we're connecting to.
-    let client = imap::connect_starttls(
-        (domain, port),
-        domain,
-        &tls,
-    ).unwrap();
+    let client = imap::connect_starttls((domain, port), domain, &tls).unwrap();
 
     // the client we have here is unauthenticated.
     // to do anything useful with the e-mails, we need to log in
