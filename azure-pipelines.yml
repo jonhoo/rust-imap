@@ -47,12 +47,12 @@ jobs:
  - job: msrv
    pool:
      vmImage: ubuntu-latest
-   displayName: "Minimum supported Rust version: 1.36.0"
+   displayName: "Minimum supported Rust version: 1.40.0"
    dependsOn: []
    steps:
      - template: install-rust.yml@templates
        parameters:
-         rust: 1.36.0
+         rust: 1.40.0 # static-assertions (1.37+) and base64 (1.40+)
      - script: cargo check
        displayName: cargo check
  - job: integration
