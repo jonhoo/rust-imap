@@ -240,6 +240,29 @@ impl<T: Read + Write> Client<T> {
     ///
     /// This method primarily exists for writing tests that mock the underlying transport, but can
     /// also be used to support IMAP over custom tunnels.
+    ///
+    /// **Note:** In case you do need to use `Client::new` over `imap::connect`, you will need to
+    /// listen for the IMAP protocol server greeting before authenticating:
+    ///
+    /// ```rust,no_run
+    /// # extern crate imap;
+    /// # extern crate native_tls;
+    /// # use imap::Client;
+    /// # use native_tls::TlsConnector;
+    /// # use std::io;
+    /// # use std::net::TcpStream;
+    /// # fn main() {
+    /// # let server = "imap.example.com";
+    /// # let username = "";
+    /// # let password = "";
+    /// # let tcp = TcpStream::connect((server, 993)).unwrap();
+    /// # let ssl_connector = TlsConnector::builder().build().unwrap();
+    /// # let tls = TlsConnector::connect(&ssl_connector, server.as_ref(), tcp).unwrap();
+    /// let mut client = Client::new(tls);
+    /// client.read_greeting().unwrap();
+    /// let session = client.login(username, password).unwrap();
+    /// # }
+    /// ```
     pub fn new(stream: T) -> Client<T> {
         Client {
             conn: Connection {
