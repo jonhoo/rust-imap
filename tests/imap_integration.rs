@@ -231,3 +231,102 @@ fn list() {
 
     // TODO: make a subdir
 }
+
+#[test]
+fn append() {
+    let to = "inbox-append1@localhost";
+
+    // make a message to append
+    let e: lettre::SendableEmail = lettre_email::Email::builder()
+        .from("sender@localhost")
+        .to(to)
+        .subject("My second e-mail")
+        .text("Hello world")
+        .build()
+        .unwrap()
+        .into();
+
+    // connect
+    let mut c = session(to);
+    let mbox = "INBOX";
+    c.select(mbox).unwrap();
+    //append
+    c.append(mbox, e.message_to_string().unwrap()).unwrap();
+
+    // now we should see the e-mail!
+    let inbox = c.uid_search("ALL").unwrap();
+    // and the one message should have the first message sequence number
+    assert_eq!(inbox.len(), 1);
+    let uid = inbox.into_iter().next().unwrap();
+
+    // fetch the e-mail
+    let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
+    assert_eq!(fetch.len(), 1);
+    let fetch = &fetch[0];
+    assert_eq!(fetch.uid, Some(uid));
+    let e = fetch.envelope().unwrap();
+    assert_eq!(e.subject, Some(&b"My second e-mail"[..]));
+
+    // and let's delete it to clean up
+    c.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
+        .unwrap();
+    c.expunge().unwrap();
+
+    // the e-mail should be gone now
+    let inbox = c.search("ALL").unwrap();
+    assert_eq!(inbox.len(), 0);
+}
+
+#[test]
+fn append_with_flags() {
+    use imap::types::Flag;
+
+    let to = "inbox-append2@localhost";
+
+    // make a message to append
+    let e: lettre::SendableEmail = lettre_email::Email::builder()
+        .from("sender@localhost")
+        .to(to)
+        .subject("My third e-mail")
+        .text("Hello world")
+        .build()
+        .unwrap()
+        .into();
+
+    // connect
+    let mut c = session(to);
+    let mbox = "INBOX";
+    c.select(mbox).unwrap();
+    //append
+    let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
+    c.append_with_flags(mbox, e.message_to_string().unwrap(), flags)
+        .unwrap();
+
+    // now we should see the e-mail!
+    let inbox = c.uid_search("ALL").unwrap();
+    // and the one message should have the first message sequence number
+    assert_eq!(inbox.len(), 1);
+    let uid = inbox.into_iter().next().unwrap();
+
+    // fetch the e-mail
+    let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
+    assert_eq!(fetch.len(), 1);
+    let fetch = &fetch[0];
+    assert_eq!(fetch.uid, Some(uid));
+    let e = fetch.envelope().unwrap();
+    assert_eq!(e.subject, Some(&b"My third e-mail"[..]));
+
+    // check the flags
+    let setflags = fetch.flags();
+    assert!(setflags.contains(&Flag::Seen));
+    assert!(setflags.contains(&Flag::Flagged));
+
+    // and let's delete it to clean up
+    c.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
+        .unwrap();
+    c.expunge().unwrap();
+
+    // the e-mail should be gone now
+    let inbox = c.search("ALL").unwrap();
+    assert_eq!(inbox.len(), 0);
+}

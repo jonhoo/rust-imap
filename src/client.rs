@@ -1078,10 +1078,37 @@ impl<T: Read + Write> Session<T> {
     /// `EXISTS` response.  If the server does not do so, the client MAY issue a `NOOP` command (or
     /// failing that, a `CHECK` command) after one or more `APPEND` commands.
     pub fn append<S: AsRef<str>, B: AsRef<[u8]>>(&mut self, mailbox: S, content: B) -> Result<()> {
+        self.append_with_flags(mailbox, content, &[])
+    }
+
+    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
+    /// an optional FLAGS parameter to set the flags on the new message.
+    ///
+    /// > If a flag parenthesized list is specified, the flags SHOULD be set
+    /// > in the resulting message; otherwise, the flag list of the
+    /// > resulting message is set to empty by default.  In either case, the
+    /// > Recent flag is also set.
+    ///
+    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
+    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
+    pub fn append_with_flags<S: AsRef<str>, B: AsRef<[u8]>>(
+        &mut self,
+        mailbox: S,
+        content: B,
+        flags: &[Flag<'_>],
+    ) -> Result<()> {
         let content = content.as_ref();
+        let flagstr = flags
+            .iter()
+            .filter(|f| **f != Flag::Recent)
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+
         self.run_command(&format!(
-            "APPEND \"{}\" {{{}}}",
+            "APPEND \"{}\" ({}) {{{}}}",
             mailbox.as_ref(),
+            flagstr,
             content.len()
         ))?;
         let mut v = Vec::new();
