@@ -172,13 +172,13 @@ impl Flag<'static> {
 impl<'a> fmt::Display for Flag<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Flag::Seen => write!(f, "{}", "\\Seen"),
-            Flag::Answered => write!(f, "{}", "\\Answered"),
-            Flag::Flagged => write!(f, "{}", "\\Flagged"),
-            Flag::Deleted => write!(f, "{}", "\\Deleted"),
-            Flag::Draft => write!(f, "{}", "\\Draft"),
-            Flag::Recent => write!(f, "{}", "\\Recent"),
-            Flag::MayCreate => write!(f, "{}", "\\*"),
+            Flag::Seen => write!(f, "\\Seen"),
+            Flag::Answered => write!(f, "\\Answered"),
+            Flag::Flagged => write!(f, "\\Flagged"),
+            Flag::Deleted => write!(f, "\\Deleted"),
+            Flag::Draft => write!(f, "\\Draft"),
+            Flag::Recent => write!(f, "\\Recent"),
+            Flag::MayCreate => write!(f, "\\*"),
             Flag::Custom(ref s) => write!(f, "{}", s),
         }
     }

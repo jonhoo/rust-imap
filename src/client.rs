@@ -1,8 +1,6 @@
-use base64;
 use bufstream::BufStream;
 #[cfg(feature = "tls")]
 use native_tls::{TlsConnector, TlsStream};
-use nom;
 use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
