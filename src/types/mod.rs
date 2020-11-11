@@ -277,6 +277,32 @@ pub enum UnsolicitedResponse {
     /// sequence numbers 9, 8, 7, 6, and 5.
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(Seq),
+
+    /// An unsolicited [`VANISHED` response](https://tools.ietf.org/html/rfc7162#section-3.2.10)
+    /// that reports a sequence-set of `UID`s that have been expunged from the mailbox.
+    ///
+    /// The `VANISHED` response is similar to the `EXPUNGE` response and can be sent wherever
+    /// an `EXPUNGE` response can be sent. It can only be sent by the server if the client
+    /// has enabled [`QRESYNC`](https://tools.ietf.org/html/rfc7162).
+    ///
+    /// The `VANISHED` response has two forms, one with the `EARLIER` tag which is used to
+    /// respond to a `UID FETCH` or `SELECT/EXAMINE` command, and one without an `EARLIER`
+    /// tag, which is used to announce removals within an already selected mailbox.
+    ///
+    /// If using `QRESYNC`, the client can fetch new, updated and deleted `UID`s in a
+    /// single round trip by including the `(CHANGEDSINCE <MODSEQ> VANISHED)`
+    /// modifier to the `UID SEARCH` command, as described in
+    /// [RFC7162](https://tools.ietf.org/html/rfc7162#section-3.1.4). For example
+    /// `UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE 1234 VANISHED)` would return `FETCH`
+    /// results for all `UID`s added or modified since `MODSEQ` `1234`. Deleted `UID`s
+    /// will be present as a `VANISHED` response in the `Session::unsolicited_responses`
+    /// channel.
+    Vanished {
+        /// Whether the `EARLIER` tag was set on the response
+        earlier: bool,
+        /// The list of `UID`s which have been removed
+        uids: Vec<std::ops::RangeInclusive<u32>>,
+    },
 }
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,

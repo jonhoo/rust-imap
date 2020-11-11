@@ -44,7 +44,7 @@ where
                 break Ok(things);
             }
 
-            match imap_proto::parse_response(lines) {
+            match imap_proto::parser::parse_response(lines) {
                 Ok((rest, resp)) => {
                     lines = rest;
 
@@ -143,7 +143,7 @@ pub fn parse_capabilities(
     let f = |mut lines| {
         let mut caps = HashSet::new();
         loop {
-            match imap_proto::parse_response(lines) {
+            match imap_proto::parser::parse_response(lines) {
                 Ok((rest, Response::Capabilities(c))) => {
                     lines = rest;
                     caps.extend(c);
@@ -179,7 +179,7 @@ pub fn parse_noop(
             break Ok(());
         }
 
-        match imap_proto::parse_response(lines) {
+        match imap_proto::parser::parse_response(lines) {
             Ok((rest, data)) => {
                 lines = rest;
                 if let Some(resp) = handle_unilateral(data, unsolicited) {
@@ -200,7 +200,7 @@ pub fn parse_mailbox(
     let mut mailbox = Mailbox::default();
 
     loop {
-        match imap_proto::parse_response(lines) {
+        match imap_proto::parser::parse_response(lines) {
             Ok((rest, Response::Data { status, code, .. })) => {
                 lines = rest;
 
@@ -212,6 +212,9 @@ pub fn parse_mailbox(
 
                 use imap_proto::ResponseCode;
                 match code {
+                    Some(ResponseCode::HighestModSeq(seq)) => {
+                        mailbox.highest_mod_seq = Some(seq);
+                    }
                     Some(ResponseCode::UidValidity(uid)) => {
                         mailbox.uid_validity = Some(uid);
                     }
@@ -254,7 +257,8 @@ pub fn parse_mailbox(
                     }
                     MailboxDatum::List { .. }
                     | MailboxDatum::MetadataSolicited { .. }
-                    | MailboxDatum::MetadataUnsolicited { .. } => {}
+                    | MailboxDatum::MetadataUnsolicited { .. }
+                    | MailboxDatum::Search { .. } => {}
                 }
             }
             Ok((rest, Response::Expunge(n))) => {
@@ -286,8 +290,8 @@ pub fn parse_ids(
             break Ok(ids);
         }
 
-        match imap_proto::parse_response(lines) {
-            Ok((rest, Response::IDs(c))) => {
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::MailboxData(MailboxDatum::Search(c)))) => {
                 lines = rest;
                 ids.extend(c);
             }
@@ -330,6 +334,11 @@ fn handle_unilateral<'a>(
         }
         Response::Expunge(n) => {
             unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+        }
+        Response::Vanished { earlier, uids } => {
+            unsolicited
+                .send(UnsolicitedResponse::Vanished { earlier, uids })
+                .unwrap();
         }
         res => {
             return Some(res);
@@ -546,5 +555,60 @@ mod tests {
         assert!(recv.try_recv().is_err());
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(ids, HashSet::<u32>::new());
+    }
+
+    #[test]
+    fn parse_vanished_test() {
+        // VANISHED can appear if the user has enabled QRESYNC (RFC 7162), in response to
+        // SELECT/EXAMINE (QRESYNC); UID FETCH (VANISHED); or EXPUNGE commands. In the first
+        // two cases the VANISHED respone will be a different type than the expected response
+        // and so goes into the unsolicited respones channel. In the last case, VANISHED is
+        // explicitly a response to an EXPUNGE command, but the semantics of EXPUNGE (one ID
+        // per response, multiple responses) vs VANISHED (a sequence-set of UIDs in a single
+        // response) are different enough that is isn't obvious what parse_expunge() should do.
+        // If we do nothing special, then the VANISHED response ends up in the unsolicited
+        // responses channel, which is at least consistent with the other cases where VANISHED
+        // can show up.
+        let lines = b"* VANISHED 3\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let resp = parse_expunge(lines.to_vec(), &mut send).unwrap();
+        assert!(resp.is_empty());
+
+        match recv.try_recv().unwrap() {
+            UnsolicitedResponse::Vanished { earlier, uids } => {
+                assert!(!earlier);
+                assert_eq!(uids.len(), 1);
+                assert_eq!(*uids[0].start(), 3);
+                assert_eq!(*uids[0].end(), 3);
+            }
+            what => panic!("Unexpected response in unsolicited responses: {:?}", what),
+        }
+        assert!(recv.try_recv().is_err());
+
+        // test VANISHED mixed with FETCH
+        let lines = b"* VANISHED (EARLIER) 3:8,12,50:60\r\n\
+                      * 49 FETCH (UID 117 FLAGS (\\Seen \\Answered) MODSEQ (90060115194045001))\r\n";
+
+        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        match recv.try_recv().unwrap() {
+            UnsolicitedResponse::Vanished { earlier, uids } => {
+                assert!(earlier);
+                assert_eq!(uids.len(), 3);
+                assert_eq!(*uids[0].start(), 3);
+                assert_eq!(*uids[0].end(), 8);
+                assert_eq!(*uids[1].start(), 12);
+                assert_eq!(*uids[1].end(), 12);
+                assert_eq!(*uids[2].start(), 50);
+                assert_eq!(*uids[2].end(), 60);
+            }
+            what => panic!("Unexpected response in unsolicited responses: {:?}", what),
+        }
+        assert!(recv.try_recv().is_err());
+        assert_eq!(fetches.len(), 1);
+        assert_eq!(fetches[0].message, 49);
+        assert_eq!(fetches[0].flags(), &[Flag::Seen, Flag::Answered]);
+        assert_eq!(fetches[0].uid, Some(117));
+        assert_eq!(fetches[0].body(), None);
+        assert_eq!(fetches[0].header(), None);
     }
 }

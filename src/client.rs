@@ -1252,10 +1252,10 @@ impl<T: Read + Write> Connection<T> {
             };
 
             let break_with = {
-                use imap_proto::{parse_response, Response, Status};
+                use imap_proto::{Response, Status};
                 let line = &data[line_start..];
 
-                match parse_response(line) {
+                match imap_proto::parser::parse_response(line) {
                     Ok((
                         _,
                         Response::Done {
@@ -1606,6 +1606,7 @@ mod tests {
             permanent_flags: vec![],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
+            highest_mod_seq: None,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 EXAMINE {}\r\n", quote!(mailbox_name));
@@ -1652,6 +1653,7 @@ mod tests {
             ],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
+            highest_mod_seq: None,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 SELECT {}\r\n", quote!(mailbox_name));
