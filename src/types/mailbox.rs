@@ -4,6 +4,7 @@ use std::fmt;
 /// Meta-information about an IMAP mailbox, as returned by
 /// [`SELECT`](https://tools.ietf.org/html/rfc3501#section-6.3.1) and friends.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub struct Mailbox {
     /// Defined flags in the mailbox.  See the description of the [FLAGS
     /// response](https://tools.ietf.org/html/rfc3501#section-7.2.6) for more detail.
