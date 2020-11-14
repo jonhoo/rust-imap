@@ -36,7 +36,7 @@ pub struct Mailbox {
     /// the server does not support unique identifiers.
     pub uid_validity: Option<u32>,
 
-    /// The highest mod sequence for this mailboxr. Used with
+    /// The highest mod sequence for this mailbox. Used with
     /// [Conditional STORE](https://tools.ietf.org/html/rfc4551#section-3.1.1).
     pub highest_mod_seq: Option<u64>,
 }
