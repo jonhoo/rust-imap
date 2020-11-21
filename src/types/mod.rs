@@ -216,6 +216,9 @@ pub use self::name::{Name, NameAttribute};
 mod capabilities;
 pub use self::capabilities::Capabilities;
 
+mod deleted;
+pub use self::deleted::Deleted;
+
 /// re-exported from imap_proto;
 pub use imap_proto::StatusAttribute;
 
@@ -350,6 +353,7 @@ impl<D> ZeroCopy<D> {
     ///
     /// Only safe if `D` contains no references into the underlying input stream (i.e., the `owned`
     /// passed to `ZeroCopy::new`).
+    #[allow(dead_code)]
     pub(crate) unsafe fn take(self) -> D {
         self.derived
     }
