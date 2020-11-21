@@ -127,13 +127,42 @@ pub fn parse_fetches(
 pub fn parse_expunge(
     lines: Vec<u8>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> Result<Vec<u32>> {
-    let f = |resp| match resp {
-        Response::Expunge(id) => Ok(MapOrNot::Map(id)),
-        resp => Ok(MapOrNot::Not(resp)),
-    };
+) -> Result<Deleted> {
+    let mut lines: &[u8] = &lines;
+    let mut expunged = Vec::new();
+    let mut vanished = Vec::new();
 
-    unsafe { parse_many(lines, f, unsolicited).map(|ids| ids.take()) }
+    loop {
+        if lines.is_empty() {
+            break;
+        }
+
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Expunge(seq))) => {
+                lines = rest;
+                expunged.push(seq);
+            }
+            Ok((rest, Response::Vanished { earlier: _, uids })) => {
+                lines = rest;
+                vanished.extend(uids);
+            }
+            Ok((rest, data)) => {
+                lines = rest;
+                if let Some(resp) = handle_unilateral(data, unsolicited) {
+                    return Err(resp.into());
+                }
+            }
+            _ => {
+                return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+    }
+
+    if !vanished.is_empty() {
+        Ok(Deleted::from_vanished(vanished))
+    } else {
+        Ok(Deleted::from_expunged(expunged))
+    }
 }
 
 pub fn parse_capabilities(
@@ -561,31 +590,25 @@ mod tests {
     fn parse_vanished_test() {
         // VANISHED can appear if the user has enabled QRESYNC (RFC 7162), in response to
         // SELECT/EXAMINE (QRESYNC); UID FETCH (VANISHED); or EXPUNGE commands. In the first
-        // two cases the VANISHED respone will be a different type than the expected response
-        // and so goes into the unsolicited respones channel. In the last case, VANISHED is
-        // explicitly a response to an EXPUNGE command, but the semantics of EXPUNGE (one ID
-        // per response, multiple responses) vs VANISHED (a sequence-set of UIDs in a single
-        // response) are different enough that is isn't obvious what parse_expunge() should do.
-        // If we do nothing special, then the VANISHED response ends up in the unsolicited
-        // responses channel, which is at least consistent with the other cases where VANISHED
-        // can show up.
+        // two cases the VANISHED response will be a different type than expected
+        // and so goes into the unsolicited responses channel.
         let lines = b"* VANISHED 3\r\n";
         let (mut send, recv) = mpsc::channel();
         let resp = parse_expunge(lines.to_vec(), &mut send).unwrap();
-        assert!(resp.is_empty());
 
-        match recv.try_recv().unwrap() {
-            UnsolicitedResponse::Vanished { earlier, uids } => {
-                assert!(!earlier);
-                assert_eq!(uids.len(), 1);
-                assert_eq!(*uids[0].start(), 3);
-                assert_eq!(*uids[0].end(), 3);
-            }
-            what => panic!("Unexpected response in unsolicited responses: {:?}", what),
-        }
+        // Should be not empty, and have no seqs
+        assert!(!resp.is_empty());
+        assert_eq!(None, resp.seqs().next());
+
+        // Should have one UID response
+        let mut uids = resp.uids();
+        assert_eq!(Some(3), uids.next());
+        assert_eq!(None, uids.next());
+
+        // Should be nothing in the unsolicited responses channel
         assert!(recv.try_recv().is_err());
 
-        // test VANISHED mixed with FETCH
+        // Test VANISHED mixed with FETCH
         let lines = b"* VANISHED (EARLIER) 3:8,12,50:60\r\n\
                       * 49 FETCH (UID 117 FLAGS (\\Seen \\Answered) MODSEQ (90060115194045001))\r\n";
 
