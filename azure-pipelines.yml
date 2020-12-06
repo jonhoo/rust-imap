@@ -6,18 +6,23 @@ jobs:
        Linux-stable:
          vmImage: ubuntu-latest
          rust: stable
+         components: []
        Linux-beta:
          vmImage: ubuntu-latest
          rust: beta
+         components: [rustfmt, clippy]
        Linux-nightly:
          vmImage: ubuntu-latest
          rust: nightly
+         components: []
        MacOS:
          vmImage: macOS-10.14
          rust: stable
+         components: []
        Windows:
          vmImage: windows-2019
          rust: stable
+         components: []
    continueOnError: $[eq(variables.rust, 'nightly')]
    pool:
      vmImage: $(vmImage)
@@ -25,9 +30,7 @@ jobs:
      - template: install-rust.yml@templates
        parameters:
          rust: $(rust)
-         components:
-           - rustfmt
-           - clippy
+         components: $(components)
      - script: cargo check --all-targets
        displayName: cargo check
      - script: cargo test --examples
