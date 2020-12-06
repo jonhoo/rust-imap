@@ -6,8 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+ - VANISHED support in EXPUNGE responses and unsolicited responses (#172).
 
 ### Changed
+ - MSRV increased to 1.43 for nom6 and bitvec
+ - `expunge` and `uid_expunge` return `Result<Deleted>` instead of `Result<Vec<u32>>`.
 
 ### Removed
 
