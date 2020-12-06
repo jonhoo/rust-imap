@@ -158,6 +158,10 @@ pub fn parse_expunge(
         }
     }
 
+    // If the server sends a VANISHED response then they must only send VANISHED
+    // in lieu of EXPUNGE responses for the rest of this connection, so it is
+    // always one or the other.
+    // https://tools.ietf.org/html/rfc7162#section-3.2.10
     if !vanished.is_empty() {
         Ok(Deleted::from_vanished(vanished))
     } else {
