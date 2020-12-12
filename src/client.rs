@@ -1097,6 +1097,26 @@ impl<T: Read + Write> Session<T> {
         content: B,
         flags: &[Flag<'_>],
     ) -> Result<()> {
+        self.append_with_flags_and_date(mailbox, content, flags, None)
+    }
+
+    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
+    /// an optional FLAGS parameter to set the flags on the new message.
+    ///
+    /// > If a flag parenthesized list is specified, the flags SHOULD be set
+    /// > in the resulting message; otherwise, the flag list of the
+    /// > resulting message is set to empty by default.  In either case, the
+    /// > Recent flag is also set.
+    ///
+    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
+    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
+    pub fn append_with_flags_and_date<S: AsRef<str>, B: AsRef<[u8]>>(
+        &mut self,
+        mailbox: S,
+        content: B,
+        flags: &[Flag<'_>],
+        date: Option<chrono::NaiveDateTime>,
+    ) -> Result<()> {
         let content = content.as_ref();
         let flagstr = flags
             .iter()
@@ -1105,10 +1125,22 @@ impl<T: Read + Write> Session<T> {
             .collect::<Vec<String>>()
             .join(" ");
 
+        // date-time       = DQUOTE date-day-fixed "-" date-month "-" date-year SP time SP zone DQUOTE
+        // date-day-fixed  = (SP DIGIT) / 2DIGIT
+        // date-month      = "Jan" / "Feb" / "Mar" / "Apr" / "May" / "Jun" / "Jul" / "Aug" / "Sep" / "Oct" / "Nov" / "Dec"
+        // date-year       = 4DIGIT
+        // time            = 2DIGIT ":" 2DIGIT ":" 2DIGIT
+        // zone            = ("+" / "-") 4DIGIT
+        let datestr = match date {
+            Some(date) => format!(" \"{} +0000\"", date.format("%d-%h-%Y %T")),
+            None => "".to_string(),
+        };
+
         self.run_command(&format!(
-            "APPEND \"{}\" ({}) {{{}}}",
+            "APPEND \"{}\" ({}){} {{{}}}",
             mailbox.as_ref(),
             flagstr,
+            datestr,
             content.len()
         ))?;
         let mut v = Vec::new();
