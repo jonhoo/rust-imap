@@ -1110,6 +1110,12 @@ impl<T: Read + Write> Session<T> {
     ///
     /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
     /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
+    ///
+    /// Pass a date in order to set the date that the message was originally sent.
+    ///
+    /// > If a date-time is specified, the internal date SHOULD be set in
+    /// > the resulting message; otherwise, the internal date of the
+    /// > resulting message is set to the current date and time by default.
     pub fn append_with_flags_and_date<S: AsRef<str>, B: AsRef<[u8]>>(
         &mut self,
         mailbox: S,
@@ -1124,13 +1130,6 @@ impl<T: Read + Write> Session<T> {
             .map(|f| f.to_string())
             .collect::<Vec<String>>()
             .join(" ");
-
-        // date-time       = DQUOTE date-day-fixed "-" date-month "-" date-year SP time SP zone DQUOTE
-        // date-day-fixed  = (SP DIGIT) / 2DIGIT
-        // date-month      = "Jan" / "Feb" / "Mar" / "Apr" / "May" / "Jun" / "Jul" / "Aug" / "Sep" / "Oct" / "Nov" / "Dec"
-        // date-year       = 4DIGIT
-        // time            = 2DIGIT ":" 2DIGIT ":" 2DIGIT
-        // zone            = ("+" / "-") 4DIGIT
         let datestr = match date {
             Some(date) => format!(" \"{} +0000\"", date.format("%d-%h-%Y %T")),
             None => "".to_string(),
