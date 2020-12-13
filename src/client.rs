@@ -1,5 +1,6 @@
 use base64;
 use bufstream::BufStream;
+use chrono::{DateTime, FixedOffset};
 #[cfg(feature = "tls")]
 use native_tls::{TlsConnector, TlsStream};
 use nom;
@@ -1121,7 +1122,7 @@ impl<T: Read + Write> Session<T> {
         mailbox: S,
         content: B,
         flags: &[Flag<'_>],
-        date: Option<chrono::NaiveDateTime>,
+        date: Option<DateTime<FixedOffset>>,
     ) -> Result<()> {
         let content = content.as_ref();
         let flagstr = flags
@@ -1131,7 +1132,7 @@ impl<T: Read + Write> Session<T> {
             .collect::<Vec<String>>()
             .join(" ");
         let datestr = match date {
-            Some(date) => format!(" \"{} +0000\"", date.format("%d-%h-%Y %T")),
+            Some(date) => format!(" \"{}\"", date.format("%d-%h-%Y %T %z")),
             None => "".to_string(),
         };
 
