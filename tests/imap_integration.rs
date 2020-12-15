@@ -334,11 +334,10 @@ fn append_with_flags() {
 }
 
 #[test]
-#[ignore]
 fn append_with_flags_and_date() {
     use imap::types::Flag;
 
-    let to = "inbox-append2@localhost";
+    let to = "inbox-append3@localhost";
 
     // make a message to append
     let e: lettre::SendableEmail = lettre_email::Email::builder()
@@ -354,7 +353,7 @@ fn append_with_flags_and_date() {
     let mut c = session(to);
     let mbox = "INBOX";
     c.select(mbox).unwrap();
-    //append
+    // append
     let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
     let date = FixedOffset::east(8 * 3600)
         .ymd(2020, 12, 13)
@@ -373,17 +372,7 @@ fn append_with_flags_and_date() {
     assert_eq!(fetch.len(), 1);
     let fetch = &fetch[0];
     assert_eq!(fetch.uid, Some(uid));
-    let e = fetch.envelope().unwrap();
-    assert_eq!(e.subject, Some(&b"My third e-mail"[..]));
-    assert_eq!(
-        std::str::from_utf8(e.date.unwrap()).expect("Mail has date"),
-        "Sun, 13 Dec 2020 05:36:36 +0000 (GMT)"
-    );
-
-    // check the flags
-    let setflags = fetch.flags();
-    assert!(setflags.contains(&Flag::Seen));
-    assert!(setflags.contains(&Flag::Flagged));
+    assert_eq!(fetch.internal_date(), Some(date));
 
     // and let's delete it to clean up
     c.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
