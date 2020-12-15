@@ -1,8 +1,10 @@
+extern crate chrono;
 extern crate imap;
 extern crate lettre;
 extern crate lettre_email;
 extern crate native_tls;
 
+use chrono::{FixedOffset, TimeZone};
 use lettre::Transport;
 use std::net::TcpStream;
 
@@ -320,6 +322,57 @@ fn append_with_flags() {
     let setflags = fetch.flags();
     assert!(setflags.contains(&Flag::Seen));
     assert!(setflags.contains(&Flag::Flagged));
+
+    // and let's delete it to clean up
+    c.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
+        .unwrap();
+    c.expunge().unwrap();
+
+    // the e-mail should be gone now
+    let inbox = c.search("ALL").unwrap();
+    assert_eq!(inbox.len(), 0);
+}
+
+#[test]
+fn append_with_flags_and_date() {
+    use imap::types::Flag;
+
+    let to = "inbox-append3@localhost";
+
+    // make a message to append
+    let e: lettre::SendableEmail = lettre_email::Email::builder()
+        .from("sender@localhost")
+        .to(to)
+        .subject("My third e-mail")
+        .text("Hello world")
+        .build()
+        .unwrap()
+        .into();
+
+    // connect
+    let mut c = session(to);
+    let mbox = "INBOX";
+    c.select(mbox).unwrap();
+    // append
+    let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
+    let date = FixedOffset::east(8 * 3600)
+        .ymd(2020, 12, 13)
+        .and_hms(13, 36, 36);
+    c.append_with_flags_and_date(mbox, e.message_to_string().unwrap(), flags, Some(date))
+        .unwrap();
+
+    // now we should see the e-mail!
+    let inbox = c.uid_search("ALL").unwrap();
+    // and the one message should have the first message sequence number
+    assert_eq!(inbox.len(), 1);
+    let uid = inbox.into_iter().next().unwrap();
+
+    // fetch the e-mail
+    let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
+    assert_eq!(fetch.len(), 1);
+    let fetch = &fetch[0];
+    assert_eq!(fetch.uid, Some(uid));
+    assert_eq!(fetch.internal_date(), Some(date));
 
     // and let's delete it to clean up
     c.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
