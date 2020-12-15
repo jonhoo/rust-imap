@@ -1122,7 +1122,7 @@ impl<T: Read + Write> Session<T> {
         mailbox: S,
         content: B,
         flags: &[Flag<'_>],
-        date: Option<DateTime<FixedOffset>>,
+        date: impl Into<Option<DateTime<FixedOffset>>>,
     ) -> Result<()> {
         let content = content.as_ref();
         let flagstr = flags
@@ -1131,7 +1131,7 @@ impl<T: Read + Write> Session<T> {
             .map(|f| f.to_string())
             .collect::<Vec<String>>()
             .join(" ");
-        let datestr = match date {
+        let datestr = match date.into() {
             Some(date) => format!(" \"{}\"", date.format("%d-%h-%Y %T %z")),
             None => "".to_string(),
         };
