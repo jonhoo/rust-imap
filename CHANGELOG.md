@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.4.0] - 2020-12-15
+### Added
+
+ - `append_with_flags_and_date` (#174)
+
+## [2.3.0] - 2020-08-23
+### Added
+
+ - `append_with_flags` (#171)
+
 ## [2.2.0] - 2020-07-27
 ### Added
 
@@ -24,5 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - MSRV increased
  - Better documentation of server greeting handling (#168)
 
-[Unreleased]: https://github.com/jonhoo/rust-imap/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/jonhoo/rust-imap/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/jonhoo/rust-imap/compare/v2.2.0...v2.4.0
+[2.3.0]: https://github.com/jonhoo/rust-imap/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/jonhoo/rust-imap/compare/v2.1.2...v2.2.0

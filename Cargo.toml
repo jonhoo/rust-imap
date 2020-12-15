@@ -1,6 +1,6 @@
 [package]
 name = "imap"
-version = "2.3.0"
+version = "2.4.0"
 authors = ["Matt McCoy <mattnenterprise@yahoo.com>",
            "Jon Gjengset <jon@thesquareplanet.com>"]
 documentation = "https://docs.rs/imap/"
@@ -31,14 +31,14 @@ regex = "1.0"
 bufstream = "0.1"
 imap-proto = "0.10.0"
 nom = "5.0"
-base64 = "0.12"
+base64 = "0.13"
 chrono = "0.4"
 lazy_static = "1.4"
 
 [dev-dependencies]
 lettre = "0.9"
 lettre_email = "0.9"
-rustls-connector = "0.12.0"
+rustls-connector = "0.13.0"
 
 [[example]]
 name = "basic"
