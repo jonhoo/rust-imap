@@ -253,7 +253,8 @@ fn append() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     //append
-    c.append(mbox, e.message_to_string().unwrap()).unwrap();
+    c.append(mbox, e.message_to_string().unwrap(), None)
+        .unwrap();
 
     // now we should see the e-mail!
     let inbox = c.uid_search("ALL").unwrap();
@@ -301,8 +302,15 @@ fn append_with_flags() {
     c.select(mbox).unwrap();
     //append
     let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
-    c.append_with_flags(mbox, e.message_to_string().unwrap(), flags)
-        .unwrap();
+    c.append(
+        mbox,
+        e.message_to_string().unwrap(),
+        imap::AppendOptions {
+            flags: Some(flags),
+            date: None,
+        },
+    )
+    .unwrap();
 
     // now we should see the e-mail!
     let inbox = c.uid_search("ALL").unwrap();
@@ -358,8 +366,15 @@ fn append_with_flags_and_date() {
     let date = FixedOffset::east(8 * 3600)
         .ymd(2020, 12, 13)
         .and_hms(13, 36, 36);
-    c.append_with_flags_and_date(mbox, e.message_to_string().unwrap(), flags, Some(date))
-        .unwrap();
+    c.append(
+        mbox,
+        e.message_to_string().unwrap(),
+        imap::AppendOptions {
+            flags: Some(flags),
+            date: Some(date),
+        },
+    )
+    .unwrap();
 
     // now we should see the e-mail!
     let inbox = c.uid_search("ALL").unwrap();

@@ -84,6 +84,15 @@ pub struct Connection<T: Read + Write> {
     pub greeting_read: bool,
 }
 
+/// A set of options for the append command
+#[derive(Default)]
+pub struct AppendOptions<'a> {
+    /// Optional list of flags
+    pub flags: Option<&'a [Flag<'a>]>,
+    /// Optional internal date
+    pub date: Option<DateTime<FixedOffset>>,
+}
+
 // `Deref` instances are so we can make use of the same underlying primitives in `Client` and
 // `Session`
 impl<T: Read + Write> Deref for Client<T> {
@@ -1078,10 +1087,9 @@ impl<T: Read + Write> Session<T> {
     /// Specifically, the server will generally notify the client immediately via an untagged
     /// `EXISTS` response.  If the server does not do so, the client MAY issue a `NOOP` command (or
     /// failing that, a `CHECK` command) after one or more `APPEND` commands.
-    pub fn append<S: AsRef<str>, B: AsRef<[u8]>>(&mut self, mailbox: S, content: B) -> Result<()> {
-        self.append_with_flags(mailbox, content, &[])
-    }
-
+    ///
+    /// -- TODO merge docs possibly move to AppendOptions
+    ///
     /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
     /// an optional FLAGS parameter to set the flags on the new message.
     ///
@@ -1092,48 +1100,36 @@ impl<T: Read + Write> Session<T> {
     ///
     /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
     /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
-    pub fn append_with_flags<S: AsRef<str>, B: AsRef<[u8]>>(
-        &mut self,
-        mailbox: S,
-        content: B,
-        flags: &[Flag<'_>],
-    ) -> Result<()> {
-        self.append_with_flags_and_date(mailbox, content, flags, None)
-    }
-
-    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
-    /// an optional FLAGS parameter to set the flags on the new message.
     ///
-    /// > If a flag parenthesized list is specified, the flags SHOULD be set
-    /// > in the resulting message; otherwise, the flag list of the
-    /// > resulting message is set to empty by default.  In either case, the
-    /// > Recent flag is also set.
-    ///
-    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
-    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
+    /// -- TODO merge docs possibly move to AppendOptions
     ///
     /// Pass a date in order to set the date that the message was originally sent.
     ///
     /// > If a date-time is specified, the internal date SHOULD be set in
     /// > the resulting message; otherwise, the internal date of the
     /// > resulting message is set to the current date and time by default.
-    pub fn append_with_flags_and_date<S: AsRef<str>, B: AsRef<[u8]>>(
+    pub fn append<'a, S: AsRef<str>, B: AsRef<[u8]>>(
         &mut self,
         mailbox: S,
         content: B,
-        flags: &[Flag<'_>],
-        date: impl Into<Option<DateTime<FixedOffset>>>,
+        options: impl Into<Option<AppendOptions<'a>>>,
     ) -> Result<()> {
         let content = content.as_ref();
-        let flagstr = flags
+        let options_ = options.into().unwrap_or(AppendOptions::default());
+
+        let flagstr = options_
+            .flags
+            .unwrap_or(&[])
             .iter()
             .filter(|f| **f != Flag::Recent)
             .map(|f| f.to_string())
             .collect::<Vec<String>>()
             .join(" ");
-        let datestr = match date.into() {
-            Some(date) => format!(" \"{}\"", date.format("%d-%h-%Y %T %z")),
-            None => "".to_string(),
+
+        let datestr = if let Some(date) = options_.date {
+            format!(" \"{}\"", date.format("%d-%h-%Y %T %z"))
+        } else {
+            "".to_string()
         };
 
         self.run_command(&format!(
