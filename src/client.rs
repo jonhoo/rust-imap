@@ -93,6 +93,41 @@ pub struct AppendOptions<'a> {
     pub date: Option<DateTime<FixedOffset>>,
 }
 
+/// A builder for the append command
+#[derive(Default)]
+pub struct AppendCmd<'a> {
+    flags: Vec<&'a Flag<'a>>,
+    date: Option<DateTime<FixedOffset>>,
+}
+
+impl<'a> AppendCmd<'a> {
+    /// Create a new AppendCmd builder
+    pub fn create() -> Self {
+        Self::default()
+    }
+
+    /// Append a flag
+    pub fn flag(&mut self, flag: &'a Flag<'a>) -> &mut Self {
+        self.flags.push(flag);
+        self
+    }
+
+    /// Set the internal date
+    pub fn internal_date(&mut self, date: DateTime<FixedOffset>) -> &mut Self {
+        self.date = Some(date);
+        self
+    }
+}
+
+impl<'a> Into<AppendOptions<'a>> for AppendCmd<'a> {
+    fn into(self) -> AppendOptions<'a> {
+        AppendOptions {
+            flags: Some(&self.flags[..]),
+            date: self.date,
+        }
+    }
+}
+
 // `Deref` instances are so we can make use of the same underlying primitives in `Client` and
 // `Session`
 impl<T: Read + Write> Deref for Client<T> {
