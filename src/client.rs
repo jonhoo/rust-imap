@@ -86,7 +86,7 @@ pub struct Connection<T: Read + Write> {
 
 /// A builder for the append command
 pub struct AppendCmd<'a, T: Read + Write> {
-    session: &'a Session<T>,
+    session: &'a mut Session<T>,
     content: &'a [u8],
     mailbox: &'a str,
     flags: Vec<&'a Flag<'a>>,
@@ -1163,7 +1163,7 @@ impl<T: Read + Write> Session<T> {
         content: B,
     ) -> AppendCmd<'a, T> {
         AppendCmd {
-            session: &self,
+            session: self,
             content: content.as_ref(),
             mailbox: mailbox.as_ref(),
             flags: Vec::new(),
