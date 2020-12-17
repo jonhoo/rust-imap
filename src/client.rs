@@ -84,28 +84,16 @@ pub struct Connection<T: Read + Write> {
     pub greeting_read: bool,
 }
 
-/// A set of options for the append command
-#[derive(Default)]
-pub struct AppendOptions<'a> {
-    /// Optional list of flags
-    pub flags: Option<&'a [Flag<'a>]>,
-    /// Optional internal date
-    pub date: Option<DateTime<FixedOffset>>,
-}
-
 /// A builder for the append command
-#[derive(Default)]
-pub struct AppendCmd<'a> {
+pub struct AppendCmd<'a, T: Read + Write> {
+    session: &'a Session<T>,
+    content: &'a [u8],
+    mailbox: &'a str,
     flags: Vec<&'a Flag<'a>>,
     date: Option<DateTime<FixedOffset>>,
 }
 
-impl<'a> AppendCmd<'a> {
-    /// Create a new AppendCmd builder
-    pub fn create() -> Self {
-        Self::default()
-    }
-
+impl<'a, T: Read + Write> AppendCmd<'a, T> {
     /// Append a flag
     pub fn flag(&mut self, flag: &'a Flag<'a>) -> &mut Self {
         self.flags.push(flag);
@@ -117,14 +105,40 @@ impl<'a> AppendCmd<'a> {
         self.date = Some(date);
         self
     }
-}
 
-impl<'a> Into<AppendOptions<'a>> for AppendCmd<'a> {
-    fn into(self) -> AppendOptions<'a> {
-        AppendOptions {
-            flags: Some(&self.flags[..]),
-            date: self.date,
+    /// Run command when set up
+    #[must_use]
+    pub fn run(&self) -> Result<()> {
+        let flagstr = self
+            .flags
+            .into_iter()
+            .filter(|f| **f != Flag::Recent)
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        let datestr = if let Some(date) = self.date {
+            format!(" \"{}\"", date.format("%d-%h-%Y %T %z"))
+        } else {
+            "".to_string()
+        };
+
+        self.session.run_command(&format!(
+            "APPEND \"{}\" ({}){} {{{}}}",
+            self.mailbox,
+            flagstr,
+            datestr,
+            self.content.len()
+        ))?;
+        let mut v = Vec::new();
+        self.session.readline(&mut v)?;
+        if !v.starts_with(b"+") {
+            return Err(Error::Append);
         }
+        self.session.stream.write_all(self.content)?;
+        self.session.stream.write_all(b"\r\n")?;
+        self.session.stream.flush()?;
+        self.session.read_response().map(|_| ())
     }
 }
 
@@ -1147,42 +1161,14 @@ impl<T: Read + Write> Session<T> {
         &mut self,
         mailbox: S,
         content: B,
-        options: impl Into<Option<AppendOptions<'a>>>,
-    ) -> Result<()> {
-        let content = content.as_ref();
-        let options_ = options.into().unwrap_or(AppendOptions::default());
-
-        let flagstr = options_
-            .flags
-            .unwrap_or(&[])
-            .iter()
-            .filter(|f| **f != Flag::Recent)
-            .map(|f| f.to_string())
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        let datestr = if let Some(date) = options_.date {
-            format!(" \"{}\"", date.format("%d-%h-%Y %T %z"))
-        } else {
-            "".to_string()
-        };
-
-        self.run_command(&format!(
-            "APPEND \"{}\" ({}){} {{{}}}",
-            mailbox.as_ref(),
-            flagstr,
-            datestr,
-            content.len()
-        ))?;
-        let mut v = Vec::new();
-        self.readline(&mut v)?;
-        if !v.starts_with(b"+") {
-            return Err(Error::Append);
+    ) -> AppendCmd<'a, T> {
+        AppendCmd {
+            session: &self,
+            content: content.as_ref(),
+            mailbox: mailbox.as_ref(),
+            flags: Vec::new(),
+            date: None,
         }
-        self.stream.write_all(content)?;
-        self.stream.write_all(b"\r\n")?;
-        self.stream.flush()?;
-        self.read_response().map(|_| ())
     }
 
     /// The [`SEARCH` command](https://tools.ietf.org/html/rfc3501#section-6.4.4) searches the
