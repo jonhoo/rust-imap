@@ -100,6 +100,12 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
         self
     }
 
+    /// Append an array of flags
+    pub fn flags(&mut self, flags: &'a [Flag<'a>]) -> &mut Self {
+        self.flags.append(&mut flags.to_vec());
+        self
+    }
+
     /// Set the internal date
     pub fn internal_date(&mut self, date: DateTime<FixedOffset>) -> &mut Self {
         self.date = Some(date);

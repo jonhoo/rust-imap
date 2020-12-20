@@ -304,8 +304,7 @@ fn append_with_flags() {
     //append
     let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
     c.append(mbox, e.message_to_string().unwrap().as_bytes())
-        .flag(Flag::Seen)
-        .flag(Flag::Flagged)
+        .flags(flags)
         .run()
         .unwrap();
 
