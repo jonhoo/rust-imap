@@ -94,7 +94,16 @@ pub struct AppendCmd<'a, T: Read + Write> {
 }
 
 impl<'a, T: Read + Write> AppendCmd<'a, T> {
-    /// Append a flag
+    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
+    /// an optional FLAGS parameter to set the flags on the new message.
+    ///
+    /// > If a flag parenthesized list is specified, the flags SHOULD be set
+    /// > in the resulting message; otherwise, the flag list of the
+    /// > resulting message is set to empty by default.  In either case, the
+    /// > Recent flag is also set.
+    ///
+    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
+    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
     pub fn flag(&mut self, flag: Flag<'a>) -> &mut Self {
         self.flags.push(flag);
         self
@@ -106,14 +115,18 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
         self
     }
 
-    /// Set the internal date
+    /// Pass a date in order to set the date that the message was originally sent.
+    ///
+    /// > If a date-time is specified, the internal date SHOULD be set in
+    /// > the resulting message; otherwise, the internal date of the
+    /// > resulting message is set to the current date and time by default.
     pub fn internal_date(&mut self, date: DateTime<FixedOffset>) -> &mut Self {
         self.date = Some(date);
         self
     }
 
-    /// Run command when set up
-    #[must_use]
+    /// Run command
+    #[must_use = "always run a command once options are configured"]
     pub fn run(&mut self) -> Result<()> {
         let flagstr = self
             .flags
@@ -1144,26 +1157,6 @@ impl<T: Read + Write> Session<T> {
     /// `EXISTS` response.  If the server does not do so, the client MAY issue a `NOOP` command (or
     /// failing that, a `CHECK` command) after one or more `APPEND` commands.
     ///
-    /// -- TODO merge docs possibly move to AppendOptions
-    ///
-    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
-    /// an optional FLAGS parameter to set the flags on the new message.
-    ///
-    /// > If a flag parenthesized list is specified, the flags SHOULD be set
-    /// > in the resulting message; otherwise, the flag list of the
-    /// > resulting message is set to empty by default.  In either case, the
-    /// > Recent flag is also set.
-    ///
-    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
-    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
-    ///
-    /// -- TODO merge docs possibly move to AppendOptions
-    ///
-    /// Pass a date in order to set the date that the message was originally sent.
-    ///
-    /// > If a date-time is specified, the internal date SHOULD be set in
-    /// > the resulting message; otherwise, the internal date of the
-    /// > resulting message is set to the current date and time by default.
     pub fn append<'a>(&'a mut self, mailbox: &'a str, content: &'a [u8]) -> AppendCmd<'a, T> {
         AppendCmd {
             session: self,
