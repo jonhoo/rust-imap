@@ -89,13 +89,13 @@ pub struct AppendCmd<'a, T: Read + Write> {
     session: &'a mut Session<T>,
     content: &'a [u8],
     mailbox: &'a str,
-    flags: Vec<&'a Flag<'a>>,
+    flags: Vec<Flag<'a>>,
     date: Option<DateTime<FixedOffset>>,
 }
 
 impl<'a, T: Read + Write> AppendCmd<'a, T> {
     /// Append a flag
-    pub fn flag(&mut self, flag: &'a Flag<'a>) -> &mut Self {
+    pub fn flag(&mut self, flag: Flag<'a>) -> &mut Self {
         self.flags.push(flag);
         self
     }
@@ -108,11 +108,12 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
 
     /// Run command when set up
     #[must_use]
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         let flagstr = self
             .flags
+            .clone()
             .into_iter()
-            .filter(|f| **f != Flag::Recent)
+            .filter(|f| *f != Flag::Recent)
             .map(|f| f.to_string())
             .collect::<Vec<String>>()
             .join(" ");
@@ -1157,15 +1158,11 @@ impl<T: Read + Write> Session<T> {
     /// > If a date-time is specified, the internal date SHOULD be set in
     /// > the resulting message; otherwise, the internal date of the
     /// > resulting message is set to the current date and time by default.
-    pub fn append<'a, S: AsRef<str>, B: AsRef<[u8]>>(
-        &mut self,
-        mailbox: S,
-        content: B,
-    ) -> AppendCmd<'a, T> {
+    pub fn append<'a>(&'a mut self, mailbox: &'a str, content: &'a [u8]) -> AppendCmd<'a, T> {
         AppendCmd {
             session: self,
-            content: content.as_ref(),
-            mailbox: mailbox.as_ref(),
+            content,
+            mailbox,
             flags: Vec::new(),
             date: None,
         }
