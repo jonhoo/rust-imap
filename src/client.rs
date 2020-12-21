@@ -110,8 +110,8 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
     }
 
     /// Append an array of flags
-    pub fn flags(&mut self, flags: &'a [Flag<'a>]) -> &mut Self {
-        self.flags.append(&mut flags.to_vec());
+    pub fn flags(&mut self, flags: impl IntoIterator<Item = Flag<'a>>) -> &mut Self {
+        self.flags.extend(flags);
         self
     }
 
