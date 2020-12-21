@@ -85,6 +85,7 @@ pub struct Connection<T: Read + Write> {
 }
 
 /// A builder for the append command
+#[must_use]
 pub struct AppendCmd<'a, T: Read + Write> {
     session: &'a mut Session<T>,
     content: &'a [u8],
@@ -126,7 +127,6 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
     }
 
     /// Run command
-    #[must_use = "always run a command once options are configured"]
     pub fn run(&mut self) -> Result<()> {
         let flagstr = self
             .flags
