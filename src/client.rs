@@ -127,7 +127,7 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
     }
 
     /// Run command
-    pub fn run(&mut self) -> Result<()> {
+    pub fn finish(&mut self) -> Result<()> {
         let flagstr = self
             .flags
             .clone()

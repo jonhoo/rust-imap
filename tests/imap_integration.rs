@@ -254,7 +254,7 @@ fn append() {
     c.select(mbox).unwrap();
     //append
     c.append(mbox, e.message_to_string().unwrap().as_bytes())
-        .run()
+        .finish()
         .unwrap();
 
     // now we should see the e-mail!
@@ -305,7 +305,7 @@ fn append_with_flags() {
     let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
     c.append(mbox, e.message_to_string().unwrap().as_bytes())
         .flags(flags)
-        .run()
+        .finish()
         .unwrap();
 
     // now we should see the e-mail!
@@ -365,7 +365,7 @@ fn append_with_flags_and_date() {
         .flag(Flag::Seen)
         .flag(Flag::Flagged)
         .internal_date(date)
-        .run()
+        .finish()
         .unwrap();
 
     // now we should see the e-mail!
