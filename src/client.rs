@@ -110,7 +110,7 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
         self
     }
 
-    /// Append an array of flags
+    /// Set multiple flags at once.
     pub fn flags(&mut self, flags: impl IntoIterator<Item = Flag<'a>>) -> &mut Self {
         self.flags.extend(flags);
         self
@@ -126,7 +126,10 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
         self
     }
 
-    /// Run command
+    /// Finishes up the command and executes it.
+    ///
+    /// Note: be sure to set flags and optional date before you
+    /// finish the command.
     pub fn finish(&mut self) -> Result<()> {
         let flagstr = self
             .flags
