@@ -302,7 +302,7 @@ fn append_with_flags() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     //append
-    let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
+    let flags = vec![Flag::Seen, Flag::Flagged];
     c.append(mbox, e.message_to_string().unwrap().as_bytes())
         .flags(flags)
         .finish()
