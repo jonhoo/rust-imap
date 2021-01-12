@@ -43,7 +43,8 @@ impl<E> OptionExt<E> for Option<E> {
 
 fn validate_str(value: &str) -> Result<String> {
     let quoted = quote!(value);
-    quoted.matches(|c| c=='\n' || c=='\r').next()
+    quoted
+        .matches(|c| c=='\n' || c=='\r').next()
         .and_then(|s| s.chars().next())
         .map(|offender| Error::Validate(ValidateError(offender)))
         .err()?;
@@ -51,7 +52,8 @@ fn validate_str(value: &str) -> Result<String> {
 }
 
 fn validate_str_noquote(value: &str) -> Result<&str> {
-    value.matches(|c| c=='\n' || c=='\r').next()
+    value
+        .matches(|c| c=='\n' || c=='\r').next()
         .and_then(|s| s.chars().next())
         .map(|offender| Error::Validate(ValidateError(offender)))
         .err()?;
@@ -59,7 +61,8 @@ fn validate_str_noquote(value: &str) -> Result<&str> {
 }
 
 fn validate_sequence_set(value: &str) -> Result<&str> {
-    value.matches(|c: char| c.is_ascii_whitespace()).next()
+    value
+        .matches(|c: char| c.is_ascii_whitespace()).next()
         .and_then(|s| s.chars().next())
         .map(|offender| Error::Validate(ValidateError(offender)))
         .err()?;
@@ -577,7 +580,8 @@ impl<T: Read + Write> Session<T> {
             command = format!(
                 "FETCH {} {}",
                 validate_sequence_set(sequence_set.as_ref())?,
-                validate_str_noquote(query.as_ref())?);
+                validate_str_noquote(query.as_ref())?
+            );
             &command
         })
         .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
@@ -597,7 +601,8 @@ impl<T: Read + Write> Session<T> {
             command = format!(
                 "UID FETCH {} {}",
                 validate_sequence_set(uid_set.as_ref())?,
-                validate_str_noquote(query.as_ref())?);
+                validate_str_noquote(query.as_ref())?
+            );
             &command
         })
         .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
