@@ -28,15 +28,42 @@ macro_rules! quote {
     };
 }
 
+trait OptionExt<E> {
+    fn err(self) -> std::result::Result<(), E>;
+}
+
+impl<E> OptionExt<E> for Option<E> {
+    fn err(self) -> std::result::Result<(), E> {
+        match self {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+}
+
 fn validate_str(value: &str) -> Result<String> {
     let quoted = quote!(value);
-    if quoted.find('\n').is_some() {
-        return Err(Error::Validate(ValidateError('\n')));
-    }
-    if quoted.find('\r').is_some() {
-        return Err(Error::Validate(ValidateError('\r')));
-    }
+    quoted.matches(|c| c=='\n' || c=='\r').next()
+        .and_then(|s| s.chars().next())
+        .map(|offender| Error::Validate(ValidateError(offender)))
+        .err()?;
     Ok(quoted)
+}
+
+fn validate_str_noquote(value: &str) -> Result<&str> {
+    value.matches(|c| c=='\n' || c=='\r').next()
+        .and_then(|s| s.chars().next())
+        .map(|offender| Error::Validate(ValidateError(offender)))
+        .err()?;
+    Ok(value)
+}
+
+fn validate_sequence_set(value: &str) -> Result<&str> {
+    value.matches(|c: char| c.is_ascii_whitespace()).next()
+        .and_then(|s| s.chars().next())
+        .map(|offender| Error::Validate(ValidateError(offender)))
+        .err()?;
+    Ok(value)
 }
 
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
@@ -543,11 +570,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        self.run_command_and_read_response(&format!(
-            "FETCH {} {}",
-            sequence_set.as_ref(),
-            query.as_ref()
-        ))
+        let command;
+        self.run_command_and_read_response(if sequence_set.as_ref().is_empty() {
+            "NOOP"
+        } else {
+            command = format!(
+                "FETCH {} {}",
+                validate_sequence_set(sequence_set.as_ref())?,
+                validate_str_noquote(query.as_ref())?);
+            &command
+        })
         .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
@@ -558,11 +590,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        self.run_command_and_read_response(&format!(
-            "UID FETCH {} {}",
-            uid_set.as_ref(),
-            query.as_ref()
-        ))
+        let command;
+        self.run_command_and_read_response(if uid_set.as_ref().is_empty() {
+            "NOOP"
+        } else {
+            command = format!(
+                "UID FETCH {} {}",
+                validate_sequence_set(uid_set.as_ref())?,
+                validate_str_noquote(query.as_ref())?);
+            &command
+        })
         .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
     }
 
