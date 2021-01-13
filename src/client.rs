@@ -57,7 +57,7 @@ fn validate_str(value: &str) -> Result<String> {
 ///
 /// > fetch     = "FETCH" SP sequence-set SP ("ALL" / "FULL" / "FAST" /
 /// >             fetch-att / "(" fetch-att *(SP fetch-att) ")")
-/// > 
+/// >
 /// > fetch-att = "ENVELOPE" / "FLAGS" / "INTERNALDATE" /
 /// >             "RFC822" [".HEADER" / ".SIZE" / ".TEXT"] /
 /// >             "BODY" ["STRUCTURE"] / "UID" /
