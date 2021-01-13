@@ -576,18 +576,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        let command;
-        self.run_command_and_read_response(if sequence_set.as_ref().is_empty() {
-            "NOOP"
+        if sequence_set.as_ref().is_empty() {
+            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
         } else {
-            command = format!(
+            self.run_command_and_read_response(&format!(
                 "FETCH {} {}",
                 validate_sequence_set(sequence_set.as_ref())?,
                 validate_str_noquote(query.as_ref())?
-            );
-            &command
-        })
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+            ))
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        }
     }
 
     /// Equivalent to [`Session::fetch`], except that all identifiers in `uid_set` are
@@ -597,18 +595,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        let command;
-        self.run_command_and_read_response(if uid_set.as_ref().is_empty() {
-            "NOOP"
+        if sequence_set.as_ref().is_empty() {
+            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
         } else {
-            command = format!(
+            self.run_command_and_read_response(&format!(
                 "UID FETCH {} {}",
-                validate_sequence_set(uid_set.as_ref())?,
+                validate_sequence_set(sequence_set.as_ref())?,
                 validate_str_noquote(query.as_ref())?
-            );
-            &command
-        })
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+            ))
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        }
     }
 
     /// Noop always succeeds, and it does nothing.
