@@ -44,7 +44,8 @@ impl<E> OptionExt<E> for Option<E> {
 fn validate_str(value: &str) -> Result<String> {
     let quoted = quote!(value);
     quoted
-        .matches(|c| c=='\n' || c=='\r').next()
+        .matches(|c| c=='\n' || c=='\r')
+        .next()
         .and_then(|s| s.chars().next())
         .map(|offender| Error::Validate(ValidateError(offender)))
         .err()?;
@@ -53,7 +54,8 @@ fn validate_str(value: &str) -> Result<String> {
 
 fn validate_str_noquote(value: &str) -> Result<&str> {
     value
-        .matches(|c| c=='\n' || c=='\r').next()
+        .matches(|c| c=='\n' || c=='\r')
+        .next()
         .and_then(|s| s.chars().next())
         .map(|offender| Error::Validate(ValidateError(offender)))
         .err()?;
@@ -62,7 +64,8 @@ fn validate_str_noquote(value: &str) -> Result<&str> {
 
 fn validate_sequence_set(value: &str) -> Result<&str> {
     value
-        .matches(|c: char| c.is_ascii_whitespace()).next()
+        .matches(|c: char| c.is_ascii_whitespace())
+        .next()
         .and_then(|s| s.chars().next())
         .map(|offender| Error::Validate(ValidateError(offender)))
         .err()?;
