@@ -42,9 +42,8 @@ impl<E> OptionExt<E> for Option<E> {
 }
 
 fn validate_str(value: &str) -> Result<String> {
-    let quoted = quote!(value);
-    validate_str_noquote(&str)?;
-    Ok(quoted)
+    validate_str_noquote(value)?;
+    Ok(quote!(value))
 }
 
 fn validate_str_noquote(value: &str) -> Result<&str> {
@@ -590,12 +589,12 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        if sequence_set.as_ref().is_empty() {
+        if uid_set.as_ref().is_empty() {
             parse_fetches(vec![], &mut self.unsolicited_responses_tx)
         } else {
             self.run_command_and_read_response(&format!(
                 "UID FETCH {} {}",
-                validate_sequence_set(sequence_set.as_ref())?,
+                validate_sequence_set(uid_set.as_ref())?,
                 validate_str_noquote(query.as_ref())?
             ))
             .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
