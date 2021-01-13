@@ -28,15 +28,74 @@ macro_rules! quote {
     };
 }
 
+trait OptionExt<E> {
+    fn err(self) -> std::result::Result<(), E>;
+}
+
+impl<E> OptionExt<E> for Option<E> {
+    fn err(self) -> std::result::Result<(), E> {
+        match self {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Convert the input into what [the IMAP
+/// grammar](https://tools.ietf.org/html/rfc3501#section-9)
+/// calls "quoted", which is reachable from "string" et al.
+/// Also ensure it doesn't contain a colliding command-delimiter (newline).
 fn validate_str(value: &str) -> Result<String> {
-    let quoted = quote!(value);
-    if quoted.find('\n').is_some() {
-        return Err(Error::Validate(ValidateError('\n')));
-    }
-    if quoted.find('\r').is_some() {
-        return Err(Error::Validate(ValidateError('\r')));
-    }
-    Ok(quoted)
+    validate_str_noquote(value)?;
+    Ok(quote!(value))
+}
+
+/// Ensure the input doesn't contain a command-terminator (newline), but don't quote it like
+/// `validate_str`.
+/// This is helpful for things like the FETCH attributes, which,
+/// per [the IMAP grammar](https://tools.ietf.org/html/rfc3501#section-9) may not be quoted:
+///
+/// > fetch     = "FETCH" SP sequence-set SP ("ALL" / "FULL" / "FAST" /
+/// >             fetch-att / "(" fetch-att *(SP fetch-att) ")")
+/// >
+/// > fetch-att = "ENVELOPE" / "FLAGS" / "INTERNALDATE" /
+/// >             "RFC822" [".HEADER" / ".SIZE" / ".TEXT"] /
+/// >             "BODY" ["STRUCTURE"] / "UID" /
+/// >             "BODY" section ["<" number "." nz-number ">"] /
+/// >             "BODY.PEEK" section ["<" number "." nz-number ">"]
+///
+/// Note the lack of reference to any of the string-like rules or the quote characters themselves.
+fn validate_str_noquote(value: &str) -> Result<&str> {
+    value
+        .matches(|c| c == '\n' || c == '\r')
+        .next()
+        .and_then(|s| s.chars().next())
+        .map(|offender| Error::Validate(ValidateError(offender)))
+        .err()?;
+    Ok(value)
+}
+
+/// This ensures the input doesn't contain a command-terminator or any other whitespace
+/// while leaving it not-quoted.
+/// This is needed because, per [the formal grammer given in RFC
+/// 3501](https://tools.ietf.org/html/rfc3501#section-9), a sequence set consists of the following:
+///
+/// > sequence-set = (seq-number / seq-range) *("," sequence-set)
+/// > seq-range = seq-number ":" seq-number
+/// > seq-number = nz-number / "*"
+/// > nz-number       = digit-nz *DIGIT
+/// > digit-nz        = %x31-39
+///
+/// Note the lack of reference to SP or any other such whitespace terminals.
+/// Per this grammar, in theory we ought to be even more restrictive than "no whitespace".
+fn validate_sequence_set(value: &str) -> Result<&str> {
+    value
+        .matches(|c: char| c.is_ascii_whitespace())
+        .next()
+        .and_then(|s| s.chars().next())
+        .map(|offender| Error::Validate(ValidateError(offender)))
+        .err()?;
+    Ok(value)
 }
 
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
@@ -543,12 +602,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        self.run_command_and_read_response(&format!(
-            "FETCH {} {}",
-            sequence_set.as_ref(),
-            query.as_ref()
-        ))
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        if sequence_set.as_ref().is_empty() {
+            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
+        } else {
+            self.run_command_and_read_response(&format!(
+                "FETCH {} {}",
+                validate_sequence_set(sequence_set.as_ref())?,
+                validate_str_noquote(query.as_ref())?
+            ))
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        }
     }
 
     /// Equivalent to [`Session::fetch`], except that all identifiers in `uid_set` are
@@ -558,12 +621,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        self.run_command_and_read_response(&format!(
-            "UID FETCH {} {}",
-            uid_set.as_ref(),
-            query.as_ref()
-        ))
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        if uid_set.as_ref().is_empty() {
+            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
+        } else {
+            self.run_command_and_read_response(&format!(
+                "UID FETCH {} {}",
+                validate_sequence_set(uid_set.as_ref())?,
+                validate_str_noquote(query.as_ref())?
+            ))
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        }
     }
 
     /// Noop always succeeds, and it does nothing.
