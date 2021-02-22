@@ -277,6 +277,10 @@ pub enum UnsolicitedResponse {
     /// sequence numbers 9, 8, 7, 6, and 5.
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(Seq),
+    /// An uncategorised response - one which has no code associated with it, just a text
+    /// Dovecot is known to send a status message with an ETA for a long running fetch which
+    /// has no [] enclosed code.
+    Uncategorised(String),
 }
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,
