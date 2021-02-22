@@ -331,8 +331,16 @@ fn handle_unilateral<'a>(
         Response::Expunge(n) => {
             unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
         }
-        Response::Data {status, code, information} if imap_proto::Status::Ok == status && code.is_none() => {
-            unsolicited.send(UnsolicitedResponse::Uncategorised(information.unwrap_or("").to_string())).unwrap();
+        Response::Data {
+            status,
+            code,
+            information,
+        } if imap_proto::Status::Ok == status && code.is_none() => {
+            unsolicited
+                .send(UnsolicitedResponse::Uncategorised(
+                    information.unwrap_or("").to_string(),
+                ))
+                .unwrap();
         }
         res => {
             return Some(res);
@@ -448,8 +456,12 @@ mod tests {
         * OK Searched 91% of the mailbox, ETA 0:01\r\n";
         let (mut send, recv) = mpsc::channel();
         parse_fetches(lines.to_vec(), &mut send).unwrap();
-        assert_eq!(recv.try_recv(), Ok(UnsolicitedResponse::Uncategorised("Searched 91% of the mailbox, ETA 0:01".to_string())));
-
+        assert_eq!(
+            recv.try_recv(),
+            Ok(UnsolicitedResponse::Uncategorised(
+                "Searched 91% of the mailbox, ETA 0:01".to_string()
+            ))
+        );
     }
 
     #[test]
