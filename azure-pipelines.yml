@@ -25,9 +25,6 @@ jobs:
      - template: install-rust.yml@templates
        parameters:
          rust: $(rust)
-         components:
-           - rustfmt
-           - clippy
      - script: cargo check --all-targets
        displayName: cargo check
      - script: cargo test --examples
@@ -36,10 +33,16 @@ jobs:
        displayName: cargo test --doc
      - script: cargo test --lib
        displayName: cargo test --lib
-     - script: cargo fmt --all -- --check
+     - script: |
+         set -e
+         rustup component add rustfmt
+         cargo fmt --all -- --check
        displayName: cargo fmt --check
        condition: and(eq( variables['rust'], 'beta' ), eq( variables['Agent.OS'], 'Linux' ))
-     - script: cargo clippy -- -D warnings
+     - script: |
+         set -e
+         rustup component add clippy
+         cargo clippy -- -D warnings
        displayName: cargo clippy
        condition: and(eq( variables['rust'], 'beta' ), eq( variables['Agent.OS'], 'Linux' ))
  # This represents the minimum Rust version supported.
@@ -47,12 +50,12 @@ jobs:
  - job: msrv
    pool:
      vmImage: ubuntu-latest
-   displayName: "Minimum supported Rust version: 1.36.0"
+   displayName: "Minimum supported Rust version: 1.43.0"
    dependsOn: []
    steps:
      - template: install-rust.yml@templates
        parameters:
-         rust: 1.36.0
+         rust: 1.43.0 # nom6 depends on bitvec (1.43+)
      - script: cargo check
        displayName: cargo check
  - job: integration
@@ -79,11 +82,11 @@ resources:
     - repository: templates
       type: github
       name: crate-ci/azure-pipelines
-      ref: refs/heads/v0.3
+      ref: refs/heads/v0.4
       endpoint: jonhoo
   containers:
    - container: greenmail
-     image: greenmail/standalone:1.5.11
+     image: greenmail/standalone:1.5.13
      ports:
        - 3025:3025
        - 3110:3110

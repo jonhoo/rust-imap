@@ -87,6 +87,7 @@ mod client;
 pub use crate::client::*;
 
 pub mod error;
+pub use error::{Error, Result};
 
 pub mod extensions;
 

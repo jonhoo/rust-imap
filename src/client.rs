@@ -1,8 +1,7 @@
-use base64;
 use bufstream::BufStream;
+use chrono::{DateTime, FixedOffset};
 #[cfg(feature = "tls")]
 use native_tls::{TlsConnector, TlsStream};
-use nom;
 use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -27,15 +26,74 @@ macro_rules! quote {
     };
 }
 
+trait OptionExt<E> {
+    fn err(self) -> std::result::Result<(), E>;
+}
+
+impl<E> OptionExt<E> for Option<E> {
+    fn err(self) -> std::result::Result<(), E> {
+        match self {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Convert the input into what [the IMAP
+/// grammar](https://tools.ietf.org/html/rfc3501#section-9)
+/// calls "quoted", which is reachable from "string" et al.
+/// Also ensure it doesn't contain a colliding command-delimiter (newline).
 pub(crate) fn validate_str(value: &str) -> Result<String> {
-    let quoted = quote!(value);
-    if quoted.find('\n').is_some() {
-        return Err(Error::Validate(ValidateError('\n')));
-    }
-    if quoted.find('\r').is_some() {
-        return Err(Error::Validate(ValidateError('\r')));
-    }
-    Ok(quoted)
+    validate_str_noquote(value)?;
+    Ok(quote!(value))
+}
+
+/// Ensure the input doesn't contain a command-terminator (newline), but don't quote it like
+/// `validate_str`.
+/// This is helpful for things like the FETCH attributes, which,
+/// per [the IMAP grammar](https://tools.ietf.org/html/rfc3501#section-9) may not be quoted:
+///
+/// > fetch     = "FETCH" SP sequence-set SP ("ALL" / "FULL" / "FAST" /
+/// >             fetch-att / "(" fetch-att *(SP fetch-att) ")")
+/// >
+/// > fetch-att = "ENVELOPE" / "FLAGS" / "INTERNALDATE" /
+/// >             "RFC822" [".HEADER" / ".SIZE" / ".TEXT"] /
+/// >             "BODY" ["STRUCTURE"] / "UID" /
+/// >             "BODY" section ["<" number "." nz-number ">"] /
+/// >             "BODY.PEEK" section ["<" number "." nz-number ">"]
+///
+/// Note the lack of reference to any of the string-like rules or the quote characters themselves.
+fn validate_str_noquote(value: &str) -> Result<&str> {
+    value
+        .matches(|c| c == '\n' || c == '\r')
+        .next()
+        .and_then(|s| s.chars().next())
+        .map(|offender| Error::Validate(ValidateError(offender)))
+        .err()?;
+    Ok(value)
+}
+
+/// This ensures the input doesn't contain a command-terminator or any other whitespace
+/// while leaving it not-quoted.
+/// This is needed because, per [the formal grammer given in RFC
+/// 3501](https://tools.ietf.org/html/rfc3501#section-9), a sequence set consists of the following:
+///
+/// > sequence-set = (seq-number / seq-range) *("," sequence-set)
+/// > seq-range = seq-number ":" seq-number
+/// > seq-number = nz-number / "*"
+/// > nz-number       = digit-nz *DIGIT
+/// > digit-nz        = %x31-39
+///
+/// Note the lack of reference to SP or any other such whitespace terminals.
+/// Per this grammar, in theory we ought to be even more restrictive than "no whitespace".
+fn validate_sequence_set(value: &str) -> Result<&str> {
+    value
+        .matches(|c: char| c.is_ascii_whitespace())
+        .next()
+        .and_then(|s| s.chars().next())
+        .map(|offender| Error::Validate(ValidateError(offender)))
+        .err()?;
+    Ok(value)
 }
 
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
@@ -81,6 +139,87 @@ pub struct Connection<T: Read + Write> {
 
     /// Tracks if we have read a greeting.
     pub greeting_read: bool,
+}
+
+/// A builder for the append command
+#[must_use]
+pub struct AppendCmd<'a, T: Read + Write> {
+    session: &'a mut Session<T>,
+    content: &'a [u8],
+    mailbox: &'a str,
+    flags: Vec<Flag<'a>>,
+    date: Option<DateTime<FixedOffset>>,
+}
+
+impl<'a, T: Read + Write> AppendCmd<'a, T> {
+    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
+    /// an optional FLAGS parameter to set the flags on the new message.
+    ///
+    /// > If a flag parenthesized list is specified, the flags SHOULD be set
+    /// > in the resulting message; otherwise, the flag list of the
+    /// > resulting message is set to empty by default.  In either case, the
+    /// > Recent flag is also set.
+    ///
+    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
+    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
+    pub fn flag(&mut self, flag: Flag<'a>) -> &mut Self {
+        self.flags.push(flag);
+        self
+    }
+
+    /// Set multiple flags at once.
+    pub fn flags(&mut self, flags: impl IntoIterator<Item = Flag<'a>>) -> &mut Self {
+        self.flags.extend(flags);
+        self
+    }
+
+    /// Pass a date in order to set the date that the message was originally sent.
+    ///
+    /// > If a date-time is specified, the internal date SHOULD be set in
+    /// > the resulting message; otherwise, the internal date of the
+    /// > resulting message is set to the current date and time by default.
+    pub fn internal_date(&mut self, date: DateTime<FixedOffset>) -> &mut Self {
+        self.date = Some(date);
+        self
+    }
+
+    /// Finishes up the command and executes it.
+    ///
+    /// Note: be sure to set flags and optional date before you
+    /// finish the command.
+    pub fn finish(&mut self) -> Result<()> {
+        let flagstr = self
+            .flags
+            .clone()
+            .into_iter()
+            .filter(|f| *f != Flag::Recent)
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        let datestr = if let Some(date) = self.date {
+            format!(" \"{}\"", date.format("%d-%h-%Y %T %z"))
+        } else {
+            "".to_string()
+        };
+
+        self.session.run_command(&format!(
+            "APPEND \"{}\" ({}){} {{{}}}",
+            self.mailbox,
+            flagstr,
+            datestr,
+            self.content.len()
+        ))?;
+        let mut v = Vec::new();
+        self.session.readline(&mut v)?;
+        if !v.starts_with(b"+") {
+            return Err(Error::Append);
+        }
+        self.session.stream.write_all(self.content)?;
+        self.session.stream.write_all(b"\r\n")?;
+        self.session.stream.flush()?;
+        self.session.read_response().map(|_| ())
+    }
 }
 
 // `Deref` instances are so we can make use of the same underlying primitives in `Client` and
@@ -240,6 +379,29 @@ impl<T: Read + Write> Client<T> {
     ///
     /// This method primarily exists for writing tests that mock the underlying transport, but can
     /// also be used to support IMAP over custom tunnels.
+    ///
+    /// **Note:** In case you do need to use `Client::new` over `imap::connect`, you will need to
+    /// listen for the IMAP protocol server greeting before authenticating:
+    ///
+    /// ```rust,no_run
+    /// # extern crate imap;
+    /// # extern crate native_tls;
+    /// # use imap::Client;
+    /// # use native_tls::TlsConnector;
+    /// # use std::io;
+    /// # use std::net::TcpStream;
+    /// # fn main() {
+    /// # let server = "imap.example.com";
+    /// # let username = "";
+    /// # let password = "";
+    /// # let tcp = TcpStream::connect((server, 993)).unwrap();
+    /// # let ssl_connector = TlsConnector::builder().build().unwrap();
+    /// # let tls = TlsConnector::connect(&ssl_connector, server.as_ref(), tcp).unwrap();
+    /// let mut client = Client::new(tls);
+    /// client.read_greeting().unwrap();
+    /// let session = client.login(username, password).unwrap();
+    /// # }
+    /// ```
     pub fn new(stream: T) -> Client<T> {
         Client {
             conn: Connection {
@@ -456,7 +618,7 @@ impl<T: Read + Write> Session<T> {
         .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
-    /// Fetch retreives data associated with a set of messages in the mailbox.
+    /// Fetch retrieves data associated with a set of messages in the mailbox.
     ///
     /// Note that the server *is* allowed to unilaterally include `FETCH` responses for other
     /// messages in the selected mailbox whose status has changed. See the note on [unilateral
@@ -519,12 +681,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        self.run_command_and_read_response(&format!(
-            "FETCH {} {}",
-            sequence_set.as_ref(),
-            query.as_ref()
-        ))
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        if sequence_set.as_ref().is_empty() {
+            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
+        } else {
+            self.run_command_and_read_response(&format!(
+                "FETCH {} {}",
+                validate_sequence_set(sequence_set.as_ref())?,
+                validate_str_noquote(query.as_ref())?
+            ))
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        }
     }
 
     /// Equivalent to [`Session::fetch`], except that all identifiers in `uid_set` are
@@ -534,12 +700,16 @@ impl<T: Read + Write> Session<T> {
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
-        self.run_command_and_read_response(&format!(
-            "UID FETCH {} {}",
-            uid_set.as_ref(),
-            query.as_ref()
-        ))
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        if uid_set.as_ref().is_empty() {
+            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
+        } else {
+            self.run_command_and_read_response(&format!(
+                "UID FETCH {} {}",
+                validate_sequence_set(uid_set.as_ref())?,
+                validate_str_noquote(query.as_ref())?
+            ))
+            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        }
     }
 
     /// Noop always succeeds, and it does nothing.
@@ -666,7 +836,7 @@ impl<T: Read + Write> Session<T> {
     /// The [`EXPUNGE` command](https://tools.ietf.org/html/rfc3501#section-6.4.3) permanently
     /// removes all messages that have [`Flag::Deleted`] set from the currently selected mailbox.
     /// The message sequence number of each message that is removed is returned.
-    pub fn expunge(&mut self) -> Result<Vec<Seq>> {
+    pub fn expunge(&mut self) -> Result<Deleted> {
         self.run_command_and_read_response("EXPUNGE")
             .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
@@ -693,7 +863,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Alternatively, the client may fall back to using just [`Session::expunge`], risking the
     /// unintended removal of some messages.
-    pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Vec<Uid>> {
+    pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Deleted> {
         self.run_command_and_read_response(&format!("UID EXPUNGE {}", uid_set.as_ref()))
             .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
@@ -1054,22 +1224,15 @@ impl<T: Read + Write> Session<T> {
     /// Specifically, the server will generally notify the client immediately via an untagged
     /// `EXISTS` response.  If the server does not do so, the client MAY issue a `NOOP` command (or
     /// failing that, a `CHECK` command) after one or more `APPEND` commands.
-    pub fn append<S: AsRef<str>, B: AsRef<[u8]>>(&mut self, mailbox: S, content: B) -> Result<()> {
-        let content = content.as_ref();
-        self.run_command(&format!(
-            "APPEND \"{}\" {{{}}}",
-            mailbox.as_ref(),
-            content.len()
-        ))?;
-        let mut v = Vec::new();
-        self.readline(&mut v)?;
-        if !v.starts_with(b"+") {
-            return Err(Error::Append);
+    ///
+    pub fn append<'a>(&'a mut self, mailbox: &'a str, content: &'a [u8]) -> AppendCmd<'a, T> {
+        AppendCmd {
+            session: self,
+            content,
+            mailbox,
+            flags: Vec::new(),
+            date: None,
         }
-        self.stream.write_all(content)?;
-        self.stream.write_all(b"\r\n")?;
-        self.stream.flush()?;
-        self.read_response().map(|_| ())
     }
 
     /// The [`SEARCH` command](https://tools.ietf.org/html/rfc3501#section-6.4.4) searches the
@@ -1204,10 +1367,10 @@ impl<T: Read + Write> Connection<T> {
             };
 
             let break_with = {
-                use imap_proto::{parse_response, Response, Status};
+                use imap_proto::{Response, Status};
                 let line = &data[line_start..];
 
-                match parse_response(line) {
+                match imap_proto::parser::parse_response(line) {
                     Ok((
                         _,
                         Response::Done {
@@ -1559,6 +1722,7 @@ mod tests {
             permanent_flags: vec![],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
+            highest_mod_seq: None,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 EXAMINE {}\r\n", quote!(mailbox_name));
@@ -1605,6 +1769,7 @@ mod tests {
             ],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
+            highest_mod_seq: None,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 SELECT {}\r\n", quote!(mailbox_name));

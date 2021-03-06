@@ -4,6 +4,7 @@ use std::fmt;
 /// Meta-information about an IMAP mailbox, as returned by
 /// [`SELECT`](https://tools.ietf.org/html/rfc3501#section-6.3.1) and friends.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub struct Mailbox {
     /// Defined flags in the mailbox.  See the description of the [FLAGS
     /// response](https://tools.ietf.org/html/rfc3501#section-7.2.6) for more detail.
@@ -35,6 +36,10 @@ pub struct Mailbox {
     /// The unique identifier validity value.  See [`Uid`] for more details.  If this is missing,
     /// the server does not support unique identifiers.
     pub uid_validity: Option<u32>,
+
+    /// The highest mod sequence for this mailbox. Used with
+    /// [Conditional STORE](https://tools.ietf.org/html/rfc4551#section-3.1.1).
+    pub highest_mod_seq: Option<u64>,
 }
 
 impl Default for Mailbox {
@@ -47,6 +52,7 @@ impl Default for Mailbox {
             permanent_flags: Vec::new(),
             uid_next: None,
             uid_validity: None,
+            highest_mod_seq: None,
         }
     }
 }
@@ -56,14 +62,15 @@ impl fmt::Display for Mailbox {
         write!(
             f,
             "flags: {:?}, exists: {}, recent: {}, unseen: {:?}, permanent_flags: {:?},\
-             uid_next: {:?}, uid_validity: {:?}",
+             uid_next: {:?}, uid_validity: {:?}, highest_mod_seq: {:?}",
             self.flags,
             self.exists,
             self.recent,
             self.unseen,
             self.permanent_flags,
             self.uid_next,
-            self.uid_validity
+            self.uid_validity,
+            self.highest_mod_seq,
         )
     }
 }

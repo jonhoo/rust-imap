@@ -1,25 +1,17 @@
 [package]
 name = "imap"
-version = "2.1.2"
-authors = ["Matt McCoy <mattnenterprise@yahoo.com>",
-           "Jon Gjengset <jon@thesquareplanet.com>"]
+version = "3.0.0-alpha.1"
+authors = ["Jon Gjengset <jon@thesquareplanet.com>",
+           "Matt McCoy <mattnenterprise@yahoo.com>"]
 documentation = "https://docs.rs/imap/"
 repository = "https://github.com/jonhoo/rust-imap"
 homepage = "https://github.com/jonhoo/rust-imap"
 description = "IMAP client for Rust"
-readme = "README.md"
-license = "Apache-2.0/MIT"
+license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 keywords = ["email", "imap"]
 categories = ["email", "network-programming"]
-
-[badges]
-azure-devops = { project = "jonhoo/jonhoo", pipeline = "imap", build = "11" }
-codecov = { repository = "jonhoo/rust-imap", branch = "master", service = "github" }
-maintenance = { status = "actively-developed" }
-is-it-maintained-issue-resolution = { repository = "jonhoo/rust-imap" }
-is-it-maintained-open-issues = { repository = "jonhoo/rust-imap" }
 
 [features]
 tls = ["native-tls"]
@@ -29,16 +21,16 @@ default = ["tls"]
 native-tls = { version = "0.2.2", optional = true }
 regex = "1.0"
 bufstream = "0.1"
-imap-proto = "0.10.0"
-nom = "5.0"
-base64 = "0.12"
+imap-proto = "0.12.0"
+nom = "6.0"
+base64 = "0.13"
 chrono = "0.4"
 lazy_static = "1.4"
 
 [dev-dependencies]
 lettre = "0.9"
 lettre_email = "0.9"
-rustls-connector = "0.11.0"
+rustls-connector = "0.13.0"
 
 [[example]]
 name = "basic"
