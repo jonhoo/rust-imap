@@ -226,6 +226,7 @@ pub use imap_proto::StatusAttribute;
 /// Note that `Recent`, `Exists` and `Expunge` responses refer to the currently `SELECT`ed folder,
 /// so the user must take care when interpreting these.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum UnsolicitedResponse {
     /// An unsolicited [`STATUS response`](https://tools.ietf.org/html/rfc3501#section-7.2.4).
     Status {
@@ -277,6 +278,15 @@ pub enum UnsolicitedResponse {
     /// sequence numbers 9, 8, 7, 6, and 5.
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(Seq),
+
+    /// An unsolicited [`FLAGS` response](https://tools.ietf.org/html/rfc3501#section-7.2.6) that
+    /// identifies the flags (at a minimum, the system-defined flags) that are applicable in the
+    /// mailbox. Flags other than the system flags can also exist, depending on server
+    /// implementation.
+    ///
+    /// See [`Flag`] for details.
+    // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
+    Flags(Vec<Flag<'static>>),
 }
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,
