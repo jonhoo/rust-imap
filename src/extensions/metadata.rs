@@ -14,7 +14,7 @@ use crate::client::*;
 use crate::error::{Error, ParseError, Result};
 use crate::parse::handle_unilateral;
 use crate::types::*;
-use imap_proto::types::{MailboxDatum, Metadata, Response};
+use imap_proto::types::{MailboxDatum, Metadata, Response, ResponseCode};
 use std::io::{Read, Write};
 use std::sync::mpsc;
 
@@ -200,8 +200,7 @@ impl<T: Read + Write> Session<T> {
             {
                 match code {
                     None => None,
-                    // TODO: https://github.com/djc/tokio-imap/pull/116
-                    // Some(ResponseCode::MetadataLongEntries(v)) => Some(v),
+                    Some(ResponseCode::MetadataLongEntries(v)) => Some(v),
                     Some(_) => None,
                 }
             } else {

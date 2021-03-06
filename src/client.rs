@@ -1395,8 +1395,7 @@ impl<T: Read + Write> Connection<T> {
                             tag,
                             status,
                             information,
-                            // TODO: https://github.com/djc/tokio-imap/pull/115
-                            // code,
+                            code,
                             ..
                         },
                     )) => {
@@ -1404,18 +1403,11 @@ impl<T: Read + Write> Connection<T> {
                         Some(match status {
                             Status::Bad | Status::No => Err((
                                 status,
-                                information.map(|v| v.to_string()),
-                                // TODO: https://github.com/djc/tokio-imap/pull/115
-                                // code.map(|v| v.into_owned()),
-                                None,
+                                information.map(|v| v.into_owned()),
+                                code.map(|v| v.into_owned()),
                             )),
                             Status::Ok => Ok(()),
-                            status => Err((
-                                status, None,
-                                // TODO: https://github.com/djc/tokio-imap/pull/115
-                                // code.map(|v| v.into_owned()),
-                                None,
-                            )),
+                            status => Err((status, None, code.map(|v| v.into_owned()))),
                         })
                     }
                     Ok((..)) => None,

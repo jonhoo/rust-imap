@@ -1,7 +1,6 @@
 use imap_proto::{MailboxDatum, Response, ResponseCode};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::mpsc;
 
@@ -81,8 +80,8 @@ pub fn parse_names(
             name,
         }) => Ok(MapOrNot::Map(Name {
             attributes: flags.into_iter().map(NameAttribute::from).collect(),
-            delimiter: delimiter.map(Cow::Borrowed),
-            name: Cow::Borrowed(name),
+            delimiter,
+            name,
         })),
         resp => Ok(MapOrNot::Not(resp)),
     };
