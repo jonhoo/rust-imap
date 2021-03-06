@@ -73,8 +73,8 @@ jobs:
      token: $(CODECOV_TOKEN_SECRET)
      services:
        greenmail: greenmail
-     envs:
-       TEST_HOST: 127.0.0.1
+     env:
+       TEST_HOST: greenmail
 
 resources:
   repositories:
