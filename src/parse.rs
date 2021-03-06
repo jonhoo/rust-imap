@@ -375,10 +375,7 @@ pub(crate) fn handle_unilateral<'a>(
         Response::Expunge(n) => {
             unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
         }
-        Response::MailboxData(MailboxDatum::MetadataUnsolicited {
-            mailbox,
-            values,
-        }) => {
+        Response::MailboxData(MailboxDatum::MetadataUnsolicited { mailbox, values }) => {
             unsolicited
                 .send(UnsolicitedResponse::Metadata {
                     mailbox: mailbox.to_string(),
