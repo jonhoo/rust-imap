@@ -67,7 +67,7 @@ fn parse_metadata<'a>(
             break Ok(res);
         }
 
-        match imap_proto::parse_response(lines) {
+        match imap_proto::parser::parse_response(lines) {
             Ok((rest, resp)) => {
                 lines = rest;
                 match resp {
