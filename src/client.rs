@@ -143,6 +143,87 @@ pub struct Connection<T: Read + Write> {
     pub greeting_read: bool,
 }
 
+/// A builder for the append command
+#[must_use]
+pub struct AppendCmd<'a, T: Read + Write> {
+    session: &'a mut Session<T>,
+    content: &'a [u8],
+    mailbox: &'a str,
+    flags: Vec<Flag<'a>>,
+    date: Option<DateTime<FixedOffset>>,
+}
+
+impl<'a, T: Read + Write> AppendCmd<'a, T> {
+    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
+    /// an optional FLAGS parameter to set the flags on the new message.
+    ///
+    /// > If a flag parenthesized list is specified, the flags SHOULD be set
+    /// > in the resulting message; otherwise, the flag list of the
+    /// > resulting message is set to empty by default.  In either case, the
+    /// > Recent flag is also set.
+    ///
+    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
+    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
+    pub fn flag(&mut self, flag: Flag<'a>) -> &mut Self {
+        self.flags.push(flag);
+        self
+    }
+
+    /// Set multiple flags at once.
+    pub fn flags(&mut self, flags: impl IntoIterator<Item = Flag<'a>>) -> &mut Self {
+        self.flags.extend(flags);
+        self
+    }
+
+    /// Pass a date in order to set the date that the message was originally sent.
+    ///
+    /// > If a date-time is specified, the internal date SHOULD be set in
+    /// > the resulting message; otherwise, the internal date of the
+    /// > resulting message is set to the current date and time by default.
+    pub fn internal_date(&mut self, date: DateTime<FixedOffset>) -> &mut Self {
+        self.date = Some(date);
+        self
+    }
+
+    /// Finishes up the command and executes it.
+    ///
+    /// Note: be sure to set flags and optional date before you
+    /// finish the command.
+    pub fn finish(&mut self) -> Result<()> {
+        let flagstr = self
+            .flags
+            .clone()
+            .into_iter()
+            .filter(|f| *f != Flag::Recent)
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        let datestr = if let Some(date) = self.date {
+            format!(" \"{}\"", date.format("%d-%h-%Y %T %z"))
+        } else {
+            "".to_string()
+        };
+
+        self.session.run_command(&format!(
+            "APPEND \"{}\" ({}){} {{{}}}",
+            self.mailbox,
+            flagstr,
+            datestr,
+            self.content.len()
+        ))?;
+        let mut v = Vec::new();
+        self.session.readline(&mut v)?;
+        if !v.starts_with(b"+") {
+            return Err(Error::Append);
+        }
+        self.session.stream.write_all(self.content)?;
+        self.session.stream.write_all(b"\r\n")?;
+        self.session.stream.flush()?;
+        self.session.read_response().map(|_| ())
+    }
+}
+
 // `Deref` instances are so we can make use of the same underlying primitives in `Client` and
 // `Session`
 impl<T: Read + Write> Deref for Client<T> {
@@ -1145,80 +1226,15 @@ impl<T: Read + Write> Session<T> {
     /// Specifically, the server will generally notify the client immediately via an untagged
     /// `EXISTS` response.  If the server does not do so, the client MAY issue a `NOOP` command (or
     /// failing that, a `CHECK` command) after one or more `APPEND` commands.
-    pub fn append<S: AsRef<str>, B: AsRef<[u8]>>(&mut self, mailbox: S, content: B) -> Result<()> {
-        self.append_with_flags(mailbox, content, &[])
-    }
-
-    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
-    /// an optional FLAGS parameter to set the flags on the new message.
     ///
-    /// > If a flag parenthesized list is specified, the flags SHOULD be set
-    /// > in the resulting message; otherwise, the flag list of the
-    /// > resulting message is set to empty by default.  In either case, the
-    /// > Recent flag is also set.
-    ///
-    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
-    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
-    pub fn append_with_flags<S: AsRef<str>, B: AsRef<[u8]>>(
-        &mut self,
-        mailbox: S,
-        content: B,
-        flags: &[Flag<'_>],
-    ) -> Result<()> {
-        self.append_with_flags_and_date(mailbox, content, flags, None)
-    }
-
-    /// The [`APPEND` command](https://tools.ietf.org/html/rfc3501#section-6.3.11) can take
-    /// an optional FLAGS parameter to set the flags on the new message.
-    ///
-    /// > If a flag parenthesized list is specified, the flags SHOULD be set
-    /// > in the resulting message; otherwise, the flag list of the
-    /// > resulting message is set to empty by default.  In either case, the
-    /// > Recent flag is also set.
-    ///
-    /// The [`\Recent` flag](https://tools.ietf.org/html/rfc3501#section-2.3.2) is not
-    /// allowed as an argument to `APPEND` and will be filtered out if present in `flags`.
-    ///
-    /// Pass a date in order to set the date that the message was originally sent.
-    ///
-    /// > If a date-time is specified, the internal date SHOULD be set in
-    /// > the resulting message; otherwise, the internal date of the
-    /// > resulting message is set to the current date and time by default.
-    pub fn append_with_flags_and_date<S: AsRef<str>, B: AsRef<[u8]>>(
-        &mut self,
-        mailbox: S,
-        content: B,
-        flags: &[Flag<'_>],
-        date: impl Into<Option<DateTime<FixedOffset>>>,
-    ) -> Result<()> {
-        let content = content.as_ref();
-        let flagstr = flags
-            .iter()
-            .filter(|f| **f != Flag::Recent)
-            .map(|f| f.to_string())
-            .collect::<Vec<String>>()
-            .join(" ");
-        let datestr = match date.into() {
-            Some(date) => format!(" \"{}\"", date.format("%d-%h-%Y %T %z")),
-            None => "".to_string(),
-        };
-
-        self.run_command(&format!(
-            "APPEND \"{}\" ({}){} {{{}}}",
-            mailbox.as_ref(),
-            flagstr,
-            datestr,
-            content.len()
-        ))?;
-        let mut v = Vec::new();
-        self.readline(&mut v)?;
-        if !v.starts_with(b"+") {
-            return Err(Error::Append);
+    pub fn append<'a>(&'a mut self, mailbox: &'a str, content: &'a [u8]) -> AppendCmd<'a, T> {
+        AppendCmd {
+            session: self,
+            content,
+            mailbox,
+            flags: Vec::new(),
+            date: None,
         }
-        self.stream.write_all(content)?;
-        self.stream.write_all(b"\r\n")?;
-        self.stream.flush()?;
-        self.read_response().map(|_| ())
     }
 
     /// The [`SEARCH` command](https://tools.ietf.org/html/rfc3501#section-6.4.4) searches the

@@ -253,7 +253,9 @@ fn append() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     //append
-    c.append(mbox, e.message_to_string().unwrap()).unwrap();
+    c.append(mbox, e.message_to_string().unwrap().as_bytes())
+        .finish()
+        .unwrap();
 
     // now we should see the e-mail!
     let inbox = c.uid_search("ALL").unwrap();
@@ -300,8 +302,10 @@ fn append_with_flags() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     //append
-    let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
-    c.append_with_flags(mbox, e.message_to_string().unwrap(), flags)
+    let flags = vec![Flag::Seen, Flag::Flagged];
+    c.append(mbox, e.message_to_string().unwrap().as_bytes())
+        .flags(flags)
+        .finish()
         .unwrap();
 
     // now we should see the e-mail!
@@ -354,11 +358,14 @@ fn append_with_flags_and_date() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     // append
-    let flags: &[Flag] = &[Flag::Seen, Flag::Flagged];
     let date = FixedOffset::east(8 * 3600)
         .ymd(2020, 12, 13)
         .and_hms(13, 36, 36);
-    c.append_with_flags_and_date(mbox, e.message_to_string().unwrap(), flags, Some(date))
+    c.append(mbox, e.message_to_string().unwrap().as_bytes())
+        .flag(Flag::Seen)
+        .flag(Flag::Flagged)
+        .internal_date(date)
+        .finish()
         .unwrap();
 
     // now we should see the e-mail!
