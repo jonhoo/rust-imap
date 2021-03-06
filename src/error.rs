@@ -21,6 +21,7 @@ pub type Result<T> = result::Result<T, Error>;
 
 /// A set of errors that can occur in the IMAP client
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// An `io::Error` that occurred while trying to read or write to a network stream.
     Io(IoError),
@@ -43,8 +44,6 @@ pub enum Error {
     Validate(ValidateError),
     /// Error appending an e-mail.
     Append,
-    #[doc(hidden)]
-    __Nonexhaustive,
 }
 
 impl From<IoError> for Error {
@@ -99,7 +98,6 @@ impl fmt::Display for Error {
             Error::Bad(ref data) => write!(f, "Bad Response: {}", data),
             Error::ConnectionLost => f.write_str("Connection Lost"),
             Error::Append => f.write_str("Could not append mail to mailbox"),
-            Error::__Nonexhaustive => f.write_str("Unknown"),
         }
     }
 }
@@ -119,7 +117,6 @@ impl StdError for Error {
             Error::No(_) => "No Response",
             Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
-            Error::__Nonexhaustive => "Unknown",
         }
     }
 

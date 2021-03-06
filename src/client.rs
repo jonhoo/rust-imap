@@ -1,9 +1,7 @@
-use base64;
 use bufstream::BufStream;
 use chrono::{DateTime, FixedOffset};
 #[cfg(feature = "tls")]
 use native_tls::{TlsConnector, TlsStream};
-use nom;
 use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -838,7 +836,7 @@ impl<T: Read + Write> Session<T> {
     /// The [`EXPUNGE` command](https://tools.ietf.org/html/rfc3501#section-6.4.3) permanently
     /// removes all messages that have [`Flag::Deleted`] set from the currently selected mailbox.
     /// The message sequence number of each message that is removed is returned.
-    pub fn expunge(&mut self) -> Result<Vec<Seq>> {
+    pub fn expunge(&mut self) -> Result<Deleted> {
         self.run_command_and_read_response("EXPUNGE")
             .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
@@ -865,7 +863,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Alternatively, the client may fall back to using just [`Session::expunge`], risking the
     /// unintended removal of some messages.
-    pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Vec<Uid>> {
+    pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Deleted> {
         self.run_command_and_read_response(&format!("UID EXPUNGE {}", uid_set.as_ref()))
             .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
@@ -1369,10 +1367,10 @@ impl<T: Read + Write> Connection<T> {
             };
 
             let break_with = {
-                use imap_proto::{parse_response, Response, Status};
+                use imap_proto::{Response, Status};
                 let line = &data[line_start..];
 
-                match parse_response(line) {
+                match imap_proto::parser::parse_response(line) {
                     Ok((
                         _,
                         Response::Done {
@@ -1723,6 +1721,7 @@ mod tests {
             permanent_flags: vec![],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
+            highest_mod_seq: None,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 EXAMINE {}\r\n", quote!(mailbox_name));
@@ -1769,6 +1768,7 @@ mod tests {
             ],
             uid_next: Some(2),
             uid_validity: Some(1257842737),
+            highest_mod_seq: None,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 SELECT {}\r\n", quote!(mailbox_name));
