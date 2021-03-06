@@ -118,6 +118,7 @@ pub type Seq = u32;
 /// > Note: The `\Recent` system flag is a special case of a session flag.  `\Recent` can not be
 /// > used as an argument in a `STORE` or `APPEND` command, and thus can not be changed at all.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Flag<'a> {
     /// Message has been read
     Seen,
