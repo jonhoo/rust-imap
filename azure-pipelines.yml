@@ -25,9 +25,6 @@ jobs:
      - template: install-rust.yml@templates
        parameters:
          rust: $(rust)
-         components:
-           - rustfmt
-           - clippy
      - script: cargo check --all-targets
        displayName: cargo check
      - script: cargo test --examples
@@ -36,10 +33,16 @@ jobs:
        displayName: cargo test --doc
      - script: cargo test --lib
        displayName: cargo test --lib
-     - script: cargo fmt --all -- --check
+     - script: |
+         set -e
+         rustup component add rustfmt
+         cargo fmt --all -- --check
        displayName: cargo fmt --check
        condition: and(eq( variables['rust'], 'beta' ), eq( variables['Agent.OS'], 'Linux' ))
-     - script: cargo clippy -- -D warnings
+     - script: |
+         set -e
+         rustup component add clippy
+         cargo clippy -- -D warnings
        displayName: cargo clippy
        condition: and(eq( variables['rust'], 'beta' ), eq( variables['Agent.OS'], 'Linux' ))
  # This represents the minimum Rust version supported.
