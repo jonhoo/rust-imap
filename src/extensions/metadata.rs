@@ -26,19 +26,25 @@ impl CmdListItemFormat for Metadata {
     }
 }
 
-/// Represents variants of DEPTH parameters for GETMETADATA command.
-///  "0" - no entries below the specified entry are returned
-///  "1" - only entries immediately below the specified entry are returned
-///  "infinity" -  all entries below the specified entry are returned
-/// See [RFC 5464, section 4.2.2](https://tools.ietf.org/html/rfc5464#section-4.2.2)
+/// Represents variants of the `DEPTH` parameter for the `GETMETADATA` command.
+///
+/// When a non-zero depth is specified with the `GETMETADATA` command, it extends the list of entry
+/// values returned by the server. For each entry name specified in the `GETMETADATA` command, the
+/// server returns the value of the specified entry name (if it exists), plus all entries below the
+/// entry name up to the specified `DEPTH`.
+///
+/// See also [RFC 5464, section 4.2.2](https://tools.ietf.org/html/rfc5464#section-4.2.2).
 #[derive(Debug, Copy, Clone)]
 pub enum MetadataDepth {
-    /// Depth 0 for get metadata
+    /// No entries below the specified entry are returned.
     Zero,
-    /// Depth 1 for get metadata
+    /// Only entries immediately below the specified entry are returned.
+    ///
+    /// Thus, a depth of one for an entry `/a` will match `/a` as well as its children entries
+    /// (e.g., `/a/b`), but will not match grandchildren entries (e.g., `/a/b/c`).
     One,
-    /// Depth infinity for get metadata
-    Inf,
+    /// All entries below the specified entry are returned
+    Infinity,
 }
 
 impl Default for MetadataDepth {
@@ -52,7 +58,7 @@ impl MetadataDepth {
         match self {
             MetadataDepth::Zero => return "0",
             MetadataDepth::One => return "1",
-            MetadataDepth::Inf => return "infinity",
+            MetadataDepth::Infinity => return "infinity",
         }
     }
 }
@@ -159,7 +165,7 @@ mod tests {
             &mut session,
             "",
             &["/shared/vendor/vendor.coi", "/shared/comment"],
-            MetadataDepth::Inf,
+            MetadataDepth::Infinity,
             Option::None,
         );
 
