@@ -5,6 +5,10 @@
 //! check the [CI
 //! results](https://dev.azure.com/jonhoo/jonhoo/_build/latest?definitionId=11&branchName=master)).
 //!
+//! **This crate is looking for maintainers — reach out to [@jonhoo] if you're interested.**
+//!
+//! [@jonhoo]: https://thesquareplanet.com/
+//!
 //! To connect, use the [`connect`] function. This gives you an unauthenticated [`Client`]. You can
 //! then use [`Client::login`] or [`Client::authenticate`] to perform username/password or
 //! challenge/response authentication respectively. This in turn gives you an authenticated
