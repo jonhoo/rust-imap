@@ -44,6 +44,6 @@ required-features = ["default"]
 name = "imap_integration"
 required-features = ["default"]
 
-[patch.crates-io]
-# https://github.com/djc/tokio-imap/pull/115
-imap-proto = { git = "https://github.com/jonhoo/tokio-imap.git", branch = "moo" }
+# [patch.crates-io]
+# # https://github.com/djc/tokio-imap/pull/115
+# imap-proto = { git = "https://github.com/jonhoo/tokio-imap.git", branch = "moo" }
