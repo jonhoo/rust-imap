@@ -68,14 +68,13 @@ jobs:
      - template: install-rust.yml@templates
      - script: cargo test --tests
        displayName: cargo test
-# https://github.com/greenmail-mail-test/greenmail/issues/284
-# - template: coverage.yml@templates
-#   parameters:
-#     token: $(CODECOV_TOKEN_SECRET)
-#     services:
-#       greenmail: greenmail
-#     envs:
-#       TEST_HOST: greenmail
+ - template: coverage.yml@templates
+   parameters:
+     token: $(CODECOV_TOKEN_SECRET)
+     services:
+       greenmail: greenmail
+     envs:
+       TEST_HOST: greenmail
 
 resources:
   repositories:
