@@ -10,7 +10,7 @@ use std::str;
 use std::sync::mpsc;
 
 use super::authenticator::Authenticator;
-use super::error::{Error, ParseError, Result, ValidateError};
+use super::error::{Error, No, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
@@ -1309,12 +1309,27 @@ impl<T: Read + Write> Session<T> {
     /// a selected mailbox whose status has changed. See the note on [unilateral server responses
     /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that you *may* see
     /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
+    ///
+    /// The response includes the final [`Response::Done`], which starts at the returned index.
+    pub fn run<S: AsRef<str>>(&mut self, untagged_command: S) -> Result<(Vec<u8>, usize)> {
+        self.conn.run(untagged_command.as_ref())
+    }
+
+    /// Run a raw IMAP command and read back its response.
+    ///
+    /// Note that the server *is* allowed to unilaterally send things to the client for messages in
+    /// a selected mailbox whose status has changed. See the note on [unilateral server responses
+    /// in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7). This means that you *may* see
+    /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
+    ///
+    /// The response does not include the final [`Response::Done`].
     pub fn run_command_and_read_response<S: AsRef<str>>(
         &mut self,
         untagged_command: S,
     ) -> Result<Vec<u8>> {
-        self.conn
-            .run_command_and_read_response(untagged_command.as_ref())
+        let (mut data, ok) = self.run(untagged_command)?;
+        data.truncate(ok);
+        Ok(data)
     }
 }
 
@@ -1342,17 +1357,26 @@ impl<T: Read + Write> Connection<T> {
     }
 
     fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
+        let (mut data, ok) = self.run(untagged_command)?;
+        data.truncate(ok);
+        Ok(data)
+    }
+
+    fn run(&mut self, untagged_command: &str) -> Result<(Vec<u8>, usize)> {
         self.run_command(untagged_command)?;
         self.read_response()
     }
 
-    pub(crate) fn read_response(&mut self) -> Result<Vec<u8>> {
+    pub(crate) fn read_response(&mut self) -> Result<(Vec<u8>, usize)> {
         let mut v = Vec::new();
-        self.read_response_onto(&mut v)?;
-        Ok(v)
+        let ok = self.read_response_onto(&mut v)?;
+        Ok((v, ok))
     }
 
-    pub(crate) fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<()> {
+    /// Read responses until a Response::Done is encountered.
+    ///
+    /// The `Done` is included in `data`, and the index of the `Done` is returned.
+    pub(crate) fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<usize> {
         let mut continue_from = None;
         let mut try_first = !data.is_empty();
         let match_tag = format!("{}{}", TAG_PREFIX, self.tag);
@@ -1400,8 +1424,7 @@ impl<T: Read + Write> Connection<T> {
 
             match break_with {
                 Some(Ok(_)) => {
-                    data.truncate(line_start);
-                    break Ok(());
+                    break Ok(line_start);
                 }
                 Some(Err((status, expl))) => {
                     use imap_proto::Status;
@@ -1412,9 +1435,10 @@ impl<T: Read + Write> Connection<T> {
                             ));
                         }
                         Status::No => {
-                            break Err(Error::No(
-                                expl.unwrap_or_else(|| "no explanation given".to_string()),
-                            ));
+                            break Err(Error::No(No {
+                                information: expl
+                                    .unwrap_or_else(|| "no explanation given".to_string()),
+                            }));
                         }
                         _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
                     }

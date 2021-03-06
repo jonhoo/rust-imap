@@ -1,5 +1,13 @@
 //! Adds support for the IMAP METADATA extension specificed in [RFC
 //! 5464](https://tools.ietf.org/html/rfc5464).
+//!
+//! Mailboxes or the server as a whole may have zero or more annotations associated with them. An
+//! annotation contains a uniquely named entry, which has a value. Annotations can be added to
+//! mailboxes when a mailbox name is provided as the first argument to [`set_metadata`], or to the
+//! server as a whole when the first argument is `None`.
+//!
+//! For example, a general comment being added to a mailbox may have an entry name of "/comment"
+//! and a value of "Really useful mailbox".
 
 use crate::client::*;
 use crate::error::{Error, ParseError, Result};
@@ -98,21 +106,63 @@ fn parse_metadata<'a>(
 }
 
 impl<T: Read + Write> Session<T> {
-    /// Sends GETMETADATA command of the METADATA extension to IMAP protocol
-    /// to the server and returns the list of entries and their values.
-    /// Server support for the extension is indicated by METADATA capability.
-    /// @param mbox mailbox name. When the mailbox name is the empty string, this command retrieves server annotations. When the mailbox name is not empty, this command retrieves annotations on the specified mailbox.
-    /// @param entries list of metadata entries to be retrieved.
-    /// @param depth GETMETADATA DEPTH option, specifies if children entries are to be retrieved as well.
-    /// @param maxside GETMETADATA MAXSIZE option. When the MAXSIZE option is specified with the GETMETADATA command, it restricts which entry values are returned by the server. Only entry values that are less than or equal in octet size to the specified MAXSIZE limit are returned.
-    /// See [RFC 5464, section 4.2](https://tools.ietf.org/html/rfc5464#section-4.2) for more details.
+    /// Retrieve server or mailbox annotations.
+    ///
+    /// This uses the `GETMETADATA` command defined in the METADATA extension of the IMAP protocol.
+    /// See [RFC 5464, section 4.2](https://tools.ietf.org/html/rfc5464#section-4.2) for more
+    /// details. Server support for the extension is indicated by the `METADATA` capability.
+    ///
+    /// When the mailbox name is empty, this command retrieves server annotations. Otherwise,
+    /// this command retrieves annotations on the specified mailbox. If the `METADATA-SERVER`
+    /// capability is present, server metadata is supported, but not mailbox metadata.
+    ///
+    /// The `entries` list specifies which annotations should be fetched. The RFC defines a number
+    /// of standard names in [Section 3.2.1](https://tools.ietf.org/html/rfc5464#section-3.2.1):
+    ///
+    /// - Server entries (when `mailbox` is `None`):
+    ///   - `/shared/comment`: A comment or note that is associated with the server and that is
+    ///     shared with authorized users of the server.
+    ///   - `/shared/admin`: Indicates a method for contacting the server administrator. The value
+    ///     MUST be a URI (e.g., a `mailto:` or `tel:` URL). This entry is always read-only --
+    ///     clients cannot change it. It is visible to authorized users of the system.
+    ///   - `/shared/vendor/<vendor-token>`: Defines the top level of shared entries associated
+    ///     with the server, as created by a particular product of some vendor. This entry can be
+    ///     used by vendors to provide server- or client-specific annotations. The vendor-token
+    ///     MUST be registered with IANA, using the Application Configuration Access Protocol
+    ///     (ACAP) [RFC2244] vendor subtree registry.
+    ///   - `/private/vendor/<vendor-token>`: Defines the top level of private entries associated
+    ///     with the server, as created by a particular product of some vendor. This entry can be
+    ///     used by vendors to provide server- or client-specific annotations. The vendor-token
+    ///     MUST be registered with IANA, using the ACAP [RFC2244] vendor subtree registry.
+    /// - Mailbox entries (when `mailbox` is `Some`):
+    ///   - `/shared/comment`: Defines a shared comment or note associated with a mailbox.
+    ///   - `/private/comment`: Defines a private (per-user) comment or note associated with a
+    ///     mailbox.
+    ///   - `/shared/vendor/<vendor-token>`: Defines the top level of shared entries associated
+    ///     with a specific mailbox, as created by a particular product of some vendor.  This entry
+    ///     can be used by vendors to provide client-specific annotations.  The vendor-token MUST
+    ///     be registered with IANA, using the ACAP [RFC2244] vendor subtree registry.
+    ///   - `/private/vendor/<vendor-token>`: Defines the top level of private entries associated
+    ///     with a specific mailbox, as created by a particular product of some vendor.  This entry
+    ///     can be used by vendors to provide client- specific annotations.  The vendor-token MUST
+    ///     be registered with IANA, using the ACAP [RFC2244] vendor subtree registry.
+    ///
+    /// [RFC2244]: https://tools.ietf.org/html/rfc2244
+    ///
+    /// The `depth` argument dictates whether metadata on children of the requested entity are
+    /// returned. See [`MetadataDepth`] for details
+    ///
+    /// When `maxsize` is specified, it restricts which entry values are returned by the server.
+    /// Only entries that are less than or equal in octet size to the specified `maxsize` are
+    /// returned. If there are any entries with values larger than `maxsize`, this method also
+    /// returns the size of the biggest entry requested by the client that exceeded `maxsize`.
     pub fn get_metadata(
         &mut self,
-        mbox: impl AsRef<str>,
+        mailbox: Option<&str>,
         entries: &[impl AsRef<str>],
         depth: MetadataDepth,
         maxsize: Option<usize>,
-    ) -> Result<Vec<Metadata>> {
+    ) -> Result<(Vec<Metadata>, Option<usize>)> {
         let v: Vec<String> = entries
             .iter()
             .map(|e| validate_str(e.as_ref()).unwrap())
@@ -127,19 +177,65 @@ impl<T: Read + Write> Session<T> {
             _ => {}
         }
 
-        command.push_str(format!(") {} ({})", validate_str(mbox.as_ref()).unwrap(), s).as_str());
-        self.run_command_and_read_response(command)
-            .and_then(|lines| parse_metadata(&lines[..], &mut self.unsolicited_responses_tx))
+        command.push_str(
+            format!(
+                ") {} ({})",
+                mailbox
+                    .map(|mbox| validate_str(mbox.as_ref()).unwrap())
+                    .unwrap_or_else(|| "\"\"".to_string()),
+                s
+            )
+            .as_str(),
+        );
+        let (lines, ok) = self.run(command)?;
+        let meta = parse_metadata(&lines[..ok], &mut self.unsolicited_responses_tx)?;
+        let missed = if maxsize.is_some() {
+            if let Ok((_, Response::Done { code, .. })) =
+                imap_proto::parser::parse_response(&lines[ok..])
+            {
+                match code {
+                    None => None,
+                    // TODO: https://github.com/djc/tokio-imap/issues/113
+                    Some(_) => {}
+                }
+            } else {
+                unreachable!("already parsed as Done by Client::run");
+            }
+        } else {
+            None
+        };
+        Ok((meta, missed))
     }
 
-    /// Sends SETMETADATA command of the METADATA extension to IMAP protocol
-    /// to the server and checks if it was executed successfully.
-    /// Server support for the extension is indicated by METADATA capability.
-    /// @param mbox mailbox name. When the mailbox name is the empty string, this command sets server annotations. When the mailbox name is not empty, this command sets annotations on the specified mailbox.
-    /// @param keyvl list of entry value pairs to be set.
+    /// Set annotations.
+    ///
+    /// This command sets the specified list of entries by adding or replacing the specified values
+    /// provided, on the specified existing mailboxes or on the server (if the mailbox argument is
+    /// `None`). Clients can use `None` for the value of entries it wants to remove.
+    ///
+    /// If the server is unable to set an annotation because the size of its
+    /// value is too large, this command will fail with a [`Error::No`].
+    // TODO: https://github.com/djc/tokio-imap/issues/113
+    // with a "[METADATA MAXSIZE NNN]" response code when NNN is the maximum octet count that it is
+    // willing to accept.
+    ///
+    /// If the server is unable to set a new annotation because the maximum
+    /// number of allowed annotations has already been reached, this command will also fail with an
+    /// [`Error::No`].
+    // TODO: https://github.com/djc/tokio-imap/issues/113
+    // with a "[METADATA TOOMANY]" response code.
+    ///
+    /// If the server is unable to set a new annotation because it does not support private
+    /// annotations on one of the specified mailboxes, you guess it, you'll get an [`Error::No`].
+    // TODO: https://github.com/djc/tokio-imap/issues/113
+    // with a "[METADATA NOPRIVATE]" response code.
+    ///
+    /// When any one annotation fails to be set and [`Error::No`] is returned, the server will not
+    /// change the values for other annotations specified.
+    ///
     /// See [RFC 5464, section 4.3](https://tools.ietf.org/html/rfc5464#section-4.3)
-    pub fn set_metadata(&mut self, mbox: impl AsRef<str>, keyval: &[Metadata]) -> Result<()> {
-        let v: Vec<String> = keyval
+    pub fn set_metadata(&mut self, mbox: impl AsRef<str>, annotations: &[Metadata]) -> Result<()> {
+        let v: Vec<String> = annotations
             .iter()
             .map(|metadata| metadata.format_as_cmd_list_item())
             .collect();

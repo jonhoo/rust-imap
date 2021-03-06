@@ -19,6 +19,13 @@ use native_tls::HandshakeError as TlsHandshakeError;
 /// A convenience wrapper around `Result` for `imap::Error`.
 pub type Result<T> = result::Result<T, Error>;
 
+/// A `NO` response from the server, which may contain additional metadata about the error.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct No {
+    pub information: String,
+}
+
 /// A set of errors that can occur in the IMAP client
 #[derive(Debug)]
 #[non_exhaustive]
@@ -34,7 +41,7 @@ pub enum Error {
     /// A BAD response from the IMAP server.
     Bad(String),
     /// A NO response from the IMAP server.
-    No(String),
+    No(No),
     /// The connection was terminated unexpectedly.
     ConnectionLost,
     /// Error parsing a server response.
