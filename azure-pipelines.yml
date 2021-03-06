@@ -74,7 +74,7 @@ jobs:
      services:
        greenmail: greenmail
      envs:
-       TEST_HOST: greenmail
+       TEST_HOST: 127.0.0.1
 
 resources:
   repositories:
@@ -85,7 +85,7 @@ resources:
       endpoint: jonhoo
   containers:
    - container: greenmail
-     image: greenmail/standalone:1.5.13
+     image: greenmail/standalone:1.6.2
      ports:
        - 3025:3025
        - 3110:3110
