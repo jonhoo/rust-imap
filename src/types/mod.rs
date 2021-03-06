@@ -282,6 +282,15 @@ pub enum UnsolicitedResponse {
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(Seq),
 
+    /// An unsolicited METADATA response (https://tools.ietf.org/html/rfc5464#section-4.4.2)
+    /// that reports a change in a server or mailbox annotation.
+    Metadata {
+        /// Mailbox name for which annotations were changed.
+        mailbox: String,
+        /// List of annotations that were changed.
+        metadata_entries: Vec<String>,
+    },
+
     /// An unsolicited [`VANISHED` response](https://tools.ietf.org/html/rfc7162#section-3.2.10)
     /// that reports a sequence-set of `UID`s that have been expunged from the mailbox.
     ///

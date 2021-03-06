@@ -343,7 +343,7 @@ pub fn parse_ids(
 
 // check if this is simply a unilateral server response
 // (see Section 7 of RFC 3501):
-fn handle_unilateral<'a>(
+pub(crate) fn handle_unilateral<'a>(
     res: Response<'a>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
 ) -> Option<Response<'a>> {
@@ -375,6 +375,17 @@ fn handle_unilateral<'a>(
         Response::Expunge(n) => {
             unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
         }
+        Response::MailboxData(MailboxDatum::MetadataUnsolicited {
+            mailbox,
+            values,
+        }) => {
+            unsolicited
+                .send(UnsolicitedResponse::Metadata {
+                    mailbox: mailbox.to_string(),
+                    metadata_entries: values.iter().map(|s| s.to_string()).collect(),
+                })
+                .unwrap();
+        }
         Response::Vanished { earlier, uids } => {
             unsolicited
                 .send(UnsolicitedResponse::Vanished { earlier, uids })
@@ -390,10 +401,16 @@ fn handle_unilateral<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use imap_proto::types::*;
 
     #[test]
     fn parse_capability_test() {
-        let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
+        let expected_capabilities = vec![
+            Capability::Imap4rev1,
+            Capability::Atom("STARTTLS"),
+            Capability::Auth("GSSAPI"),
+            Capability::Atom("LOGINDISABLED"),
+        ];
         let lines = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
         let (mut send, recv) = mpsc::channel();
         let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
@@ -401,14 +418,14 @@ mod tests {
         assert!(recv.try_recv().is_err());
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
-            assert!(capabilities.has_str(e));
+            assert!(capabilities.has(&e));
         }
     }
 
     #[test]
     fn parse_capability_case_insensitive_test() {
         // Test that "IMAP4REV1" (instead of "IMAP4rev1") is accepted
-        let expected_capabilities = vec!["IMAP4rev1", "STARTTLS"];
+        let expected_capabilities = vec![Capability::Imap4rev1, Capability::Atom("STARTTLS")];
         let lines = b"* CAPABILITY IMAP4REV1 STARTTLS\r\n";
         let (mut send, recv) = mpsc::channel();
         let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
@@ -416,7 +433,7 @@ mod tests {
         assert!(recv.try_recv().is_err());
         assert_eq!(capabilities.len(), 2);
         for e in expected_capabilities {
-            assert!(capabilities.has_str(e));
+            assert!(capabilities.has(&e));
         }
     }
 
@@ -509,7 +526,12 @@ mod tests {
 
     #[test]
     fn parse_capabilities_w_unilateral() {
-        let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
+        let expected_capabilities = vec![
+            Capability::Imap4rev1,
+            Capability::Atom("STARTTLS"),
+            Capability::Auth("GSSAPI"),
+            Capability::Atom("LOGINDISABLED"),
+        ];
         let lines = b"\
                     * CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
                     * STATUS dev.github (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n\
@@ -519,7 +541,7 @@ mod tests {
 
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
-            assert!(capabilities.has_str(e));
+            assert!(capabilities.has(&e));
         }
 
         assert_eq!(
