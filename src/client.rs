@@ -599,12 +599,8 @@ impl<T: Read + Write> Session<T> {
     /// `EXISTS`, `FETCH`, and `EXPUNGE` responses. You can get them from the
     /// `unsolicited_responses` channel of the [`Session`](struct.Session.html).
     pub fn select<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
-        // TODO: also note READ/WRITE vs READ-only mode!
-        self.run_command_and_read_response(&format!(
-            "SELECT {}",
-            validate_str(mailbox_name.as_ref())?
-        ))
-        .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
+        self.run(&format!("SELECT {}", validate_str(mailbox_name.as_ref())?))
+            .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
     /// The `EXAMINE` command is identical to [`Session::select`] and returns the same output;
@@ -612,11 +608,8 @@ impl<T: Read + Write> Session<T> {
     /// of the mailbox, including per-user state, will happen in a mailbox opened with `examine`;
     /// in particular, messagess cannot lose [`Flag::Recent`] in an examined mailbox.
     pub fn examine<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
-        self.run_command_and_read_response(&format!(
-            "EXAMINE {}",
-            validate_str(mailbox_name.as_ref())?
-        ))
-        .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
+        self.run(&format!("EXAMINE {}", validate_str(mailbox_name.as_ref())?))
+            .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
     /// Fetch retrieves data associated with a set of messages in the mailbox.
@@ -1756,6 +1749,7 @@ mod tests {
             uid_next: Some(2),
             uid_validity: Some(1257842737),
             highest_mod_seq: None,
+            is_read_only: true,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 EXAMINE {}\r\n", quote!(mailbox_name));
@@ -1803,6 +1797,7 @@ mod tests {
             uid_next: Some(2),
             uid_validity: Some(1257842737),
             highest_mod_seq: None,
+            is_read_only: true,
         };
         let mailbox_name = "INBOX";
         let command = format!("a1 SELECT {}\r\n", quote!(mailbox_name));

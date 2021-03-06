@@ -40,6 +40,10 @@ pub struct Mailbox {
     /// The highest mod sequence for this mailbox. Used with
     /// [Conditional STORE](https://tools.ietf.org/html/rfc4551#section-3.1.1).
     pub highest_mod_seq: Option<u64>,
+
+    /// The mailbox is selected read-only, or its access while selected has changed from read-write
+    /// to read-only.
+    pub is_read_only: bool,
 }
 
 impl Default for Mailbox {
@@ -53,6 +57,7 @@ impl Default for Mailbox {
             uid_next: None,
             uid_validity: None,
             highest_mod_seq: None,
+            is_read_only: false,
         }
     }
 }
@@ -62,7 +67,7 @@ impl fmt::Display for Mailbox {
         write!(
             f,
             "flags: {:?}, exists: {}, recent: {}, unseen: {:?}, permanent_flags: {:?},\
-             uid_next: {:?}, uid_validity: {:?}, highest_mod_seq: {:?}",
+             uid_next: {:?}, uid_validity: {:?}, highest_mod_seq: {:?}, is_read_only: {:?}",
             self.flags,
             self.exists,
             self.recent,
@@ -71,6 +76,7 @@ impl fmt::Display for Mailbox {
             self.uid_next,
             self.uid_validity,
             self.highest_mod_seq,
+            self.is_read_only,
         )
     }
 }

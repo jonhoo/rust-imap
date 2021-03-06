@@ -1,4 +1,4 @@
-use imap_proto::{self, MailboxDatum, Response};
+use imap_proto::{MailboxDatum, Response, ResponseCode};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
@@ -236,6 +236,17 @@ pub fn parse_mailbox(
 
     loop {
         match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Done { status, code, .. })) => {
+                assert!(rest.is_empty());
+                lines = rest;
+
+                // We wouldn't get to parsing if this wasn't an Ok response.
+                assert_eq!(status, imap_proto::Status::Ok);
+
+                if let Some(ResponseCode::ReadOnly) = code {
+                    mailbox.is_read_only = true;
+                }
+            }
             Ok((rest, Response::Data { status, code, .. })) => {
                 lines = rest;
 
@@ -245,7 +256,6 @@ pub fn parse_mailbox(
                     unreachable!();
                 }
 
-                use imap_proto::ResponseCode;
                 match code {
                     Some(ResponseCode::HighestModSeq(seq)) => {
                         mailbox.highest_mod_seq = Some(seq);
