@@ -6,8 +6,8 @@ pub struct Name {
     // Note that none of these fields are *actually* 'static.
     // Rather, they are tied to the lifetime of the `ZeroCopy` that contains this `Name`.
     pub(crate) attributes: Vec<NameAttribute<'static>>,
-    pub(crate) delimiter: Option<&'static str>,
-    pub(crate) name: &'static str,
+    pub(crate) delimiter: Option<Cow<'static, str>>,
+    pub(crate) name: Cow<'static, str>,
 }
 
 /// An attribute set for an IMAP name.
@@ -56,6 +56,16 @@ impl<'a> From<String> for NameAttribute<'a> {
     }
 }
 
+impl<'a> From<Cow<'a, str>> for NameAttribute<'a> {
+    fn from(s: Cow<'a, str>) -> Self {
+        if let Some(f) = NameAttribute::system(&*s) {
+            f
+        } else {
+            NameAttribute::Custom(s)
+        }
+    }
+}
+
 impl<'a> From<&'a str> for NameAttribute<'a> {
     fn from(s: &'a str) -> Self {
         if let Some(f) = NameAttribute::system(s) {
@@ -77,7 +87,7 @@ impl Name {
     /// of naming hierarchy.  All children of a top-level hierarchy node use the same
     /// separator character.  `None` means that no hierarchy exists; the name is a "flat" name.
     pub fn delimiter(&self) -> Option<&str> {
-        self.delimiter
+        self.delimiter.as_deref()
     }
 
     /// The name represents an unambiguous left-to-right hierarchy, and are valid for use as a
@@ -85,6 +95,6 @@ impl Name {
     /// the name is also valid as an argument for commands, such as `SELECT`, that accept mailbox
     /// names.
     pub fn name(&self) -> &str {
-        self.name
+        &*self.name
     }
 }

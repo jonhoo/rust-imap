@@ -10,7 +10,7 @@ use std::str::Utf8Error;
 
 use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
-use imap_proto::Response;
+use imap_proto::{types::ResponseCode, Response};
 #[cfg(feature = "tls")]
 use native_tls::Error as TlsError;
 #[cfg(feature = "tls")]
@@ -19,11 +19,36 @@ use native_tls::HandshakeError as TlsHandshakeError;
 /// A convenience wrapper around `Result` for `imap::Error`.
 pub type Result<T> = result::Result<T, Error>;
 
-/// A `NO` response from the server, which may contain additional metadata about the error.
+/// A BAD response from the server, which indicates an error message from the server.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct Bad {
+    /// Human-redable message included with the Bad response.
+    pub information: String,
+    /// A more specific error status code included with the Bad response.
+    pub code: Option<ResponseCode<'static>>,
+}
+
+impl fmt::Display for Bad {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.information)
+    }
+}
+
+/// A NO response from the server, which indicates an operational error message from the server.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct No {
+    /// Human-redable message included with the NO response.
     pub information: String,
+    /// A more specific error status code included with the NO response.
+    pub code: Option<ResponseCode<'static>>,
+}
+
+impl fmt::Display for No {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.information)
+    }
 }
 
 /// A set of errors that can occur in the IMAP client
@@ -39,7 +64,7 @@ pub enum Error {
     #[cfg(feature = "tls")]
     Tls(TlsError),
     /// A BAD response from the IMAP server.
-    Bad(String),
+    Bad(Bad),
     /// A NO response from the IMAP server.
     No(No),
     /// The connection was terminated unexpectedly.

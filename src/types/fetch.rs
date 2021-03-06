@@ -40,36 +40,30 @@ impl Fetch {
     /// The bytes that make up the header of this message, if `BODY[HEADER]`, `BODY.PEEK[HEADER]`,
     /// or `RFC822.HEADER` was included in the `query` argument to `FETCH`.
     pub fn header(&self) -> Option<&[u8]> {
-        self.fetch
-            .iter()
-            .filter_map(|av| match av {
-                AttributeValue::BodySection {
-                    section: Some(SectionPath::Full(MessageSection::Header)),
-                    data: Some(hdr),
-                    ..
-                }
-                | AttributeValue::Rfc822Header(Some(hdr)) => Some(*hdr),
-                _ => None,
-            })
-            .next()
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::BodySection {
+                section: Some(SectionPath::Full(MessageSection::Header)),
+                data: Some(hdr),
+                ..
+            }
+            | AttributeValue::Rfc822Header(Some(hdr)) => Some(&**hdr),
+            _ => None,
+        })
     }
 
     /// The bytes that make up this message, included if `BODY[]` or `RFC822` was included in the
     /// `query` argument to `FETCH`. The bytes SHOULD be interpreted by the client according to the
     /// content transfer encoding, body type, and subtype.
     pub fn body(&self) -> Option<&[u8]> {
-        self.fetch
-            .iter()
-            .filter_map(|av| match av {
-                AttributeValue::BodySection {
-                    section: None,
-                    data: Some(body),
-                    ..
-                }
-                | AttributeValue::Rfc822(Some(body)) => Some(*body),
-                _ => None,
-            })
-            .next()
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::BodySection {
+                section: None,
+                data: Some(body),
+                ..
+            }
+            | AttributeValue::Rfc822(Some(body)) => Some(&**body),
+            _ => None,
+        })
     }
 
     /// The bytes that make up the text of this message, included if `BODY[TEXT]`, `RFC822.TEXT`,
@@ -77,18 +71,15 @@ impl Fetch {
     /// interpreted by the client according to the content transfer encoding, body type, and
     /// subtype.
     pub fn text(&self) -> Option<&[u8]> {
-        self.fetch
-            .iter()
-            .filter_map(|av| match av {
-                AttributeValue::BodySection {
-                    section: Some(SectionPath::Full(MessageSection::Text)),
-                    data: Some(body),
-                    ..
-                }
-                | AttributeValue::Rfc822Text(Some(body)) => Some(*body),
-                _ => None,
-            })
-            .next()
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::BodySection {
+                section: Some(SectionPath::Full(MessageSection::Text)),
+                data: Some(body),
+                ..
+            }
+            | AttributeValue::Rfc822Text(Some(body)) => Some(&**body),
+            _ => None,
+        })
     }
 
     /// The envelope of this message, if `ENVELOPE` was included in the `query` argument to
@@ -99,13 +90,10 @@ impl Fetch {
     /// The full description of the format of the envelope is given in [RFC 3501 section
     /// 7.4.2](https://tools.ietf.org/html/rfc3501#section-7.4.2).
     pub fn envelope(&self) -> Option<&Envelope<'_>> {
-        self.fetch
-            .iter()
-            .filter_map(|av| match av {
-                AttributeValue::Envelope(env) => Some(&**env),
-                _ => None,
-            })
-            .next()
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::Envelope(env) => Some(&**env),
+            _ => None,
+        })
     }
 
     /// Extract the bytes that makes up the given `BOD[<section>]` of a `FETCH` response.
@@ -113,17 +101,14 @@ impl Fetch {
     /// See [section 7.4.2 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-7.4.2) for
     /// details.
     pub fn section(&self, path: &SectionPath) -> Option<&[u8]> {
-        self.fetch
-            .iter()
-            .filter_map(|av| match av {
-                AttributeValue::BodySection {
-                    section: Some(sp),
-                    data: Some(data),
-                    ..
-                } if sp == path => Some(*data),
-                _ => None,
-            })
-            .next()
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::BodySection {
+                section: Some(sp),
+                data: Some(data),
+                ..
+            } if sp == path => Some(&**data),
+            _ => None,
+        })
     }
 
     /// Extract the `INTERNALDATE` of a `FETCH` response
@@ -133,11 +118,10 @@ impl Fetch {
     pub fn internal_date(&self) -> Option<DateTime<FixedOffset>> {
         self.fetch
             .iter()
-            .filter_map(|av| match av {
-                AttributeValue::InternalDate(date_time) => Some(*date_time),
+            .find_map(|av| match av {
+                AttributeValue::InternalDate(date_time) => Some(&**date_time),
                 _ => None,
             })
-            .next()
             .and_then(
                 |date_time| match DateTime::parse_from_str(date_time, DATE_TIME_FORMAT) {
                     Ok(date_time) => Some(date_time),
@@ -151,12 +135,9 @@ impl Fetch {
     /// See [section 2.3.6 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.6) for
     /// details.
     pub fn bodystructure<'a>(&self) -> Option<&BodyStructure<'a>> {
-        self.fetch
-            .iter()
-            .filter_map(|av| match av {
-                AttributeValue::BodyStructure(bs) => Some(bs),
-                _ => None,
-            })
-            .next()
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::BodyStructure(bs) => Some(bs),
+            _ => None,
+        })
     }
 }

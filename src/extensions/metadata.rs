@@ -3,8 +3,9 @@
 //!
 //! Mailboxes or the server as a whole may have zero or more annotations associated with them. An
 //! annotation contains a uniquely named entry, which has a value. Annotations can be added to
-//! mailboxes when a mailbox name is provided as the first argument to [`set_metadata`], or to the
-//! server as a whole when the first argument is `None`.
+//! mailboxes when a mailbox name is provided as the first argument to
+//! [`set_metadata`](Session::set_metadata), or to the server as a whole when the first argument is
+//! `None`.
 //!
 //! For example, a general comment being added to a mailbox may have an entry name of "/comment"
 //! and a value of "Really useful mailbox".
@@ -13,9 +14,13 @@ use crate::client::*;
 use crate::error::{Error, ParseError, Result};
 use crate::parse::handle_unilateral;
 use crate::types::*;
-use imap_proto::types::{MailboxDatum, Metadata, Response};
+use imap_proto::types::{MailboxDatum, Metadata, Response, ResponseCode};
 use std::io::{Read, Write};
 use std::sync::mpsc;
+
+// for intra-doc links
+#[allow(unused_imports)]
+use crate::error::No;
 
 trait CmdListItemFormat {
     fn format_as_cmd_list_item(&self) -> String;
@@ -162,7 +167,7 @@ impl<T: Read + Write> Session<T> {
         entries: &[impl AsRef<str>],
         depth: MetadataDepth,
         maxsize: Option<usize>,
-    ) -> Result<(Vec<Metadata>, Option<usize>)> {
+    ) -> Result<(Vec<Metadata>, Option<u64>)> {
         let v: Vec<String> = entries
             .iter()
             .map(|e| validate_str(e.as_ref()).unwrap())
@@ -195,8 +200,8 @@ impl<T: Read + Write> Session<T> {
             {
                 match code {
                     None => None,
-                    // TODO: https://github.com/djc/tokio-imap/issues/113
-                    Some(_) => {}
+                    Some(ResponseCode::MetadataLongEntries(v)) => Some(v),
+                    Some(_) => None,
                 }
             } else {
                 unreachable!("already parsed as Done by Client::run");
@@ -213,22 +218,18 @@ impl<T: Read + Write> Session<T> {
     /// provided, on the specified existing mailboxes or on the server (if the mailbox argument is
     /// `None`). Clients can use `None` for the value of entries it wants to remove.
     ///
-    /// If the server is unable to set an annotation because the size of its
-    /// value is too large, this command will fail with a [`Error::No`].
-    // TODO: https://github.com/djc/tokio-imap/issues/113
-    // with a "[METADATA MAXSIZE NNN]" response code when NNN is the maximum octet count that it is
-    // willing to accept.
+    /// If the server is unable to set an annotation because the size of its value is too large,
+    /// this command will fail with a [`Error::No`] and its [status code](No::code) will be
+    /// [`ResponseCode::MetadataMaxSize`] where the contained value is the maximum octet count that
+    /// the server is willing to accept.
     ///
-    /// If the server is unable to set a new annotation because the maximum
-    /// number of allowed annotations has already been reached, this command will also fail with an
-    /// [`Error::No`].
-    // TODO: https://github.com/djc/tokio-imap/issues/113
-    // with a "[METADATA TOOMANY]" response code.
+    /// If the server is unable to set a new annotation because the maximum number of allowed
+    /// annotations has already been reached, this command will fail with an [`Error::No`] and its
+    /// [status code](No::code) will be [`ResponseCode::MetadataTooMany`].
     ///
     /// If the server is unable to set a new annotation because it does not support private
-    /// annotations on one of the specified mailboxes, you guess it, you'll get an [`Error::No`].
-    // TODO: https://github.com/djc/tokio-imap/issues/113
-    // with a "[METADATA NOPRIVATE]" response code.
+    /// annotations on one of the specified mailboxes, you guess it, you'll get an [`Error::No`] with
+    /// a [status code](No::code) of [`ResponseCode::MetadataNoPrivate`].
     ///
     /// When any one annotation fails to be set and [`Error::No`] is returned, the server will not
     /// change the values for other annotations specified.
@@ -257,16 +258,16 @@ mod tests {
         let mock_stream = MockStream::new(response.as_bytes().to_vec());
         let client = Client::new(mock_stream);
         let mut session = client.login("testuser", "pass").unwrap();
-        let r = get_metadata(
-            &mut session,
-            "",
+        let r = session.get_metadata(
+            None,
             &["/shared/vendor/vendor.coi", "/shared/comment"],
             MetadataDepth::Infinity,
             Option::None,
         );
 
         match r {
-            Ok(v) => {
+            Ok((v, missed)) => {
+                assert_eq!(missed, None);
                 assert_eq!(v.len(), 3);
                 assert_eq!(v[0].entry, "/shared/vendor/vendor.coi/a");
                 assert_eq!(v[0].value.as_ref().expect("None is not expected"), "AAA");

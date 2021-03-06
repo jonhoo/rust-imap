@@ -108,7 +108,9 @@ pub fn parse_fetches(
                 use imap_proto::AttributeValue;
                 match attr {
                     AttributeValue::Flags(flags) => {
-                        fetch.flags.extend(flags.iter().cloned().map(Flag::from));
+                        fetch
+                            .flags
+                            .extend(flags.iter().map(|f| Flag::from(f.to_string())));
                     }
                     AttributeValue::Uid(uid) => fetch.uid = Some(*uid),
                     AttributeValue::Rfc822Size(sz) => fetch.size = Some(*sz),
@@ -399,14 +401,15 @@ pub(crate) fn handle_unilateral<'a>(
 mod tests {
     use super::*;
     use imap_proto::types::*;
+    use std::borrow::Cow;
 
     #[test]
     fn parse_capability_test() {
         let expected_capabilities = vec![
             Capability::Imap4rev1,
-            Capability::Atom("STARTTLS"),
-            Capability::Auth("GSSAPI"),
-            Capability::Atom("LOGINDISABLED"),
+            Capability::Atom(Cow::Borrowed("STARTTLS")),
+            Capability::Auth(Cow::Borrowed("GSSAPI")),
+            Capability::Atom(Cow::Borrowed("LOGINDISABLED")),
         ];
         let lines = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
         let (mut send, recv) = mpsc::channel();
@@ -422,7 +425,10 @@ mod tests {
     #[test]
     fn parse_capability_case_insensitive_test() {
         // Test that "IMAP4REV1" (instead of "IMAP4rev1") is accepted
-        let expected_capabilities = vec![Capability::Imap4rev1, Capability::Atom("STARTTLS")];
+        let expected_capabilities = vec![
+            Capability::Imap4rev1,
+            Capability::Atom(Cow::Borrowed("STARTTLS")),
+        ];
         let lines = b"* CAPABILITY IMAP4REV1 STARTTLS\r\n";
         let (mut send, recv) = mpsc::channel();
         let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
@@ -525,9 +531,9 @@ mod tests {
     fn parse_capabilities_w_unilateral() {
         let expected_capabilities = vec![
             Capability::Imap4rev1,
-            Capability::Atom("STARTTLS"),
-            Capability::Auth("GSSAPI"),
-            Capability::Atom("LOGINDISABLED"),
+            Capability::Atom(Cow::Borrowed("STARTTLS")),
+            Capability::Auth(Cow::Borrowed("GSSAPI")),
+            Capability::Atom(Cow::Borrowed("LOGINDISABLED")),
         ];
         let lines = b"\
                     * CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\

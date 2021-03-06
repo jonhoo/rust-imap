@@ -141,17 +141,17 @@ fn inbox() {
     assert_ne!(fetch.uid, None);
     assert_eq!(fetch.size, Some(138));
     let e = fetch.envelope().unwrap();
-    assert_eq!(e.subject, Some(&b"My first e-mail"[..]));
+    assert_eq!(e.subject, Some(b"My first e-mail"[..].into()));
     assert_ne!(e.from, None);
     assert_eq!(e.from.as_ref().unwrap().len(), 1);
     let from = &e.from.as_ref().unwrap()[0];
-    assert_eq!(from.mailbox, Some(&b"sender"[..]));
-    assert_eq!(from.host, Some(&b"localhost"[..]));
+    assert_eq!(from.mailbox, Some(b"sender"[..].into()));
+    assert_eq!(from.host, Some(b"localhost"[..].into()));
     assert_ne!(e.to, None);
     assert_eq!(e.to.as_ref().unwrap().len(), 1);
     let to = &e.to.as_ref().unwrap()[0];
-    assert_eq!(to.mailbox, Some(&b"inbox"[..]));
-    assert_eq!(to.host, Some(&b"localhost"[..]));
+    assert_eq!(to.mailbox, Some(b"inbox"[..].into()));
+    assert_eq!(to.host, Some(b"localhost"[..].into()));
     let date_opt = fetch.internal_date();
     assert!(date_opt.is_some());
 
@@ -209,7 +209,7 @@ fn inbox_uid() {
     let fetch = &fetch[0];
     assert_eq!(fetch.uid, Some(uid));
     let e = fetch.envelope().unwrap();
-    assert_eq!(e.subject, Some(&b"My first e-mail"[..]));
+    assert_eq!(e.subject, Some(b"My first e-mail"[..].into()));
     let date_opt = fetch.internal_date();
     assert!(date_opt.is_some());
 
@@ -269,7 +269,7 @@ fn append() {
     let fetch = &fetch[0];
     assert_eq!(fetch.uid, Some(uid));
     let e = fetch.envelope().unwrap();
-    assert_eq!(e.subject, Some(&b"My second e-mail"[..]));
+    assert_eq!(e.subject, Some(b"My second e-mail"[..].into()));
 
     // and let's delete it to clean up
     c.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
@@ -320,7 +320,7 @@ fn append_with_flags() {
     let fetch = &fetch[0];
     assert_eq!(fetch.uid, Some(uid));
     let e = fetch.envelope().unwrap();
-    assert_eq!(e.subject, Some(&b"My third e-mail"[..]));
+    assert_eq!(e.subject, Some(b"My third e-mail"[..].into()));
 
     // check the flags
     let setflags = fetch.flags();

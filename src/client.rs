@@ -1,5 +1,6 @@
 use bufstream::BufStream;
 use chrono::{DateTime, FixedOffset};
+use imap_proto::Response;
 #[cfg(feature = "tls")]
 use native_tls::{TlsConnector, TlsStream};
 use std::collections::HashSet;
@@ -10,7 +11,7 @@ use std::str;
 use std::sync::mpsc;
 
 use super::authenticator::Authenticator;
-use super::error::{Error, No, ParseError, Result, ValidateError};
+use super::error::{Bad, Error, No, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
@@ -847,11 +848,11 @@ impl<T: Read + Write> Session<T> {
     /// either does not have [`Flag::Deleted`] set or has a [`Uid`] that is not included in the
     /// specified sequence set, it is not affected.
     ///
-    /// This command is particularly useful for disconnected use clients. By using [`uid_expunge`]
-    /// instead of [`expunge`] when resynchronizing with the server, the client can ensure that it
-    /// does not inadvertantly remove any messages that have been marked as [`Flag::Deleted`] by
-    /// other clients between the time that the client was last connected and the time the client
-    /// resynchronizes.
+    /// This command is particularly useful for disconnected use clients. By using `uid_expunge`
+    /// instead of [`expunge`](Session::expunge) when resynchronizing with the server, the client
+    /// can ensure that it does not inadvertantly remove any messages that have been marked as
+    /// [`Flag::Deleted`] by other clients between the time that the client was last connected and
+    /// the time the client resynchronizes.
     ///
     /// This command requires that the server supports [RFC
     /// 4315](https://tools.ietf.org/html/rfc4315) as indicated by the `UIDPLUS` capability (see
@@ -1391,7 +1392,7 @@ impl<T: Read + Write> Connection<T> {
             };
 
             let break_with = {
-                use imap_proto::{Response, Status};
+                use imap_proto::Status;
                 let line = &data[line_start..];
 
                 match imap_proto::parser::parse_response(line) {
@@ -1401,16 +1402,19 @@ impl<T: Read + Write> Connection<T> {
                             tag,
                             status,
                             information,
+                            code,
                             ..
                         },
                     )) => {
                         assert_eq!(tag.as_bytes(), match_tag.as_bytes());
                         Some(match status {
-                            Status::Bad | Status::No => {
-                                Err((status, information.map(ToString::to_string)))
-                            }
+                            Status::Bad | Status::No => Err((
+                                status,
+                                information.map(|v| v.into_owned()),
+                                code.map(|v| v.into_owned()),
+                            )),
                             Status::Ok => Ok(()),
-                            status => Err((status, None)),
+                            status => Err((status, None, code.map(|v| v.into_owned()))),
                         })
                     }
                     Ok((..)) => None,
@@ -1418,7 +1422,7 @@ impl<T: Read + Write> Connection<T> {
                         continue_from = Some(line_start);
                         None
                     }
-                    _ => Some(Err((Status::Bye, None))),
+                    _ => Some(Err((Status::Bye, None, None))),
                 }
             };
 
@@ -1426,16 +1430,19 @@ impl<T: Read + Write> Connection<T> {
                 Some(Ok(_)) => {
                     break Ok(line_start);
                 }
-                Some(Err((status, expl))) => {
+                Some(Err((status, expl, code))) => {
                     use imap_proto::Status;
                     match status {
                         Status::Bad => {
-                            break Err(Error::Bad(
-                                expl.unwrap_or_else(|| "no explanation given".to_string()),
-                            ));
+                            break Err(Error::Bad(Bad {
+                                code,
+                                information: expl
+                                    .unwrap_or_else(|| "no explanation given".to_string()),
+                            }));
                         }
                         Status::No => {
                             break Err(Error::No(No {
+                                code,
                                 information: expl
                                     .unwrap_or_else(|| "no explanation given".to_string()),
                             }));
@@ -1487,6 +1494,7 @@ mod tests {
     use super::super::mock_stream::MockStream;
     use super::*;
     use imap_proto::types::*;
+    use std::borrow::Cow;
 
     macro_rules! mock_session {
         ($s:expr) => {
@@ -1499,7 +1507,8 @@ mod tests {
         let response = "a0 OK Logged in.\r\n";
         let mock_stream = MockStream::new(response.as_bytes().to_vec());
         let mut client = Client::new(mock_stream);
-        let actual_response = client.read_response().unwrap();
+        let (mut actual_response, i) = client.read_response().unwrap();
+        actual_response.truncate(i);
         assert_eq!(Vec::<u8>::new(), actual_response);
     }
 
@@ -1589,7 +1598,7 @@ mod tests {
         let client = Client::new(mock_stream);
         enum Authenticate {
             Auth,
-        };
+        }
         impl Authenticator for Authenticate {
             type Response = Vec<u8>;
             fn process(&self, challenge: &[u8]) -> Self::Response {
@@ -1846,9 +1855,9 @@ mod tests {
             .to_vec();
         let expected_capabilities = vec![
             Capability::Imap4rev1,
-            Capability::Atom("STARTTLS"),
-            Capability::Auth("GSSAPI"),
-            Capability::Atom("LOGINDISABLED"),
+            Capability::Atom(Cow::Borrowed("STARTTLS")),
+            Capability::Auth(Cow::Borrowed("GSSAPI")),
+            Capability::Atom(Cow::Borrowed("LOGINDISABLED")),
         ];
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);

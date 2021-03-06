@@ -51,10 +51,10 @@ impl Capabilities {
         if s.len() > AUTH_CAPABILITY_PREFIX.len() {
             let (pre, val) = s.split_at(AUTH_CAPABILITY_PREFIX.len());
             if pre.eq_ignore_ascii_case(AUTH_CAPABILITY_PREFIX) {
-                return self.has(&Capability::Auth(val));
+                return self.has(&Capability::Auth(val.into()));
             }
         }
-        self.has(&Capability::Atom(s))
+        self.has(&Capability::Atom(s.into()))
     }
 
     /// Iterate over all the server's capabilities
