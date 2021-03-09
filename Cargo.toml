@@ -21,7 +21,7 @@ default = ["tls"]
 native-tls = { version = "0.2.2", optional = true }
 regex = "1.0"
 bufstream = "0.1"
-imap-proto = "0.12.0"
+imap-proto = "0.13.0"
 nom = "6.0"
 base64 = "0.13"
 chrono = "0.4"
@@ -43,7 +43,3 @@ required-features = ["default"]
 [[test]]
 name = "imap_integration"
 required-features = ["default"]
-
-[patch.crates-io]
-# https://github.com/djc/tokio-imap/pull/115
-imap-proto = { git = "https://github.com/jonhoo/tokio-imap.git", branch = "moo" }
