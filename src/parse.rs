@@ -303,7 +303,8 @@ pub fn parse_mailbox(
                     MailboxDatum::List { .. }
                     | MailboxDatum::MetadataSolicited { .. }
                     | MailboxDatum::MetadataUnsolicited { .. }
-                    | MailboxDatum::Search { .. } => {}
+                    | MailboxDatum::Search { .. }
+                    | MailboxDatum::Sort { .. } => {}
                 }
             }
             Ok((rest, Response::Expunge(n))) => {
@@ -337,6 +338,10 @@ pub fn parse_ids(
 
         match imap_proto::parser::parse_response(lines) {
             Ok((rest, Response::MailboxData(MailboxDatum::Search(c)))) => {
+                lines = rest;
+                ids.extend(c);
+            }
+            Ok((rest, Response::MailboxData(MailboxDatum::Sort(c)))) => {
                 lines = rest;
                 ids.extend(c);
             }

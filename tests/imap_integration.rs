@@ -113,11 +113,21 @@ fn inbox() {
         .unwrap();
     s.send(e.into()).unwrap();
 
-    // now we should see the e-mail!
+    // send a second e-mail
+    let e = lettre_email::Email::builder()
+        .from("sender2@localhost")
+        .to(to)
+        .subject("My second e-mail")
+        .text("Hello world from SMTP")
+        .build()
+        .unwrap();
+    s.send(e.into()).unwrap();
+
+    // now we should see the e-mails!
     let inbox = c.search("ALL").unwrap();
-    // and the one message should have the first message sequence number
-    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox.len(), 2);
     assert!(inbox.contains(&1));
+    assert!(inbox.contains(&2));
 
     // we should also get two unsolicited responses: Exists and Recent
     c.noop().unwrap();
@@ -128,12 +138,12 @@ fn inbox() {
     assert_eq!(unsolicited.len(), 2);
     assert!(unsolicited
         .iter()
-        .any(|m| m == &imap::types::UnsolicitedResponse::Exists(1)));
+        .any(|m| m == &imap::types::UnsolicitedResponse::Exists(2)));
     assert!(unsolicited
         .iter()
-        .any(|m| m == &imap::types::UnsolicitedResponse::Recent(1)));
+        .any(|m| m == &imap::types::UnsolicitedResponse::Recent(2)));
 
-    // let's see that we can also fetch the e-mail
+    // let's see that we can also fetch the e-mails
     let fetch = c.fetch("1", "(ALL UID)").unwrap();
     assert_eq!(fetch.len(), 1);
     let fetch = &fetch[0];
@@ -155,12 +165,25 @@ fn inbox() {
     let date_opt = fetch.internal_date();
     assert!(date_opt.is_some());
 
-    // and let's delete it to clean up
-    c.store("1", "+FLAGS (\\Deleted)").unwrap();
+    let inbox = c.search("ALL").unwrap();
+    assert_eq!(inbox.len(), 2);
+
+    // e-mails should be reverse sorted by subject
+    let inbox = c.sort("(REVERSE SUBJECT)", "UTF-8", "ALL").unwrap();
+    assert_eq!(inbox.len(), 2);
+    let mut sort = inbox.iter();
+    assert_eq!(sort.next().unwrap(), &2);
+    assert_eq!(sort.next().unwrap(), &1);
+
+    // let's delete them to clean up
+    c.store("1,2", "+FLAGS (\\Deleted)").unwrap();
     c.expunge().unwrap();
 
-    // the e-mail should be gone now
+    // e-mails should be gone now
     let inbox = c.search("ALL").unwrap();
+    assert_eq!(inbox.len(), 0);
+
+    let inbox = c.sort("(SUBJECT)", "UTF-8", "ALL").unwrap();
     assert_eq!(inbox.len(), 0);
 }
 

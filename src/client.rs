@@ -1286,6 +1286,66 @@ impl<T: Read + Write> Session<T> {
             .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
     }
 
+    /// The SORT command is a variant of SEARCH with sorting semantics for
+    /// the results. There are two arguments before the searching
+    /// criteria argument: a parenthesized list of sort criteria, and the
+    /// searching charset.
+    ///
+    /// sort            = ["UID" SP] "SORT" SP sort-criteria SP search-criteria
+    /// sort-criteria   = "(" sort-criterion *(SP sort-criterion) ")"
+    /// sort-criterion  = ["REVERSE" SP] sort-key
+    /// sort-key        = "ARRIVAL" / "CC" / "DATE" / "FROM" / "SIZE" /
+    ///                   "SUBJECT" / "TO"
+    /// search-criteria = charset 1*(SP search-key)
+    /// charset         = atom / quoted
+    ///                     ; CHARSET values MUST be registered with IANA
+    /// sort-data       = "SORT" *(SP nz-number)
+    ///
+    /// Below is a selection of common sort keys.  The full list can be found in the
+    /// specification of the [`SORT command`](https://tools.ietf.org/html/rfc5256#section-3).
+    ///
+    ///  - `ARRIVAL`: Internal date and time of the message.  This differs from the ON criteria in SEARCH, which uses just the internal date.
+    ///  - `CC`: IMAP addr-mailbox of the first "cc" address.
+    ///  - `DATE`: Sent date and time, as described in section 2.2.
+    ///  - `FROM`: IMAP addr-mailbox of the first "From" address.
+    ///  - `SIZE`: Size of the message in octets.
+    ///  - `SUBJECT`: Base subject text.
+    ///  - `TO`: IMAP addr-mailbox of the first "To" address.
+    ///
+    ///  - `REVERSE <sort-key>`: Followed by another sort criterion, has the effect of that criterion but in reverse (descending) order.
+    pub fn sort<S: AsRef<str>>(
+        &mut self,
+        criteria: S,
+        charset: S,
+        query: S,
+    ) -> Result<HashSet<Seq>> {
+        self.run_command_and_read_response(&format!(
+            "SORT {} {} {}",
+            criteria.as_ref(),
+            charset.as_ref(),
+            query.as_ref()
+        ))
+        .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
+    }
+
+    /// Equivalent to [`Session::sort`], except that the returned identifiers
+    /// are [`Uid`] instead of [`Seq`]. See also the [`UID`
+    /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
+    pub fn uid_sort<S: AsRef<str>>(
+        &mut self,
+        criteria: S,
+        charset: S,
+        query: S,
+    ) -> Result<HashSet<Seq>> {
+        self.run_command_and_read_response(&format!(
+            "UID SORT {} {} {}",
+            criteria.as_ref(),
+            charset.as_ref(),
+            query.as_ref()
+        ))
+        .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
+    }
+
     // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok<S: AsRef<str>>(&mut self, command: S) -> Result<()> {
