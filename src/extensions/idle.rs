@@ -3,6 +3,8 @@
 
 use crate::client::Session;
 use crate::error::{Error, Result};
+use crate::parse::parse_idle;
+use crate::types::UnsolicitedResponse;
 #[cfg(feature = "tls")]
 use native_tls::TlsStream;
 use std::io::{self, Read, Write};
@@ -13,8 +15,31 @@ use std::time::Duration;
 ///
 /// The handle blocks using the [`IDLE` command](https://tools.ietf.org/html/rfc2177#section-3)
 /// specificed in [RFC 2177](https://tools.ietf.org/html/rfc2177) until the underlying server state
-/// changes in some way. While idling does inform the client what changes happened on the server,
-/// this implementation will currently just block until _anything_ changes, and then notify the
+/// changes in some way.
+///
+/// Each of the `wait` functions takes a callback function which receives any responses
+/// that arrive on the channel while IDLE. The callback function implements whatever
+/// logic is needed to handle the IDLE response, and then returns a [`CallbackAction`]
+/// to `Continue` or `Stop` listening on the channel.
+/// For users that want the IDLE to exit on any change (the behavior proior to version 3.0),
+/// a convenience callback function `callback_stop` is provided.
+///
+/// ```no_run
+/// # use native_tls::TlsConnector;
+/// use imap::extensions::idle;
+/// let ssl_conn = TlsConnector::builder().build().unwrap();
+/// let client = imap::connect(("example.com", 993), "example.com", &ssl_conn)
+///     .expect("Could not connect to imap server");
+/// let mut imap = client.login("user@example.com", "password")
+///     .expect("Could not authenticate");
+/// imap.select("INBOX")
+///     .expect("Could not select mailbox");
+///
+/// let idle = imap.idle().expect("Could not IDLE");
+///
+/// // Exit on any mailbox change
+/// let result = idle.wait_keepalive(idle::callback_stop);
+/// ```
 ///
 /// Note that the server MAY consider a client inactive if it has an IDLE command running, and if
 /// such a server has an inactivity timeout it MAY log the client off implicitly at the end of its
@@ -38,6 +63,21 @@ pub enum WaitOutcome {
     TimedOut,
     /// The mailbox was modified
     MailboxChanged,
+}
+
+/// Return type for IDLE response callbacks. Tells the IDLE connection
+/// if it should continue monitoring the connection or not.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CallbackAction {
+    /// Continue receiving responses from the IDLE connection.
+    Continue,
+    /// Stop receiving responses, and exit the IDLE wait.
+    Stop,
+}
+
+/// A convenience function to always cause the IDLE handler to exit on any change.
+pub fn callback_stop(_response: UnsolicitedResponse) -> CallbackAction {
+    CallbackAction::Stop
 }
 
 /// Must be implemented for a transport in order for a `Session` using that transport to support
@@ -100,37 +140,65 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     /// Internal helper that doesn't consume self.
     ///
     /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
-    fn wait_inner(&mut self, reconnect: bool) -> Result<WaitOutcome> {
+    fn wait_inner<F>(&mut self, reconnect: bool, mut callback: F) -> Result<WaitOutcome>
+    where
+        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+    {
         let mut v = Vec::new();
-        loop {
-            let result = match self.session.readline(&mut v).map(|_| ()) {
+        let result = loop {
+            let rest = match self.session.readline(&mut v) {
                 Err(Error::Io(ref e))
                     if e.kind() == io::ErrorKind::TimedOut
                         || e.kind() == io::ErrorKind::WouldBlock =>
                 {
-                    if reconnect {
-                        self.terminate()?;
-                        self.init()?;
-                        return self.wait_inner(reconnect);
-                    }
-                    Ok(WaitOutcome::TimedOut)
+                    break Ok(WaitOutcome::TimedOut);
                 }
-                Ok(()) => Ok(WaitOutcome::MailboxChanged),
-                Err(r) => Err(r),
-            }?;
+                Ok(_len) => {
+                    //  Handle Dovecot's imap_idle_notify_interval message
+                    if v.eq_ignore_ascii_case(b"* OK Still here\r\n") {
+                        v.clear();
+                        continue;
+                    }
+                    match parse_idle(&v) {
+                        (_rest, Some(Err(r))) => break Err(r),
+                        (rest, Some(Ok(response))) => {
+                            if let CallbackAction::Stop = callback(response) {
+                                break Ok(WaitOutcome::MailboxChanged);
+                            }
+                            rest
+                        }
+                        (rest, None) => rest,
+                    }
+                }
+                Err(r) => break Err(r),
+            };
 
-            // Handle Dovecot's imap_idle_notify_interval message
-            if v.eq_ignore_ascii_case(b"* OK Still here\r\n") {
+            // Update remaining data with unparsed data if needed.
+            if rest.is_empty() {
                 v.clear();
-            } else {
-                break Ok(result);
+            } else if rest.len() != v.len() {
+                v = rest.into();
             }
+        };
+
+        // Reconnect on timeout if needed
+        match (reconnect, result) {
+            (true, Ok(WaitOutcome::TimedOut)) => {
+                self.terminate()?;
+                self.init()?;
+                self.wait_inner(reconnect, callback)
+            }
+            (_, result) => result,
         }
     }
 
-    /// Block until the selected mailbox changes.
-    pub fn wait(mut self) -> Result<()> {
-        self.wait_inner(true).map(|_| ())
+    /// Block until the given callback returns `Stop`, or until an unhandled
+    /// response arrives on the IDLE channel.
+    pub fn wait<F>(mut self, callback: F) -> Result<()>
+    where
+        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+    {
+        self.wait_inner(true, callback).map(|_| ())
     }
 }
 
@@ -142,7 +210,8 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         self.keepalive = interval;
     }
 
-    /// Block until the selected mailbox changes.
+    /// Block until the given callback returns `Stop`, or until an unhandled
+    /// response arrives on the IDLE channel.
     ///
     /// This method differs from [`Handle::wait`] in that it will periodically refresh the IDLE
     /// connection, to prevent the server from timing out our connection. The keepalive interval is
@@ -150,7 +219,10 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// [`Handle::set_keepalive`].
     ///
     /// This is the recommended method to use for waiting.
-    pub fn wait_keepalive(self) -> Result<()> {
+    pub fn wait_keepalive<F>(self, callback: F) -> Result<()>
+    where
+        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+    {
         // The server MAY consider a client inactive if it has an IDLE command
         // running, and if such a server has an inactivity timeout it MAY log
         // the client off implicitly at the end of its timeout period.  Because
@@ -159,26 +231,42 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
         let keepalive = self.keepalive;
-        self.timed_wait(keepalive, true).map(|_| ())
+        self.timed_wait(keepalive, true, callback).map(|_| ())
     }
 
-    /// Block until the selected mailbox changes, or until the given amount of time has expired.
+    /// Block until the given amount of time has elapsed, or the given callback
+    /// returns `Stop`, or until an unhandled response arrives on the IDLE channel.
     #[deprecated(note = "use wait_with_timeout instead")]
-    pub fn wait_timeout(self, timeout: Duration) -> Result<()> {
-        self.wait_with_timeout(timeout).map(|_| ())
+    pub fn wait_timeout<F>(self, timeout: Duration, callback: F) -> Result<()>
+    where
+        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+    {
+        self.wait_with_timeout(timeout, callback).map(|_| ())
     }
 
-    /// Block until the selected mailbox changes, or until the given amount of time has expired.
-    pub fn wait_with_timeout(self, timeout: Duration) -> Result<WaitOutcome> {
-        self.timed_wait(timeout, false)
+    /// Block until the given amount of time has elapsed, or the given callback
+    /// returns `Stop`, or until an unhandled response arrives on the IDLE channel.
+    pub fn wait_with_timeout<F>(self, timeout: Duration, callback: F) -> Result<WaitOutcome>
+    where
+        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+    {
+        self.timed_wait(timeout, false, callback)
     }
 
-    fn timed_wait(mut self, timeout: Duration, reconnect: bool) -> Result<WaitOutcome> {
+    fn timed_wait<F>(
+        mut self,
+        timeout: Duration,
+        reconnect: bool,
+        callback: F,
+    ) -> Result<WaitOutcome>
+    where
+        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+    {
         self.session
             .stream
             .get_mut()
             .set_read_timeout(Some(timeout))?;
-        let res = self.wait_inner(reconnect);
+        let res = self.wait_inner(reconnect, callback);
         let _ = self.session.stream.get_mut().set_read_timeout(None).is_ok();
         res
     }

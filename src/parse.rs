@@ -2,6 +2,7 @@ use imap_proto::{MailboxDatum, Response, ResponseCode};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::sync::mpsc;
 
 use super::error::{Error, ParseError, Result};
@@ -350,6 +351,21 @@ pub fn parse_ids(
     }
 }
 
+/// Parse a single unsolicited response from IDLE responses.
+pub fn parse_idle(lines: &[u8]) -> (&[u8], Option<Result<UnsolicitedResponse>>) {
+    match imap_proto::parser::parse_response(lines) {
+        Ok((rest, response)) => match UnsolicitedResponse::try_from(response) {
+            Ok(unsolicited) => (rest, Some(Ok(unsolicited))),
+            Err(res) => (rest, Some(Err(res.into()))),
+        },
+        Err(nom::Err::Incomplete(_)) => (lines, None),
+        Err(_) => (
+            lines,
+            Some(Err(Error::Parse(ParseError::Invalid(lines.to_vec())))),
+        ),
+    }
+}
+
 // Check if this is simply a unilateral server response (see Section 7 of RFC 3501).
 //
 // Returns `None` if the response was handled, `Some(res)` if not.
@@ -357,52 +373,13 @@ pub(crate) fn try_handle_unilateral<'a>(
     res: Response<'a>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
 ) -> Option<Response<'a>> {
-    match res {
-        Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-            unsolicited
-                .send(UnsolicitedResponse::Status {
-                    mailbox: mailbox.into(),
-                    attributes: status,
-                })
-                .unwrap();
+    match UnsolicitedResponse::try_from(res) {
+        Ok(response) => {
+            unsolicited.send(response).ok();
+            None
         }
-        Response::MailboxData(MailboxDatum::Recent(n)) => {
-            unsolicited.send(UnsolicitedResponse::Recent(n)).unwrap();
-        }
-        Response::MailboxData(MailboxDatum::Flags(flags)) => {
-            unsolicited
-                .send(UnsolicitedResponse::Flags(
-                    flags
-                        .into_iter()
-                        .map(|s| Flag::from(s.to_string()))
-                        .collect(),
-                ))
-                .unwrap();
-        }
-        Response::MailboxData(MailboxDatum::Exists(n)) => {
-            unsolicited.send(UnsolicitedResponse::Exists(n)).unwrap();
-        }
-        Response::Expunge(n) => {
-            unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
-        }
-        Response::MailboxData(MailboxDatum::MetadataUnsolicited { mailbox, values }) => {
-            unsolicited
-                .send(UnsolicitedResponse::Metadata {
-                    mailbox: mailbox.to_string(),
-                    metadata_entries: values.iter().map(|s| s.to_string()).collect(),
-                })
-                .unwrap();
-        }
-        Response::Vanished { earlier, uids } => {
-            unsolicited
-                .send(UnsolicitedResponse::Vanished { earlier, uids })
-                .unwrap();
-        }
-        res => {
-            return Some(res);
-        }
+        Err(unhandled) => Some(unhandled),
     }
-    None
 }
 
 #[cfg(test)]
