@@ -1,9 +1,9 @@
 use bufstream::BufStream;
 use chrono::{DateTime, FixedOffset};
 use imap_proto::Response;
+use linked_hash_set::LinkedHashSet;
 #[cfg(feature = "tls")]
 use native_tls::{TlsConnector, TlsStream};
-use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::{Deref, DerefMut};
@@ -1273,7 +1273,7 @@ impl<T: Read + Write> Session<T> {
     ///
     ///  - `BEFORE <date>`: Messages whose internal date (disregarding time and timezone) is earlier than the specified date.
     ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
-    pub fn search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Seq>> {
+    pub fn search<S: AsRef<str>>(&mut self, query: S) -> Result<LinkedHashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query.as_ref()))
             .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
     }
@@ -1281,7 +1281,7 @@ impl<T: Read + Write> Session<T> {
     /// Equivalent to [`Session::search`], except that the returned identifiers
     /// are [`Uid`] instead of [`Seq`]. See also the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Uid>> {
+    pub fn uid_search<S: AsRef<str>>(&mut self, query: S) -> Result<LinkedHashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query.as_ref()))
             .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
     }
@@ -1318,7 +1318,7 @@ impl<T: Read + Write> Session<T> {
         criteria: S,
         charset: S,
         query: S,
-    ) -> Result<HashSet<Seq>> {
+    ) -> Result<LinkedHashSet<Seq>> {
         self.run_command_and_read_response(&format!(
             "SORT {} {} {}",
             criteria.as_ref(),
@@ -1336,7 +1336,7 @@ impl<T: Read + Write> Session<T> {
         criteria: S,
         charset: S,
         query: S,
-    ) -> Result<HashSet<Seq>> {
+    ) -> Result<LinkedHashSet<Seq>> {
         self.run_command_and_read_response(&format!(
             "UID SORT {} {} {}",
             criteria.as_ref(),
@@ -1548,6 +1548,7 @@ mod tests {
     use super::*;
     use imap_proto::types::*;
     use std::borrow::Cow;
+    use std::collections::HashSet;
 
     macro_rules! mock_session {
         ($s:expr) => {

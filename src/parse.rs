@@ -1,5 +1,6 @@
 use imap_proto::{MailboxDatum, Response, ResponseCode};
 use lazy_static::lazy_static;
+use linked_hash_set::LinkedHashSet;
 use regex::Regex;
 use std::collections::HashSet;
 use std::sync::mpsc;
@@ -324,9 +325,9 @@ pub fn parse_mailbox(
 pub fn parse_ids(
     lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> Result<HashSet<u32>> {
+) -> Result<LinkedHashSet<u32>> {
     let mut lines = &lines[..];
-    let mut ids = HashSet::new();
+    let mut ids = LinkedHashSet::new();
     loop {
         if lines.is_empty() {
             break Ok(ids);
