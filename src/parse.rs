@@ -300,11 +300,7 @@ pub fn parse_mailbox(
                             .flags
                             .extend(flags.into_iter().map(String::from).map(Flag::from));
                     }
-                    MailboxDatum::List { .. }
-                    | MailboxDatum::MetadataSolicited { .. }
-                    | MailboxDatum::MetadataUnsolicited { .. }
-                    | MailboxDatum::Search { .. }
-                    | MailboxDatum::Sort { .. } => {}
+                    _ => {}
                 }
             }
             Ok((rest, Response::Expunge(n))) => {
