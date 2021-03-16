@@ -207,7 +207,7 @@ fn inbox_uid() {
     s.send(e.into()).unwrap();
 
     // now we should see the e-mail!
-    let inbox = c.uid_search("ALL").unwrap();
+    let inbox = c.uid_sort("(SUBJECT)", "US-ASCII", "ALL").unwrap();
     // and the one message should have the first message sequence number
     assert_eq!(inbox.len(), 1);
     let uid = inbox.into_iter().next().unwrap();
