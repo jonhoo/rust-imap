@@ -15,6 +15,7 @@ categories = ["email", "network-programming"]
 
 [features]
 tls = ["native-tls"]
+vendored = ["tls", "native-tls/vendored"]
 default = ["tls"]
 
 [dependencies]
