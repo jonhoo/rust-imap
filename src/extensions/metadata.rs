@@ -34,7 +34,7 @@ impl CmdListItemFormat for Metadata {
             self.value
                 .as_ref()
                 .map(|v| validate_str(v.as_str()).unwrap())
-                .unwrap_or("NIL".to_string())
+                .unwrap_or_else(|| "NIL".to_string())
         )
     }
 }
@@ -69,9 +69,9 @@ impl Default for MetadataDepth {
 impl MetadataDepth {
     fn depth_str<'a>(self) -> &'a str {
         match self {
-            MetadataDepth::Zero => return "0",
-            MetadataDepth::One => return "1",
-            MetadataDepth::Infinity => return "infinity",
+            MetadataDepth::Zero => "0",
+            MetadataDepth::One => "1",
+            MetadataDepth::Infinity => "infinity",
         }
     }
 }
@@ -175,18 +175,15 @@ impl<T: Read + Write> Session<T> {
         let s = v.as_slice().join(" ");
         let mut command = format!("GETMETADATA (DEPTH {}", depth.depth_str());
 
-        match maxsize {
-            Some(size) => {
-                command.push_str(format!(" MAXSIZE {}", size).as_str());
-            }
-            _ => {}
+        if let Some(size) = maxsize {
+            command.push_str(format!(" MAXSIZE {}", size).as_str());
         }
 
         command.push_str(
             format!(
                 ") {} ({})",
                 mailbox
-                    .map(|mbox| validate_str(mbox.as_ref()).unwrap())
+                    .map(|mbox| validate_str(mbox).unwrap())
                     .unwrap_or_else(|| "\"\"".to_string()),
                 s
             )
