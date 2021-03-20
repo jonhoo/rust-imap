@@ -50,7 +50,7 @@ where
 
                     match map(resp)? {
                         MapOrNot::Map(t) => things.push(t),
-                        MapOrNot::Not(resp) => match handle_unilateral(resp, unsolicited) {
+                        MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
                             Some(Response::Fetch(..)) => continue,
                             Some(resp) => break Err(resp.into()),
                             None => {}
@@ -150,7 +150,7 @@ pub fn parse_expunge(
             }
             Ok((rest, data)) => {
                 lines = rest;
-                if let Some(resp) = handle_unilateral(data, unsolicited) {
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
                     return Err(resp.into());
                 }
             }
@@ -185,7 +185,7 @@ pub fn parse_capabilities(
                 }
                 Ok((rest, data)) => {
                     lines = rest;
-                    if let Some(resp) = handle_unilateral(data, unsolicited) {
+                    if let Some(resp) = try_handle_unilateral(data, unsolicited) {
                         break Err(resp.into());
                     }
                 }
@@ -217,7 +217,7 @@ pub fn parse_noop(
         match imap_proto::parser::parse_response(lines) {
             Ok((rest, data)) => {
                 lines = rest;
-                if let Some(resp) = handle_unilateral(data, unsolicited) {
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
                     break Err(resp.into());
                 }
             }
@@ -339,7 +339,7 @@ pub fn parse_ids(
             }
             Ok((rest, data)) => {
                 lines = rest;
-                if let Some(resp) = handle_unilateral(data, unsolicited) {
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
                     break Err(resp.into());
                 }
             }
@@ -350,9 +350,10 @@ pub fn parse_ids(
     }
 }
 
-// check if this is simply a unilateral server response
-// (see Section 7 of RFC 3501):
-pub(crate) fn handle_unilateral<'a>(
+// Check if this is simply a unilateral server response (see Section 7 of RFC 3501).
+//
+// Returns `None` if the response was handled, `Some(res)` if not.
+pub(crate) fn try_handle_unilateral<'a>(
     res: Response<'a>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
 ) -> Option<Response<'a>> {

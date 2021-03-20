@@ -12,7 +12,7 @@
 
 use crate::client::*;
 use crate::error::{Error, ParseError, Result};
-use crate::parse::handle_unilateral;
+use crate::parse::try_handle_unilateral;
 use crate::types::*;
 use imap_proto::types::{MailboxDatum, Metadata, Response, ResponseCode};
 use std::io::{Read, Write};
@@ -97,7 +97,7 @@ fn parse_metadata<'a>(
                         res.append(&mut values);
                     }
                     _ => {
-                        if let Some(unhandled) = handle_unilateral(resp, unsolicited) {
+                        if let Some(unhandled) = try_handle_unilateral(resp, unsolicited) {
                             break Err(unhandled.into());
                         }
                     }
