@@ -1459,7 +1459,7 @@ impl<T: Read + Write> Connection<T> {
             // Remove CRLF
             let len = into.len();
             let line = &into[(len - read)..(len - 2)];
-            eprint!("S: {}\n", String::from_utf8_lossy(line));
+            eprintln!("S: {}", String::from_utf8_lossy(line));
         }
 
         Ok(read)
@@ -1475,7 +1475,7 @@ impl<T: Read + Write> Connection<T> {
         self.stream.write_all(&[CR, LF])?;
         self.stream.flush()?;
         if self.debug {
-            eprint!("C: {}\n", String::from_utf8(buf.to_vec()).unwrap());
+            eprintln!("C: {}", String::from_utf8(buf.to_vec()).unwrap());
         }
         Ok(())
     }
