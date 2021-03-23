@@ -1,6 +1,5 @@
 use imap_proto::{MailboxDatum, Response, ResponseCode};
 use lazy_static::lazy_static;
-use linked_hash_set::LinkedHashSet;
 use regex::Regex;
 use std::collections::HashSet;
 use std::sync::mpsc;
@@ -322,25 +321,28 @@ pub fn parse_mailbox(
     }
 }
 
-pub fn parse_ids(
+fn parse_ids_with<T>(
     lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> Result<LinkedHashSet<u32>> {
+    mut collection: T,
+) -> Result<T>
+where
+    T: Extend<u32>,
+{
     let mut lines = &lines[..];
-    let mut ids = LinkedHashSet::new();
     loop {
         if lines.is_empty() {
-            break Ok(ids);
+            break Ok(collection);
         }
 
         match imap_proto::parser::parse_response(lines) {
             Ok((rest, Response::MailboxData(MailboxDatum::Search(c)))) => {
                 lines = rest;
-                ids.extend(c);
+                collection.extend(c);
             }
             Ok((rest, Response::MailboxData(MailboxDatum::Sort(c)))) => {
                 lines = rest;
-                ids.extend(c);
+                collection.extend(c);
             }
             Ok((rest, data)) => {
                 lines = rest;
@@ -353,6 +355,20 @@ pub fn parse_ids(
             }
         }
     }
+}
+
+pub fn parse_ids(
+    lines: &[u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<HashSet<u32>> {
+    parse_ids_with(lines, unsolicited, HashSet::new())
+}
+
+pub fn parse_ordered_ids(
+    lines: &[u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Vec<u32>> {
+    parse_ids_with(lines, unsolicited, Vec::new())
 }
 
 // check if this is simply a unilateral server response
