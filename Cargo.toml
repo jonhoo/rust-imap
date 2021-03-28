@@ -31,6 +31,7 @@ lazy_static = "1.4"
 lettre = "0.9"
 lettre_email = "0.9"
 rustls-connector = "0.13.0"
+structopt = "0.3"
 
 [[example]]
 name = "basic"
@@ -38,6 +39,10 @@ required-features = ["default"]
 
 [[example]]
 name = "gmail_oauth2"
+required-features = ["default"]
+
+[[example]]
+name = "idle"
 required-features = ["default"]
 
 [[test]]
