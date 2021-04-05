@@ -168,6 +168,11 @@ impl Flag<'static> {
             _ => None,
         }
     }
+
+    /// Helper function to transform a [`Vec`] of flag strings into a [`Vec`] of [`Flag`].
+    pub fn from_vec<S: ToString>(v: &[S]) -> Vec<Self> {
+        v.iter().map(|s| Self::from(s.to_string())).collect()
+    }
 }
 
 impl<'a> fmt::Display for Flag<'a> {

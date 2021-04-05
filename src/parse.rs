@@ -109,9 +109,7 @@ pub fn parse_fetches(
                 use imap_proto::AttributeValue;
                 match attr {
                     AttributeValue::Flags(flags) => {
-                        fetch
-                            .flags
-                            .extend(flags.iter().map(|f| Flag::from(f.to_string())));
+                        fetch.flags.extend(Flag::from_vec(flags));
                     }
                     AttributeValue::Uid(uid) => fetch.uid = Some(*uid),
                     AttributeValue::Rfc822Size(sz) => fetch.size = Some(*sz),
@@ -271,9 +269,7 @@ pub fn parse_mailbox(
                         mailbox.unseen = Some(n);
                     }
                     Some(ResponseCode::PermanentFlags(flags)) => {
-                        mailbox
-                            .permanent_flags
-                            .extend(flags.into_iter().map(String::from).map(Flag::from));
+                        mailbox.permanent_flags.extend(Flag::from_vec(&flags));
                     }
                     _ => {}
                 }
@@ -297,9 +293,7 @@ pub fn parse_mailbox(
                         mailbox.recent = r;
                     }
                     MailboxDatum::Flags(flags) => {
-                        mailbox
-                            .flags
-                            .extend(flags.into_iter().map(String::from).map(Flag::from));
+                        mailbox.flags.extend(Flag::from_vec(&flags));
                     }
                     _ => {}
                 }
