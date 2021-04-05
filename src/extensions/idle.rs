@@ -177,7 +177,8 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
             if rest.is_empty() {
                 v.clear();
             } else if rest.len() != v.len() {
-                v = rest.into();
+                let used = v.len() - rest.len();
+                v.drain(0..used);
             }
         };
 
