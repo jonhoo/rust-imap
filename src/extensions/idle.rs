@@ -22,7 +22,7 @@ use std::time::Duration;
 /// logic is needed to handle the IDLE response, and then returns a [`CallbackAction`]
 /// to `Continue` or `Stop` listening on the channel.
 /// For users that want the IDLE to exit on any change (the behavior proior to version 3.0),
-/// a convenience callback function `callback_stop` is provided.
+/// a convenience callback function `stop_on_any` is provided.
 ///
 /// ```no_run
 /// # use native_tls::TlsConnector;
@@ -38,7 +38,7 @@ use std::time::Duration;
 /// let idle = imap.idle().expect("Could not IDLE");
 ///
 /// // Exit on any mailbox change
-/// let result = idle.wait_keepalive(idle::callback_stop);
+/// let result = idle.wait_keepalive(idle::stop_on_any);
 /// ```
 ///
 /// Note that the server MAY consider a client inactive if it has an IDLE command running, and if
@@ -76,7 +76,7 @@ pub enum CallbackAction {
 }
 
 /// A convenience function to always cause the IDLE handler to exit on any change.
-pub fn callback_stop(_response: UnsolicitedResponse) -> CallbackAction {
+pub fn stop_on_any(_response: UnsolicitedResponse) -> CallbackAction {
     CallbackAction::Stop
 }
 
