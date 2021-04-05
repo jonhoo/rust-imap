@@ -22,7 +22,7 @@ use std::time::Duration;
 /// logic is needed to handle the IDLE response, and then returns a [`CallbackAction`]
 /// to `Continue` or `Stop` listening on the channel.
 /// For users that want the IDLE to exit on any change (the behavior proior to version 3.0),
-/// a convenience callback function `stop_on_any` is provided.
+/// a convenience callback function [`stop_on_any`] is provided.
 ///
 /// ```no_run
 /// # use native_tls::TlsConnector;
