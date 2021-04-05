@@ -46,7 +46,13 @@ fn main() {
     let mut imap = client
         .login(opt.username, opt.password)
         .expect("Could not authenticate");
+
+    // Turn on debug output so we can see the actual traffic coming
+    // from the server and how it is handled in our callback.
+    // This wouldn't be turned on in a production build, but is helpful
+    // in examples and for debugging.
     imap.debug = true;
+
     imap.select(opt.mailbox).expect("Could not select mailbox");
 
     let idle = imap.idle().expect("Could not IDLE");
