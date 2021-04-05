@@ -236,16 +236,6 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
 
     /// Block until the given amount of time has elapsed, or the given callback
     /// returns `Stop`, or until an unhandled response arrives on the IDLE channel.
-    #[deprecated(note = "use wait_with_timeout instead")]
-    pub fn wait_timeout<F>(self, timeout: Duration, callback: F) -> Result<()>
-    where
-        F: FnMut(UnsolicitedResponse) -> CallbackAction,
-    {
-        self.wait_with_timeout(timeout, callback).map(|_| ())
-    }
-
-    /// Block until the given amount of time has elapsed, or the given callback
-    /// returns `Stop`, or until an unhandled response arrives on the IDLE channel.
     pub fn wait_with_timeout<F>(self, timeout: Duration, callback: F) -> Result<WaitOutcome>
     where
         F: FnMut(UnsolicitedResponse) -> CallbackAction,
