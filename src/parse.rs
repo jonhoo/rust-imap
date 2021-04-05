@@ -326,7 +326,7 @@ pub fn parse_ids(
     lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
 ) -> Result<HashSet<u32>> {
-    let mut lines = &lines[..];
+    let mut lines = lines;
     let mut ids = HashSet::new();
     loop {
         if lines.is_empty() {
