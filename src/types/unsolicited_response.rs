@@ -19,32 +19,16 @@ use imap_proto::{
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum UnsolicitedResponse {
-    /// An unsolicited [`STATUS response`](https://tools.ietf.org/html/rfc3501#section-7.2.4).
-    Status {
-        /// The mailbox that this status response is for.
-        mailbox: String,
-        /// The attributes of this mailbox.
-        attributes: Vec<StatusAttribute>,
-    },
-
-    /// An unsolicited [`RECENT` response](https://tools.ietf.org/html/rfc3501#section-7.3.2)
-    /// indicating the number of messages with the `\Recent` flag set.  This response occurs if the
-    /// size of the mailbox changes (e.g., new messages arrive).
+    /// An unsolicited `BYE` response.
     ///
-    /// > Note: It is not guaranteed that the message sequence
-    /// > numbers of recent messages will be a contiguous range of
-    /// > the highest n messages in the mailbox (where n is the
-    /// > value reported by the `RECENT` response).  Examples of
-    /// > situations in which this is not the case are: multiple
-    /// > clients having the same mailbox open (the first session
-    /// > to be notified will see it as recent, others will
-    /// > probably see it as non-recent), and when the mailbox is
-    /// > re-ordered by a non-IMAP agent.
-    /// >
-    /// > The only reliable way to identify recent messages is to
-    /// > look at message flags to see which have the `\Recent` flag
-    /// > set, or to do a `SEARCH RECENT`.
-    Recent(u32),
+    /// The `BYE` response may have an optional `ResponseCode` that provides additional
+    /// information, per [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.1.5).
+    Bye {
+        /// Optional response code.
+        code: Option<ResponseCode>,
+        /// Information text that may be presented to the user.
+        information: Option<String>,
+    },
 
     /// An unsolicited [`EXISTS` response](https://tools.ietf.org/html/rfc3501#section-7.3.1) that
     /// reports the number of messages in the mailbox. This response occurs if the size of the
@@ -70,6 +54,26 @@ pub enum UnsolicitedResponse {
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Expunge(Seq),
 
+    /// An unsolicited `FETCH` response.
+    ///
+    /// The server may unilaterally send `FETCH` responses, as described in
+    /// [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.4.2).
+    Fetch {
+        /// Message identifier.
+        id: u32,
+        /// Attribute values for this message.
+        attributes: Vec<AttributeValue>,
+    },
+
+    /// An unsolicited [`FLAGS` response](https://tools.ietf.org/html/rfc3501#section-7.2.6) that
+    /// identifies the flags (at a minimum, the system-defined flags) that are applicable in the
+    /// mailbox. Flags other than the system flags can also exist, depending on server
+    /// implementation.
+    ///
+    /// See [`Flag`] for details.
+    // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
+    Flags(Vec<Flag<'static>>),
+
     /// An unsolicited METADATA response (https://tools.ietf.org/html/rfc5464#section-4.4.2)
     /// that reports a change in a server or mailbox annotation.
     Metadata {
@@ -77,6 +81,44 @@ pub enum UnsolicitedResponse {
         mailbox: String,
         /// List of annotations that were changed.
         metadata_entries: Vec<String>,
+    },
+
+    /// An unsolicited `OK` response.
+    ///
+    /// The `OK` response may have an optional `ResponseCode` that provides additional
+    /// information, per [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.1.1).
+    Ok {
+        /// Optional response code.
+        code: Option<ResponseCode>,
+        /// Information text that may be presented to the user.
+        information: Option<String>,
+    },
+
+    /// An unsolicited [`RECENT` response](https://tools.ietf.org/html/rfc3501#section-7.3.2)
+    /// indicating the number of messages with the `\Recent` flag set.  This response occurs if the
+    /// size of the mailbox changes (e.g., new messages arrive).
+    ///
+    /// > Note: It is not guaranteed that the message sequence
+    /// > numbers of recent messages will be a contiguous range of
+    /// > the highest n messages in the mailbox (where n is the
+    /// > value reported by the `RECENT` response).  Examples of
+    /// > situations in which this is not the case are: multiple
+    /// > clients having the same mailbox open (the first session
+    /// > to be notified will see it as recent, others will
+    /// > probably see it as non-recent), and when the mailbox is
+    /// > re-ordered by a non-IMAP agent.
+    /// >
+    /// > The only reliable way to identify recent messages is to
+    /// > look at message flags to see which have the `\Recent` flag
+    /// > set, or to do a `SEARCH RECENT`.
+    Recent(u32),
+
+    /// An unsolicited [`STATUS response`](https://tools.ietf.org/html/rfc3501#section-7.2.4).
+    Status {
+        /// The mailbox that this status response is for.
+        mailbox: String,
+        /// The attributes of this mailbox.
+        attributes: Vec<StatusAttribute>,
     },
 
     /// An unsolicited [`VANISHED` response](https://tools.ietf.org/html/rfc7162#section-3.2.10)
@@ -103,48 +145,6 @@ pub enum UnsolicitedResponse {
         earlier: bool,
         /// The list of `UID`s which have been removed
         uids: Vec<std::ops::RangeInclusive<u32>>,
-    },
-
-    /// An unsolicited [`FLAGS` response](https://tools.ietf.org/html/rfc3501#section-7.2.6) that
-    /// identifies the flags (at a minimum, the system-defined flags) that are applicable in the
-    /// mailbox. Flags other than the system flags can also exist, depending on server
-    /// implementation.
-    ///
-    /// See [`Flag`] for details.
-    // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
-    Flags(Vec<Flag<'static>>),
-
-    /// An unsolicited `OK` response.
-    ///
-    /// The `OK` response may have an optional `ResponseCode` that provides additional
-    /// information, per [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.1.1).
-    Ok {
-        /// Optional response code.
-        code: Option<ResponseCode>,
-        /// Information text that may be presented to the user.
-        information: Option<String>,
-    },
-
-    /// An unsolicited `BYE` response.
-    ///
-    /// The `BYE` response may have an optional `ResponseCode` that provides additional
-    /// information, per [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.1.5).
-    Bye {
-        /// Optional response code.
-        code: Option<ResponseCode>,
-        /// Information text that may be presented to the user.
-        information: Option<String>,
-    },
-
-    /// An unsolicited `FETCH` response.
-    ///
-    /// The server may unilaterally send `FETCH` responses, as described in
-    /// [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.4.2).
-    Fetch {
-        /// Message identifier.
-        id: u32,
-        /// Attribute values for this message.
-        attributes: Vec<AttributeValue>,
     },
 }
 
