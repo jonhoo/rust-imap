@@ -173,7 +173,7 @@ impl<'a> TryFrom<Response<'a>> for UnsolicitedResponse {
             }
             Response::MailboxData(MailboxDatum::Recent(n)) => Ok(UnsolicitedResponse::Recent(n)),
             Response::MailboxData(MailboxDatum::Flags(flags)) => {
-                Ok(UnsolicitedResponse::Flags(Flag::from_vec(&flags)))
+                Ok(UnsolicitedResponse::Flags(Flag::from_strs(flags).collect()))
             }
             Response::MailboxData(MailboxDatum::Exists(n)) => Ok(UnsolicitedResponse::Exists(n)),
             Response::MailboxData(MailboxDatum::MetadataUnsolicited { mailbox, values }) => {
@@ -288,7 +288,7 @@ impl<'a> TryFrom<&ImapProtoAttributeValue<'a>> for AttributeValue {
     fn try_from(val: &ImapProtoAttributeValue<'a>) -> Result<Self, Self::Error> {
         match val {
             ImapProtoAttributeValue::Flags(flags) => {
-                Ok(AttributeValue::Flags(Flag::from_vec(&flags)))
+                Ok(AttributeValue::Flags(Flag::from_strs(flags).collect()))
             }
             ImapProtoAttributeValue::ModSeq(seq) => Ok(AttributeValue::ModSeq(*seq)),
             ImapProtoAttributeValue::Uid(uid) => Ok(AttributeValue::Uid(*uid)),

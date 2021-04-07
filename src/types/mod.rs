@@ -169,9 +169,11 @@ impl Flag<'static> {
         }
     }
 
-    /// Helper function to transform a [`Vec`] of flag strings into a [`Vec`] of [`Flag`].
-    pub fn from_vec<S: ToString>(v: &[S]) -> Vec<Self> {
-        v.iter().map(|s| Self::from(s.to_string())).collect()
+    /// Helper function to transform Strings into owned Flags
+    pub fn from_strs<S: ToString>(
+        v: impl IntoIterator<Item = S>,
+    ) -> impl Iterator<Item = Flag<'static>> {
+        v.into_iter().map(|s| Flag::from(s.to_string()))
     }
 }
 
