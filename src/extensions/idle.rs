@@ -176,7 +176,15 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
             // Update remaining data with unparsed data if needed.
             if rest.is_empty() {
                 v.clear();
-            } else if rest.len() != v.len() {
+            } else {
+                // Assert on partial parse in debug builds - we expect to always parse all
+                // or none of the input buffer. On release builds, we still do the right thing.
+                debug_assert!(
+                    rest.len() != v.len(),
+                    "Unexpected partial parse: input: {:?}, output: {:?}",
+                    v,
+                    rest
+                );
                 let used = v.len() - rest.len();
                 v.drain(0..used);
             }
