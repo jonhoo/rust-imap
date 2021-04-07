@@ -12,7 +12,12 @@ use imap_proto::{
 
 /// Responses that the server sends that are not related to the current command.
 /// [RFC 3501](https://tools.ietf.org/html/rfc3501#section-7) states that clients need to be able
-/// to accept any response at any time. These are the ones we've encountered in the wild.
+/// to accept any response at any time.
+///
+/// Not all possible responses are explicitly enumerated here because in practice only
+/// some types of responses are delivered as unsolicited responses. If you encounter an
+/// unsolicited response in the wild that is not handled here, please
+/// [open an issue](https://github.com/jonhoo/rust-imap/issues) and let us know!
 ///
 /// Note that `Recent`, `Exists` and `Expunge` responses refer to the currently `SELECT`ed folder,
 /// so the user must take care when interpreting these.

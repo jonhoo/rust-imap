@@ -193,8 +193,8 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
         }
     }
 
-    /// Block until the given callback returns `Stop`, or until an unhandled
-    /// response arrives on the IDLE channel.
+    /// Block until the given callback returns `Stop`, or until a response
+    /// arrives that is not explicitly handled by [`UnsolicitedResponse`].
     pub fn wait<F>(mut self, callback: F) -> Result<()>
     where
         F: FnMut(UnsolicitedResponse) -> CallbackAction,
@@ -211,8 +211,8 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         self.keepalive = interval;
     }
 
-    /// Block until the given callback returns `Stop`, or until an unhandled
-    /// response arrives on the IDLE channel.
+    /// Block until the given callback returns `Stop`, or until a response
+    /// arrives that is not explicitly handled by [`UnsolicitedResponse`].
     ///
     /// This method differs from [`Handle::wait`] in that it will periodically refresh the IDLE
     /// connection, to prevent the server from timing out our connection. The keepalive interval is
@@ -235,8 +235,9 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         self.timed_wait(keepalive, true, callback).map(|_| ())
     }
 
-    /// Block until the given amount of time has elapsed, or the given callback
-    /// returns `Stop`, or until an unhandled response arrives on the IDLE channel.
+    /// Block until the given given amount of time has elapsed, the given callback
+    /// returns `Stop`, or until a response arrives that is not explicitly handled
+    /// by [`UnsolicitedResponse`].
     pub fn wait_with_timeout<F>(self, timeout: Duration, callback: F) -> Result<WaitOutcome>
     where
         F: FnMut(UnsolicitedResponse) -> CallbackAction,
