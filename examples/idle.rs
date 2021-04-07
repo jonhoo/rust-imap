@@ -1,4 +1,3 @@
-use imap::extensions::idle;
 use native_tls::TlsConnector;
 use structopt::StructOpt;
 
@@ -68,9 +67,11 @@ fn main() {
         num_responses += 1;
         println!("IDLE response #{}: {:?}", num_responses, response);
         if num_responses >= max_responses {
-            idle::CallbackAction::Stop
+            // Stop IDLE
+            false
         } else {
-            idle::CallbackAction::Continue
+            // Continue IDLE
+            true
         }
     });
 

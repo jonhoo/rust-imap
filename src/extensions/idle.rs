@@ -19,8 +19,8 @@ use std::time::Duration;
 ///
 /// Each of the `wait` functions takes a callback function which receives any responses
 /// that arrive on the channel while IDLE. The callback function implements whatever
-/// logic is needed to handle the IDLE response, and then returns a [`CallbackAction`]
-/// to `Continue` or `Stop` listening on the channel.
+/// logic is needed to handle the IDLE response, and then returns a boolean
+/// to continue idling (`true`) or stop (`false`).
 /// For users that want the IDLE to exit on any change (the behavior proior to version 3.0),
 /// a convenience callback function [`stop_on_any`] is provided.
 ///
@@ -65,19 +65,9 @@ pub enum WaitOutcome {
     MailboxChanged,
 }
 
-/// Return type for IDLE response callbacks. Tells the IDLE connection
-/// if it should continue monitoring the connection or not.
-#[derive(Debug, PartialEq, Eq)]
-pub enum CallbackAction {
-    /// Continue receiving responses from the IDLE connection.
-    Continue,
-    /// Stop receiving responses, and exit the IDLE wait.
-    Stop,
-}
-
 /// A convenience function to always cause the IDLE handler to exit on any change.
-pub fn stop_on_any(_response: UnsolicitedResponse) -> CallbackAction {
-    CallbackAction::Stop
+pub fn stop_on_any(_response: UnsolicitedResponse) -> bool {
+    false
 }
 
 /// Must be implemented for a transport in order for a `Session` using that transport to support
@@ -142,7 +132,7 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
     fn wait_inner<F>(&mut self, reconnect: bool, mut callback: F) -> Result<WaitOutcome>
     where
-        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+        F: FnMut(UnsolicitedResponse) -> bool,
     {
         let mut v = Vec::new();
         let result = loop {
@@ -162,7 +152,7 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
                     match parse_idle(&v) {
                         (_rest, Some(Err(r))) => break Err(r),
                         (rest, Some(Ok(response))) => {
-                            if let CallbackAction::Stop = callback(response) {
+                            if !callback(response) {
                                 break Ok(WaitOutcome::MailboxChanged);
                             }
                             rest
@@ -201,11 +191,11 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
         }
     }
 
-    /// Block until the given callback returns `Stop`, or until a response
+    /// Block until the given callback returns `false`, or until a response
     /// arrives that is not explicitly handled by [`UnsolicitedResponse`].
     pub fn wait<F>(mut self, callback: F) -> Result<()>
     where
-        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+        F: FnMut(UnsolicitedResponse) -> bool,
     {
         self.wait_inner(true, callback).map(|_| ())
     }
@@ -219,7 +209,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         self.keepalive = interval;
     }
 
-    /// Block until the given callback returns `Stop`, or until a response
+    /// Block until the given callback returns `false`, or until a response
     /// arrives that is not explicitly handled by [`UnsolicitedResponse`].
     ///
     /// This method differs from [`Handle::wait`] in that it will periodically refresh the IDLE
@@ -230,7 +220,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// This is the recommended method to use for waiting.
     pub fn wait_keepalive<F>(self, callback: F) -> Result<()>
     where
-        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+        F: FnMut(UnsolicitedResponse) -> bool,
     {
         // The server MAY consider a client inactive if it has an IDLE command
         // running, and if such a server has an inactivity timeout it MAY log
@@ -244,11 +234,11 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     }
 
     /// Block until the given given amount of time has elapsed, the given callback
-    /// returns `Stop`, or until a response arrives that is not explicitly handled
+    /// returns `false`, or until a response arrives that is not explicitly handled
     /// by [`UnsolicitedResponse`].
     pub fn wait_with_timeout<F>(self, timeout: Duration, callback: F) -> Result<WaitOutcome>
     where
-        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+        F: FnMut(UnsolicitedResponse) -> bool,
     {
         self.timed_wait(timeout, false, callback)
     }
@@ -260,7 +250,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         callback: F,
     ) -> Result<WaitOutcome>
     where
-        F: FnMut(UnsolicitedResponse) -> CallbackAction,
+        F: FnMut(UnsolicitedResponse) -> bool,
     {
         self.session
             .stream
