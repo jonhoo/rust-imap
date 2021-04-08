@@ -163,35 +163,6 @@ impl<'a> TryFrom<Response<'a>> for UnsolicitedResponse {
 
     fn try_from(response: Response<'a>) -> Result<Self, Self::Error> {
         match response {
-            Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                Ok(UnsolicitedResponse::Status {
-                    mailbox: mailbox.into(),
-                    attributes: status,
-                })
-            }
-            Response::MailboxData(MailboxDatum::Recent(n)) => Ok(UnsolicitedResponse::Recent(n)),
-            Response::MailboxData(MailboxDatum::Flags(flags)) => {
-                Ok(UnsolicitedResponse::Flags(Flag::from_strs(flags).collect()))
-            }
-            Response::MailboxData(MailboxDatum::Exists(n)) => Ok(UnsolicitedResponse::Exists(n)),
-            Response::MailboxData(MailboxDatum::MetadataUnsolicited { mailbox, values }) => {
-                Ok(UnsolicitedResponse::Metadata {
-                    mailbox: mailbox.to_string(),
-                    metadata_entries: values.iter().map(|s| s.to_string()).collect(),
-                })
-            }
-            Response::Expunge(n) => Ok(UnsolicitedResponse::Expunge(n)),
-            Response::Vanished { earlier, uids } => {
-                Ok(UnsolicitedResponse::Vanished { earlier, uids })
-            }
-            Response::Data {
-                status: Status::Ok,
-                code,
-                information,
-            } => Ok(UnsolicitedResponse::Ok {
-                code: code.map(|c| c.into_owned()),
-                information: information.map(|s| s.to_string()),
-            }),
             Response::Data {
                 status: Status::Bye,
                 code,
@@ -200,10 +171,39 @@ impl<'a> TryFrom<Response<'a>> for UnsolicitedResponse {
                 code: code.map(|c| c.into_owned()),
                 information: information.map(|s| s.to_string()),
             }),
+            Response::Data {
+                status: Status::Ok,
+                code,
+                information,
+            } => Ok(UnsolicitedResponse::Ok {
+                code: code.map(|c| c.into_owned()),
+                information: information.map(|s| s.to_string()),
+            }),
+            Response::Expunge(n) => Ok(UnsolicitedResponse::Expunge(n)),
             Response::Fetch(id, attributes) => Ok(UnsolicitedResponse::Fetch {
                 id,
                 attributes: attributes.into_iter().map(|a| a.into_owned()).collect(),
             }),
+            Response::MailboxData(MailboxDatum::Exists(n)) => Ok(UnsolicitedResponse::Exists(n)),
+            Response::MailboxData(MailboxDatum::Flags(flags)) => {
+                Ok(UnsolicitedResponse::Flags(Flag::from_strs(flags).collect()))
+            }
+            Response::MailboxData(MailboxDatum::MetadataUnsolicited { mailbox, values }) => {
+                Ok(UnsolicitedResponse::Metadata {
+                    mailbox: mailbox.to_string(),
+                    metadata_entries: values.iter().map(|s| s.to_string()).collect(),
+                })
+            }
+            Response::MailboxData(MailboxDatum::Recent(n)) => Ok(UnsolicitedResponse::Recent(n)),
+            Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
+                Ok(UnsolicitedResponse::Status {
+                    mailbox: mailbox.into(),
+                    attributes: status,
+                })
+            }
+            Response::Vanished { earlier, uids } => {
+                Ok(UnsolicitedResponse::Vanished { earlier, uids })
+            }
             _ => Err(response),
         }
     }
