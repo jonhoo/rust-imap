@@ -136,7 +136,7 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
     {
         let mut v = Vec::new();
         let result = loop {
-            let rest = match self.session.readline(&mut v) {
+            match self.session.readline(&mut v) {
                 Err(Error::Io(ref e))
                     if e.kind() == io::ErrorKind::TimedOut
                         || e.kind() == io::ErrorKind::WouldBlock =>
@@ -150,34 +150,35 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
                         continue;
                     }
                     match parse_idle(&v) {
+                        // Something went wrong parsing.
                         (_rest, Some(Err(r))) => break Err(r),
+                        // Complete response. We expect rest to be empty.
                         (rest, Some(Ok(response))) => {
                             if !callback(response) {
                                 break Ok(WaitOutcome::MailboxChanged);
                             }
-                            rest
+                            if rest.is_empty() {
+                                v.clear();
+                            } else {
+                                // Assert on partial parse in debug builds - we expect
+                                // to always parse all or none of the input buffer.
+                                // On release builds, we still do the right thing.
+                                debug_assert!(
+                                    rest.len() != v.len(),
+                                    "Unexpected partial parse: input: {:?}, output: {:?}",
+                                    v,
+                                    rest
+                                );
+                                let used = v.len() - rest.len();
+                                v.drain(0..used);
+                            }
                         }
-                        (rest, None) => rest,
+                        // Incomplete parse - do nothing and read more.
+                        (_rest, None) => (),
                     }
                 }
                 Err(r) => break Err(r),
             };
-
-            // Update remaining data with unparsed data if needed.
-            if rest.is_empty() {
-                v.clear();
-            } else {
-                // Assert on partial parse in debug builds - we expect to always parse all
-                // or none of the input buffer. On release builds, we still do the right thing.
-                debug_assert!(
-                    rest.len() != v.len(),
-                    "Unexpected partial parse: input: {:?}, output: {:?}",
-                    v,
-                    rest
-                );
-                let used = v.len() - rest.len();
-                v.drain(0..used);
-            }
         };
 
         // Reconnect on timeout if needed
