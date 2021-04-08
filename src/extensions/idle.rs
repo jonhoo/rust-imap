@@ -38,13 +38,13 @@ use std::time::Duration;
 /// let idle = imap.idle().expect("Could not IDLE");
 ///
 /// // Exit on any mailbox change
-/// let result = idle.wait_keepalive(idle::stop_on_any);
+/// let result = idle.wait_keepalive_while(idle::stop_on_any);
 /// ```
 ///
 /// Note that the server MAY consider a client inactive if it has an IDLE command running, and if
 /// such a server has an inactivity timeout it MAY log the client off implicitly at the end of its
 /// timeout period.  Because of that, clients using IDLE are advised to terminate the IDLE and
-/// re-issue it at least every 29 minutes to avoid being logged off. [`Handle::wait_keepalive`]
+/// re-issue it at least every 29 minutes to avoid being logged off. [`Handle::wait_keepalive_while`]
 /// does this. This still allows a client to receive immediate mailbox updates even though it need
 /// only "poll" at half hour intervals.
 ///
@@ -73,8 +73,8 @@ pub fn stop_on_any(_response: UnsolicitedResponse) -> bool {
 /// Must be implemented for a transport in order for a `Session` using that transport to support
 /// operations with timeouts.
 ///
-/// Examples of where this is useful is for `Handle::wait_keepalive` and
-/// `Handle::wait_timeout`.
+/// Examples of where this is useful is for `Handle::wait_keepalive_while` and
+/// `Handle::wait_timeout_while`.
 pub trait SetReadTimeout {
     /// Set the timeout for subsequent reads to the given one.
     ///
@@ -129,7 +129,7 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
 
     /// Internal helper that doesn't consume self.
     ///
-    /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive`.
+    /// This is necessary so that we can keep using the inner `Session` in `wait_keepalive_while`.
     fn wait_inner<F>(&mut self, reconnect: bool, mut callback: F) -> Result<WaitOutcome>
     where
         F: FnMut(UnsolicitedResponse) -> bool,
@@ -194,7 +194,7 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
 
     /// Block until the given callback returns `false`, or until a response
     /// arrives that is not explicitly handled by [`UnsolicitedResponse`].
-    pub fn wait<F>(mut self, callback: F) -> Result<()>
+    pub fn wait_while<F>(mut self, callback: F) -> Result<()>
     where
         F: FnMut(UnsolicitedResponse) -> bool,
     {
@@ -203,7 +203,7 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
 }
 
 impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
-    /// Set the keep-alive interval to use when `wait_keepalive` is called.
+    /// Set the keep-alive interval to use when `wait_keepalive_while` is called.
     ///
     /// The interval defaults to 29 minutes as dictated by RFC 2177.
     pub fn set_keepalive(&mut self, interval: Duration) {
@@ -213,13 +213,13 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// Block until the given callback returns `false`, or until a response
     /// arrives that is not explicitly handled by [`UnsolicitedResponse`].
     ///
-    /// This method differs from [`Handle::wait`] in that it will periodically refresh the IDLE
+    /// This method differs from [`Handle::wait_while`] in that it will periodically refresh the IDLE
     /// connection, to prevent the server from timing out our connection. The keepalive interval is
     /// set to 29 minutes by default, as dictated by RFC 2177, but can be changed using
     /// [`Handle::set_keepalive`].
     ///
     /// This is the recommended method to use for waiting.
-    pub fn wait_keepalive<F>(self, callback: F) -> Result<()>
+    pub fn wait_keepalive_while<F>(self, callback: F) -> Result<()>
     where
         F: FnMut(UnsolicitedResponse) -> bool,
     {
@@ -237,7 +237,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// Block until the given given amount of time has elapsed, the given callback
     /// returns `false`, or until a response arrives that is not explicitly handled
     /// by [`UnsolicitedResponse`].
-    pub fn wait_with_timeout<F>(self, timeout: Duration, callback: F) -> Result<WaitOutcome>
+    pub fn wait_with_timeout_while<F>(self, timeout: Duration, callback: F) -> Result<WaitOutcome>
     where
         F: FnMut(UnsolicitedResponse) -> bool,
     {
