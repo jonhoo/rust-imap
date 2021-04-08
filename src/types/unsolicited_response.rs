@@ -1,12 +1,12 @@
 use std::convert::TryFrom;
 
-use super::{Flag, Seq, Uid};
-use crate::error::ParseError;
+use super::{Flag, Seq};
 
 /// re-exported from imap_proto;
+pub use imap_proto::AttributeValue;
 pub use imap_proto::ResponseCode;
 pub use imap_proto::StatusAttribute;
-use imap_proto::{AttributeValue as ImapProtoAttributeValue, MailboxDatum, Response, Status};
+use imap_proto::{MailboxDatum, Response, Status};
 
 /// Responses that the server sends that are not related to the current command.
 /// [RFC 3501](https://tools.ietf.org/html/rfc3501#section-7) states that clients need to be able
@@ -65,7 +65,7 @@ pub enum UnsolicitedResponse {
         /// Message identifier.
         id: u32,
         /// Attribute values for this message.
-        attributes: Vec<AttributeValue>,
+        attributes: Vec<AttributeValue<'static>>,
     },
 
     /// An unsolicited [`FLAGS` response](https://tools.ietf.org/html/rfc3501#section-7.2.6) that
@@ -200,55 +200,11 @@ impl<'a> TryFrom<Response<'a>> for UnsolicitedResponse {
                 code: code.map(|c| c.into_owned()),
                 information: information.map(|s| s.to_string()),
             }),
-            Response::Fetch(id, ref attributes) => {
-                match AttributeValue::try_from_imap_proto_vec(attributes) {
-                    Ok(attrs) => Ok(UnsolicitedResponse::Fetch {
-                        id,
-                        attributes: attrs,
-                    }),
-                    _ => Err(response),
-                }
-            }
+            Response::Fetch(id, attributes) => Ok(UnsolicitedResponse::Fetch {
+                id,
+                attributes: attributes.into_iter().map(|a| a.into_owned()).collect(),
+            }),
             _ => Err(response),
         }
-    }
-}
-
-/// Owned version of AttributeValue that wraps a subset of [`imap_proto::AttributeValue`].
-#[derive(Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum AttributeValue {
-    /// Message Flags
-    Flags(Vec<Flag<'static>>),
-    /// Message ModSequence, [RFC4551](https://tools.ietf.org/html/rfc4551#section-3.3.2)
-    ModSeq(u64),
-    /// Message UID, [RFC3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.1)
-    Uid(Uid),
-}
-
-impl<'a> TryFrom<&ImapProtoAttributeValue<'a>> for AttributeValue {
-    type Error = ParseError;
-
-    fn try_from(val: &ImapProtoAttributeValue<'a>) -> Result<Self, Self::Error> {
-        match val {
-            ImapProtoAttributeValue::Flags(flags) => {
-                Ok(AttributeValue::Flags(Flag::from_strs(flags).collect()))
-            }
-            ImapProtoAttributeValue::ModSeq(seq) => Ok(AttributeValue::ModSeq(*seq)),
-            ImapProtoAttributeValue::Uid(uid) => Ok(AttributeValue::Uid(*uid)),
-            unhandled => Err(ParseError::Unexpected(format!("{:?}", unhandled))),
-        }
-    }
-}
-
-impl<'a> AttributeValue {
-    fn try_from_imap_proto_vec(
-        vals: &[ImapProtoAttributeValue<'a>],
-    ) -> Result<Vec<AttributeValue>, ParseError> {
-        let mut res = Vec::with_capacity(vals.len());
-        for attr in vals {
-            res.push(AttributeValue::try_from(attr)?);
-        }
-        Ok(res)
     }
 }

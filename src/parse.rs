@@ -106,7 +106,6 @@ pub fn parse_fetches(
 
             // set some common fields eaglery
             for attr in &fetch.fetch {
-                use imap_proto::AttributeValue;
                 match attr {
                     AttributeValue::Flags(flags) => {
                         fetch.flags.extend(Flag::from_strs(flags));
