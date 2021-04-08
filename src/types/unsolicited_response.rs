@@ -4,11 +4,9 @@ use super::{Flag, Seq, Uid};
 use crate::error::ParseError;
 
 /// re-exported from imap_proto;
+pub use imap_proto::ResponseCode;
 pub use imap_proto::StatusAttribute;
-use imap_proto::{
-    AttributeValue as ImapProtoAttributeValue, MailboxDatum, Response,
-    ResponseCode as ImapProtoResponseCode, Status,
-};
+use imap_proto::{AttributeValue as ImapProtoAttributeValue, MailboxDatum, Response, Status};
 
 /// Responses that the server sends that are not related to the current command.
 /// [RFC 3501](https://tools.ietf.org/html/rfc3501#section-7) states that clients need to be able
@@ -30,7 +28,7 @@ pub enum UnsolicitedResponse {
     /// information, per [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.1.5).
     Bye {
         /// Optional response code.
-        code: Option<ResponseCode>,
+        code: Option<ResponseCode<'static>>,
         /// Information text that may be presented to the user.
         information: Option<String>,
     },
@@ -94,7 +92,7 @@ pub enum UnsolicitedResponse {
     /// information, per [RFC3501](https://tools.ietf.org/html/rfc3501#section-7.1.1).
     Ok {
         /// Optional response code.
-        code: Option<ResponseCode>,
+        code: Option<ResponseCode<'static>>,
         /// Information text that may be presented to the user.
         information: Option<String>,
     },
@@ -188,46 +186,20 @@ impl<'a> TryFrom<Response<'a>> for UnsolicitedResponse {
             }
             Response::Data {
                 status: Status::Ok,
-                ref code,
-                ref information,
-            } => {
-                let info = information.as_ref().map(|s| s.to_string());
-                if let Some(code) = code {
-                    match ResponseCode::try_from(code) {
-                        Ok(owncode) => Ok(UnsolicitedResponse::Ok {
-                            code: Some(owncode),
-                            information: info,
-                        }),
-                        _ => Err(response),
-                    }
-                } else {
-                    Ok(UnsolicitedResponse::Ok {
-                        code: None,
-                        information: info,
-                    })
-                }
-            }
+                code,
+                information,
+            } => Ok(UnsolicitedResponse::Ok {
+                code: code.map(|c| c.into_owned()),
+                information: information.map(|s| s.to_string()),
+            }),
             Response::Data {
                 status: Status::Bye,
-                ref code,
-                ref information,
-            } => {
-                let info = information.as_ref().map(|s| s.to_string());
-                if let Some(code) = code {
-                    match ResponseCode::try_from(code) {
-                        Ok(owncode) => Ok(UnsolicitedResponse::Bye {
-                            code: Some(owncode),
-                            information: info,
-                        }),
-                        _ => Err(response),
-                    }
-                } else {
-                    Ok(UnsolicitedResponse::Bye {
-                        code: None,
-                        information: info,
-                    })
-                }
-            }
+                code,
+                information,
+            } => Ok(UnsolicitedResponse::Bye {
+                code: code.map(|c| c.into_owned()),
+                information: information.map(|s| s.to_string()),
+            }),
             Response::Fetch(id, ref attributes) => {
                 match AttributeValue::try_from_imap_proto_vec(attributes) {
                     Ok(attrs) => Ok(UnsolicitedResponse::Fetch {
@@ -238,34 +210,6 @@ impl<'a> TryFrom<Response<'a>> for UnsolicitedResponse {
                 }
             }
             _ => Err(response),
-        }
-    }
-}
-
-/// Owned version of ResponseCode that wraps a subset of [`imap_proto::ResponseCode`]
-#[derive(Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum ResponseCode {
-    /// Highest ModSeq in the mailbox, [RFC4551](https://tools.ietf.org/html/rfc4551#section-3.1.1)
-    HighestModSeq(u64),
-    /// Next UID in the mailbox, [RFC3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.1)
-    UidNext(Uid),
-    /// Mailbox UIDVALIDITY, [RFC3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.1)
-    UidValidity(u32),
-    /// Sequence number of first message without the `\\Seen` flag
-    Unseen(Seq),
-}
-
-impl<'a> TryFrom<&ImapProtoResponseCode<'a>> for ResponseCode {
-    type Error = ParseError;
-
-    fn try_from(val: &ImapProtoResponseCode<'a>) -> Result<Self, Self::Error> {
-        match val {
-            ImapProtoResponseCode::HighestModSeq(seq) => Ok(ResponseCode::HighestModSeq(*seq)),
-            ImapProtoResponseCode::UidNext(uid) => Ok(ResponseCode::UidNext(*uid)),
-            ImapProtoResponseCode::UidValidity(uid) => Ok(ResponseCode::UidValidity(*uid)),
-            ImapProtoResponseCode::Unseen(seq) => Ok(ResponseCode::Unseen(*seq)),
-            unhandled => Err(ParseError::Unexpected(format!("{:?}", unhandled))),
         }
     }
 }

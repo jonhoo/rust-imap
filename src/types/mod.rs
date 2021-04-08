@@ -228,7 +228,7 @@ mod deleted;
 pub use self::deleted::Deleted;
 
 mod unsolicited_response;
-pub use self::unsolicited_response::{AttributeValue, ResponseCode, UnsolicitedResponse};
+pub use self::unsolicited_response::{AttributeValue, UnsolicitedResponse};
 
 /// This type wraps an input stream and a type that was constructed by parsing that input stream,
 /// which allows the parsed type to refer to data in the underlying stream instead of copying it.
