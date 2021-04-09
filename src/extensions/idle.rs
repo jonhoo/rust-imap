@@ -157,24 +157,26 @@ impl<'a, T: Read + Write + 'a> Handle<'a, T> {
                             if !callback(response) {
                                 break Ok(WaitOutcome::MailboxChanged);
                             }
+
+                            // Assert on partial parse in debug builds - we expect
+                            // to always parse all or none of the input buffer.
+                            // On release builds, we still do the right thing.
+                            debug_assert!(
+                                rest.is_empty(),
+                                "Unexpected partial parse: input: {:?}, output: {:?}",
+                                v,
+                                rest,
+                            );
+
                             if rest.is_empty() {
                                 v.clear();
                             } else {
-                                // Assert on partial parse in debug builds - we expect
-                                // to always parse all or none of the input buffer.
-                                // On release builds, we still do the right thing.
-                                debug_assert!(
-                                    rest.len() != v.len(),
-                                    "Unexpected partial parse: input: {:?}, output: {:?}",
-                                    v,
-                                    rest
-                                );
                                 let used = v.len() - rest.len();
                                 v.drain(0..used);
                             }
                         }
                         // Incomplete parse - do nothing and read more.
-                        (_rest, None) => (),
+                        (_rest, None) => {}
                     }
                 }
                 Err(r) => break Err(r),
