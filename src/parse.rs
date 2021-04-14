@@ -321,15 +321,12 @@ pub fn parse_mailbox(
     }
 }
 
-fn parse_ids_with<T>(
+fn parse_ids_with<T: Extend<u32>>(
     lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     mut collection: T,
-) -> Result<T>
-where
-    T: Extend<u32>,
-{
-    let mut lines = &lines[..];
+) -> Result<T> {
+    let mut lines = lines;
     loop {
         if lines.is_empty() {
             break Ok(collection);
