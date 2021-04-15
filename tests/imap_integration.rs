@@ -96,6 +96,8 @@ fn inbox_zero() {
 
 #[test]
 fn inbox() {
+    use crate::imap::extensions::sort::SortCriterion::*;
+
     let to = "inbox@localhost";
 
     // first log in so we'll see the unsolicited e-mails
@@ -168,8 +170,25 @@ fn inbox() {
     let inbox = c.search("ALL").unwrap();
     assert_eq!(inbox.len(), 2);
 
+    // e-mails should be sorted by subject
+    let inbox = c.sort(&[Subject], "UTF-8", "ALL").unwrap();
+    assert_eq!(inbox.len(), 2);
+    let mut sort = inbox.iter();
+    assert_eq!(sort.next().unwrap(), &1);
+    assert_eq!(sort.next().unwrap(), &2);
+
     // e-mails should be reverse sorted by subject
-    let inbox = c.sort("(REVERSE SUBJECT)", "UTF-8", "ALL").unwrap();
+    let inbox = c.sort(&[Reverse(&Subject)], "UTF-8", "ALL").unwrap();
+    assert_eq!(inbox.len(), 2);
+    let mut sort = inbox.iter();
+    assert_eq!(sort.next().unwrap(), &2);
+    assert_eq!(sort.next().unwrap(), &1);
+
+    // the number of reverse does not change the order
+    // one or more Reverse implies a reversed result
+    let inbox = c
+        .sort(&[Reverse(&Reverse(&Reverse(&Subject)))], "UTF-8", "ALL")
+        .unwrap();
     assert_eq!(inbox.len(), 2);
     let mut sort = inbox.iter();
     assert_eq!(sort.next().unwrap(), &2);
@@ -183,7 +202,7 @@ fn inbox() {
     let inbox = c.search("ALL").unwrap();
     assert_eq!(inbox.len(), 0);
 
-    let inbox = c.sort("(SUBJECT)", "UTF-8", "ALL").unwrap();
+    let inbox = c.sort(&[Subject], "UTF-8", "ALL").unwrap();
     assert_eq!(inbox.len(), 0);
 }
 

@@ -1313,10 +1313,15 @@ impl<T: Read + Write> Session<T> {
     ///  - `TO`: IMAP addr-mailbox of the first "To" address.
     ///
     ///  - `REVERSE <sort-key>`: Followed by another sort criterion, has the effect of that criterion but in reverse (descending) order.
-    pub fn sort<S: AsRef<str>>(&mut self, criteria: S, charset: S, query: S) -> Result<Vec<Seq>> {
+    pub fn sort<'c, H: AsRef<str>, Q: AsRef<str>>(
+        &mut self,
+        criteria: &'c [extensions::sort::SortCriterion<'c>],
+        charset: H,
+        query: Q,
+    ) -> Result<Vec<Seq>> {
         self.run_command_and_read_response(&format!(
             "SORT {} {} {}",
-            criteria.as_ref(),
+            extensions::sort::SortCriteria(criteria),
             charset.as_ref(),
             query.as_ref()
         ))
