@@ -8,6 +8,8 @@ use chrono::{FixedOffset, TimeZone};
 use lettre::Transport;
 use std::net::TcpStream;
 
+use crate::imap::extensions::sort::{SortCharset, SortCriterion};
+
 fn tls() -> native_tls::TlsConnector {
     native_tls::TlsConnector::builder()
         .danger_accept_invalid_certs(true)
@@ -96,8 +98,6 @@ fn inbox_zero() {
 
 #[test]
 fn inbox() {
-    use crate::imap::extensions::sort::SortCriterion::*;
-
     let to = "inbox@localhost";
 
     // first log in so we'll see the unsolicited e-mails
@@ -171,14 +171,22 @@ fn inbox() {
     assert_eq!(inbox.len(), 2);
 
     // e-mails should be sorted by subject
-    let inbox = c.sort(&[Subject], "UTF-8", "ALL").unwrap();
+    let inbox = c
+        .sort(&[SortCriterion::Subject], SortCharset::UsAscii, "ALL")
+        .unwrap();
     assert_eq!(inbox.len(), 2);
     let mut sort = inbox.iter();
     assert_eq!(sort.next().unwrap(), &1);
     assert_eq!(sort.next().unwrap(), &2);
 
     // e-mails should be reverse sorted by subject
-    let inbox = c.sort(&[Reverse(&Subject)], "UTF-8", "ALL").unwrap();
+    let inbox = c
+        .sort(
+            &[SortCriterion::Reverse(&SortCriterion::Subject)],
+            SortCharset::Utf8,
+            "ALL",
+        )
+        .unwrap();
     assert_eq!(inbox.len(), 2);
     let mut sort = inbox.iter();
     assert_eq!(sort.next().unwrap(), &2);
@@ -187,7 +195,13 @@ fn inbox() {
     // the number of reverse does not change the order
     // one or more Reverse implies a reversed result
     let inbox = c
-        .sort(&[Reverse(&Reverse(&Reverse(&Subject)))], "UTF-8", "ALL")
+        .sort(
+            &[SortCriterion::Reverse(&SortCriterion::Reverse(
+                &SortCriterion::Reverse(&SortCriterion::Subject),
+            ))],
+            SortCharset::Custom("UTF-8".into()),
+            "ALL",
+        )
         .unwrap();
     assert_eq!(inbox.len(), 2);
     let mut sort = inbox.iter();
@@ -202,7 +216,9 @@ fn inbox() {
     let inbox = c.search("ALL").unwrap();
     assert_eq!(inbox.len(), 0);
 
-    let inbox = c.sort(&[Subject], "UTF-8", "ALL").unwrap();
+    let inbox = c
+        .sort(&[SortCriterion::Subject], SortCharset::Utf8, "ALL")
+        .unwrap();
     assert_eq!(inbox.len(), 0);
 }
 
@@ -226,7 +242,9 @@ fn inbox_uid() {
     s.send(e.into()).unwrap();
 
     // now we should see the e-mail!
-    let inbox = c.uid_sort("(SUBJECT)", "US-ASCII", "ALL").unwrap();
+    let inbox = c
+        .uid_sort(&[SortCriterion::Subject], SortCharset::Utf8, "ALL")
+        .unwrap();
     // and the one message should have the first message sequence number
     assert_eq!(inbox.len(), 1);
     let uid = inbox.into_iter().next().unwrap();

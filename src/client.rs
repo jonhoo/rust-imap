@@ -1301,16 +1301,16 @@ impl<T: Read + Write> Session<T> {
     ///  - `SIZE`: Size of the message in octets
     ///  - `SUBJECT`: Base subject text
     ///  - `TO`: IMAP addr-mailbox of the first "To" address
-    pub fn sort<'c, H: AsRef<str>, Q: AsRef<str>>(
+    pub fn sort<'s, S: AsRef<str>>(
         &mut self,
-        criteria: &'c [extensions::sort::SortCriterion<'c>],
-        charset: H,
-        query: Q,
+        criteria: &'s [extensions::sort::SortCriterion<'s>],
+        charset: extensions::sort::SortCharset<'s>,
+        query: S,
     ) -> Result<Vec<Seq>> {
         self.run_command_and_read_response(&format!(
             "SORT {} {} {}",
             extensions::sort::SortCriteria(criteria),
-            charset.as_ref(),
+            charset,
             query.as_ref()
         ))
         .and_then(|lines| parse_ordered_ids(&lines, &mut self.unsolicited_responses_tx))
@@ -1319,16 +1319,16 @@ impl<T: Read + Write> Session<T> {
     /// Equivalent to [`Session::sort`], except that the returned identifiers
     /// are [`Uid`] instead of [`Seq`]. See also the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_sort<'c, S: AsRef<str>>(
+    pub fn uid_sort<'s, S: AsRef<str>>(
         &mut self,
-        criteria: &'c [extensions::sort::SortCriterion<'c>],
-        charset: S,
+        criteria: &'s [extensions::sort::SortCriterion<'s>],
+        charset: extensions::sort::SortCharset<'s>,
         query: S,
     ) -> Result<Vec<Seq>> {
         self.run_command_and_read_response(&format!(
             "UID SORT {} {} {}",
             extensions::sort::SortCriteria(criteria),
-            charset.as_ref(),
+            charset,
             query.as_ref()
         ))
         .and_then(|lines| parse_ordered_ids(&lines, &mut self.unsolicited_responses_tx))

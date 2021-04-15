@@ -6,7 +6,7 @@
 //! criteria argument: a parenthesized list of sort criteria, and the
 //! searching charset.
 
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 pub(crate) struct SortCriteria<'c>(pub(crate) &'c [SortCriterion<'c>]);
 
@@ -75,6 +75,33 @@ impl<'c> fmt::Display for SortCriterion<'c> {
     }
 }
 
+/// The charset argument is mandatory (unlike SEARCH) and indicates
+/// the CHARSET of the strings that appear in the searching
+/// criteria. The US-ASCII and UTF-8 charsets MUST be implemented.
+/// All other charsets are optional.
+pub enum SortCharset<'c> {
+    /// Mandatory UTF-8
+    Utf8,
+
+    /// Mandatory US-ASCII
+    UsAscii,
+
+    /// Optional custom
+    Custom(Cow<'c, str>),
+}
+
+impl<'c> fmt::Display for SortCharset<'c> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use SortCharset::*;
+
+        match self {
+            Utf8 => write!(f, "UTF-8"),
+            UsAscii => write!(f, "US-ASCII"),
+            Custom(c) => write!(f, "{}", c),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +141,14 @@ mod tests {
             "(ARRIVAL REVERSE REVERSE REVERSE FROM)",
             SortCriteria(&[Arrival, Reverse(&Reverse(&Reverse(&From)))]).to_string()
         );
+    }
+
+    #[test]
+    fn test_charset_to_string() {
+        use SortCharset::*;
+
+        assert_eq!("UTF-8", Utf8.to_string());
+        assert_eq!("US-ASCII", UsAscii.to_string());
+        assert_eq!("MY-CUSTOM", Custom("MY-CUSTOM".into()).to_string());
     }
 }
