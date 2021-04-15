@@ -107,7 +107,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_criterion_kind_to_string() {
+    fn test_criterion_to_string() {
         use SortCriterion::*;
 
         assert_eq!("ARRIVAL", Arrival.to_string());
@@ -117,14 +117,8 @@ mod tests {
         assert_eq!("SIZE", Size.to_string());
         assert_eq!("SUBJECT", Subject.to_string());
         assert_eq!("TO", To.to_string());
-    }
-
-    #[test]
-    fn test_criterion_to_string() {
-        use SortCriterion::*;
-
-        assert_eq!("ARRIVAL", Arrival.to_string());
-        assert_eq!("REVERSE ARRIVAL", Reverse(&Arrival).to_string());
+        assert_eq!("REVERSE TO", Reverse(&To).to_string());
+        assert_eq!("REVERSE REVERSE TO", Reverse(&Reverse(&To)).to_string());
     }
 
     #[test]
@@ -149,6 +143,6 @@ mod tests {
 
         assert_eq!("UTF-8", Utf8.to_string());
         assert_eq!("US-ASCII", UsAscii.to_string());
-        assert_eq!("MY-CUSTOM", Custom("MY-CUSTOM".into()).to_string());
+        assert_eq!("CHARSET", Custom("CHARSET".into()).to_string());
     }
 }

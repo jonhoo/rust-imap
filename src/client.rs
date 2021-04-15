@@ -1536,7 +1536,6 @@ mod tests {
     use super::*;
     use imap_proto::types::*;
     use std::borrow::Cow;
-    use std::collections::HashSet;
 
     macro_rules! mock_session {
         ($s:expr) => {
