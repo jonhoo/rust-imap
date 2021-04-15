@@ -8,8 +8,7 @@
 
 use std::fmt;
 
-/// TODO
-pub struct SortCriteria<'c>(pub &'c [SortCriterion<'c>]);
+pub(crate) struct SortCriteria<'c>(pub(crate) &'c [SortCriterion<'c>]);
 
 impl<'c> fmt::Display for SortCriteria<'c> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -22,8 +21,11 @@ impl<'c> fmt::Display for SortCriteria<'c> {
     }
 }
 
-/// TODO
-#[non_exhaustive]
+/// The defined sort criteria are as follows. Refer to the Formal
+/// Syntax section for the precise syntactic definitions of the
+/// arguments. If the associated [RFC-822](https://tools.ietf.org/html/rfc822)
+/// header for a particular criterion is absent, it is treated as the empty string.
+/// The empty string always collates before non-empty strings.
 pub enum SortCriterion<'c> {
     /// Internal date and time of the message. This differs from the
     /// ON criteria in SEARCH, which uses just the internal date.
@@ -107,6 +109,10 @@ mod tests {
         assert_eq!(
             "(ARRIVAL REVERSE FROM)",
             SortCriteria(&[Arrival, Reverse(&From)]).to_string()
+        );
+        assert_eq!(
+            "(ARRIVAL REVERSE REVERSE REVERSE FROM)",
+            SortCriteria(&[Arrival, Reverse(&Reverse(&Reverse(&From)))]).to_string()
         );
     }
 }
