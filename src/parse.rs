@@ -321,6 +321,69 @@ pub fn parse_mailbox(
     }
 }
 
+pub fn parse_status(
+    mut lines: &[u8],
+    mailbox_name: &str,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Mailbox> {
+    let mut mailbox_opt = None;
+
+    loop {
+        if lines.is_empty() {
+            break mailbox_opt.ok_or_else(|| {
+                ParseError::Unexpected("did not receive STATUS response".to_string()).into()
+            });
+        }
+        match imap_proto::parser::parse_response(lines) {
+            Ok((
+                rest,
+                Response::MailboxData(MailboxDatum::Status {
+                    mailbox: their_mailbox_name,
+                    status,
+                }),
+            )) => {
+                lines = rest;
+                if mailbox_name != their_mailbox_name {
+                    return Err(ParseError::Unexpected(format!(
+                        "received STATUS for mailbox '{}', expected '{}'",
+                        their_mailbox_name, mailbox_name
+                    ))
+                    .into());
+                }
+                if mailbox_opt.is_some() {
+                    return Err(ParseError::Unexpected(format!(
+                        "received multiple STATUS responses for the same mailbox '{}'",
+                        mailbox_name
+                    ))
+                    .into());
+                }
+                let mut mailbox = Mailbox::default();
+                for attr in status {
+                    match attr {
+                        StatusAttribute::HighestModSeq(v) => mailbox.highest_mod_seq = Some(v),
+                        StatusAttribute::Messages(v) => mailbox.exists = v,
+                        StatusAttribute::Recent(v) => mailbox.recent = v,
+                        StatusAttribute::UidNext(v) => mailbox.uid_next = Some(v),
+                        StatusAttribute::UidValidity(v) => mailbox.uid_validity = Some(v),
+                        StatusAttribute::Unseen(v) => mailbox.unseen = Some(v),
+                        _ => {} // needed because StatusAttribute is #[non_exhaustive]
+                    }
+                }
+                mailbox_opt = Some(mailbox);
+            }
+            Ok((rest, data)) => {
+                lines = rest;
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                    break Err(resp.into());
+                }
+            }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+    }
+}
+
 pub fn parse_ids(
     lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,

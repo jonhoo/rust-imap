@@ -390,3 +390,12 @@ fn append_with_flags_and_date() {
     let inbox = c.search("ALL").unwrap();
     assert_eq!(inbox.len(), 0);
 }
+
+#[test]
+fn status() {
+    let mut s = session("readonly-test@localhost");
+    let mb = s.status("INBOX", "(UIDNEXT UIDVALIDITY)").unwrap();
+    assert!(mb.uid_next.is_some());
+    assert!(mb.uid_validity.is_some());
+    assert!(mb.unseen.is_none());
+}
