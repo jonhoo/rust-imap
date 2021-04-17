@@ -9,6 +9,7 @@ use lettre::Transport;
 use std::net::TcpStream;
 
 use crate::imap::extensions::sort::{SortCharset, SortCriterion};
+use crate::imap::types::Mailbox;
 
 fn tls() -> native_tls::TlsConnector {
     native_tls::TlsConnector::builder()
@@ -447,4 +448,30 @@ fn append_with_flags_and_date() {
     // the e-mail should be gone now
     let inbox = c.search("ALL").unwrap();
     assert_eq!(inbox.len(), 0);
+}
+
+#[test]
+fn status() {
+    let mut s = session("readonly-test@localhost");
+
+    // Test all valid fields except HIGHESTMODSEQ, which apparently
+    // isn't supported by the IMAP server used for this test.
+    let mb = s.status("INBOX", "(MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)").unwrap();
+    assert_eq!(mb.flags, Vec::new());
+    assert_eq!(mb.exists, 0);
+    assert_eq!(mb.recent, 0);
+    assert!(mb.unseen.is_some());
+    assert_eq!(mb.permanent_flags, Vec::new());
+    assert!(mb.uid_next.is_some());
+    assert!(mb.uid_validity.is_some());
+    assert_eq!(mb.highest_mod_seq, None);
+    assert_eq!(mb.is_read_only, false);
+
+    // If we only request one field, we should only get one field
+    // back. (A server could legally send an unsolicited STATUS
+    // response, but this one won't.)
+    let mb = s.status("INBOX", "(MESSAGES)").unwrap();
+    let mut expected = Mailbox::default();
+    expected.exists = 0;
+    assert_eq!(mb, expected);
 }

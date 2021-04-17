@@ -1064,12 +1064,15 @@ impl<T: Read + Write> Session<T> {
         mailbox_name: S1,
         data_items: S2,
     ) -> Result<Mailbox> {
+        let mailbox_name = mailbox_name.as_ref();
         self.run_command_and_read_response(&format!(
             "STATUS {} {}",
-            validate_str(mailbox_name.as_ref())?,
+            validate_str(mailbox_name)?,
             data_items.as_ref()
         ))
-        .and_then(|lines| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
+        .and_then(|lines| {
+            parse_status(&lines[..], mailbox_name, &mut self.unsolicited_responses_tx)
+        })
     }
 
     /// This method returns a handle that lets you use the [`IDLE`
