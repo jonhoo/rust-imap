@@ -21,26 +21,31 @@ impl<'c> fmt::Display for SortCriteria<'c> {
     }
 }
 
-/// The defined sort criteria are as follows. Refer to the Formal
-/// Syntax section for the precise syntactic definitions of the
-/// arguments. If the associated [RFC-822](https://tools.ietf.org/html/rfc822)
-/// header for a particular criterion is absent, it is treated as the empty string.
-/// The empty string always collates before non-empty strings.
+/// Message sorting preferences used for [`Session::sort`] and [`Session::uid_sort`].
+///
+/// References:
+/// - [IMAP ref](https://tools.ietf.org/html/rfc5256#ref-IMAP)
+/// - [Address formal syntax](https://tools.ietf.org/html/rfc3501#section-9)
+/// - [Address spec](https://tools.ietf.org/html/rfc2822#section-3.4.1)
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum SortCriterion<'c> {
     /// Internal date and time of the message. This differs from the
     /// ON criteria in SEARCH, which uses just the internal date.
     Arrival,
 
-    /// [IMAP](https://tools.ietf.org/html/rfc5256#ref-IMAP) addr-mailbox
-    /// of the first "cc" address.
+    /// IMAP addr-mailbox of the first "Cc" address.
+    /// The addr-mailbox refers either to the name of the contact or to
+    /// its local-part (the left part of the email address, before the `@`).
     Cc,
 
     /// Sent date and time, as described in
     /// [section 2.2](https://tools.ietf.org/html/rfc5256#section-2.20).
     Date,
 
-    /// [IMAP](https://tools.ietf.org/html/rfc5256#ref-IMAP) addr-mailbox
-    /// of the first "From" address.
+    /// IMAP addr-mailbox of the first "From" address.
+    /// The addr-mailbox refers either to the name of the contact or to
+    /// its local-part (the left part of the email address, before the `@`).
     From,
 
     /// Followed by another sort criterion, has the effect of that
@@ -53,8 +58,9 @@ pub enum SortCriterion<'c> {
     /// Base subject text.
     Subject,
 
-    /// [IMAP](https://tools.ietf.org/html/rfc5256#ref-IMAP) addr-mailbox
-    /// of the first "To" address.
+    /// IMAP addr-mailbox of the first "To" address.
+    /// The addr-mailbox refers either to the name of the contact or to
+    /// its local-part (the left part of the email address, before the `@`).
     To,
 }
 
@@ -75,18 +81,19 @@ impl<'c> fmt::Display for SortCriterion<'c> {
     }
 }
 
-/// The charset argument is mandatory (unlike SEARCH) and indicates
-/// the CHARSET of the strings that appear in the searching
-/// criteria. The US-ASCII and UTF-8 charsets MUST be implemented.
-/// All other charsets are optional.
+/// The character encoding to use for strings that are subject to a [`SortCriterion`].
+///
+/// Servers are only required to implement [`SortCharset::UsAscii`] and [`SortCharset::Utf8`].
 pub enum SortCharset<'c> {
-    /// Mandatory UTF-8
+    /// Strings are UTF-8 encoded.
     Utf8,
 
-    /// Mandatory US-ASCII
+    /// Strings are encoded with ASCII.
     UsAscii,
 
-    /// Optional custom
+    /// Strings are encoded using some other character set.
+    ///
+    /// Note that this option is subject to server support for the specified character
     Custom(Cow<'c, str>),
 }
 

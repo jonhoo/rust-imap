@@ -1275,7 +1275,7 @@ impl<T: Read + Write> Session<T> {
     ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
     pub fn search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query.as_ref()))
-            .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Equivalent to [`Session::search`], except that the returned identifiers
@@ -1283,28 +1283,16 @@ impl<T: Read + Write> Session<T> {
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query.as_ref()))
-            .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// The SORT command is a variant of SEARCH with sorting semantics for
-    /// the results. There are two arguments before the searching
-    /// criteria argument: a parenthesized list of sort criteria, and the
-    /// searching charset.
-    ///
-    /// Below is a selection of common sort keys. The full list can be found in the
-    /// specification of the [`SORT command`](https://tools.ietf.org/html/rfc5256#section-3):
-    ///  - `ARRIVAL`: Internal date and time of the message
-    ///  - `CC`: IMAP addr-mailbox of the first "cc" address
-    ///  - `DATE`: Sent date and time
-    ///  - `FROM`: IMAP addr-mailbox of the first "From" address
-    ///  - `REVERSE <sort-key>`: Followed by another sort criterion, has the effect of that criterion but in reverse (descending) order
-    ///  - `SIZE`: Size of the message in octets
-    ///  - `SUBJECT`: Base subject text
-    ///  - `TO`: IMAP addr-mailbox of the first "To" address
-    pub fn sort<'s, S: AsRef<str>>(
+    /// This issues the [SORT command](https://tools.ietf.org/html/rfc5256#section-3),
+    /// which returns sorted search results. This command is like [`Session::search`], except that
+    /// the results are also sorted according to the supplied criteria (subject to the given charset).
+    pub fn sort<S: AsRef<str>>(
         &mut self,
-        criteria: &'s [extensions::sort::SortCriterion<'s>],
-        charset: extensions::sort::SortCharset<'s>,
+        criteria: &[extensions::sort::SortCriterion<'_>],
+        charset: extensions::sort::SortCharset<'_>,
         query: S,
     ) -> Result<Vec<Seq>> {
         self.run_command_and_read_response(&format!(
@@ -1313,25 +1301,25 @@ impl<T: Read + Write> Session<T> {
             charset,
             query.as_ref()
         ))
-        .and_then(|lines| parse_ordered_ids(&lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
     }
 
-    /// Equivalent to [`Session::sort`], except that the returned identifiers
-    /// are [`Uid`] instead of [`Seq`]. See also the [`UID`
-    /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_sort<'s, S: AsRef<str>>(
+    /// Equivalent to [`Session::sort`], except that it returns [`Uid`]s.
+    ///
+    /// See also [`Session::uid_search`].
+    pub fn uid_sort<S: AsRef<str>>(
         &mut self,
-        criteria: &'s [extensions::sort::SortCriterion<'s>],
-        charset: extensions::sort::SortCharset<'s>,
+        criteria: &[extensions::sort::SortCriterion<'_>],
+        charset: extensions::sort::SortCharset<'_>,
         query: S,
-    ) -> Result<Vec<Seq>> {
+    ) -> Result<Vec<Uid>> {
         self.run_command_and_read_response(&format!(
             "UID SORT {} {} {}",
             extensions::sort::SortCriteria(criteria),
             charset,
             query.as_ref()
         ))
-        .and_then(|lines| parse_ordered_ids(&lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
     }
 
     // these are only here because they are public interface, the rest is in `Connection`
