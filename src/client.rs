@@ -1880,6 +1880,51 @@ mod tests {
     }
 
     #[test]
+    fn sort() {
+        use extensions::sort::{SortCharset, SortCriterion};
+
+        let response = b"* SORT 1 2 3 4 5\r\n\
+            a1 OK Sort completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let ids = session
+            .sort(&[SortCriterion::Arrival], SortCharset::Utf8, "ALL")
+            .unwrap();
+        let ids: Vec<u32> = ids.iter().cloned().collect();
+        assert!(
+            session.stream.get_ref().written_buf == b"a1 SORT (ARRIVAL) UTF-8 ALL\r\n".to_vec(),
+            "Invalid sort command"
+        );
+        assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn uid_sort() {
+        use extensions::sort::{SortCharset, SortCriterion};
+
+        let response = b"* SORT 1 2 3 4 5\r\n\
+            a1 OK Sort completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let ids = session
+            .uid_sort(
+                &[SortCriterion::Reverse(&SortCriterion::Size)],
+                SortCharset::UsAscii,
+                "SUBJECT",
+            )
+            .unwrap();
+        let ids: Vec<Uid> = ids.iter().cloned().collect();
+        assert!(
+            session.stream.get_ref().written_buf
+                == b"a1 UID SORT (REVERSE SIZE) US-ASCII SUBJECT\r\n".to_vec(),
+            "Invalid sort command"
+        );
+        assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect::<Vec<_>>());
+    }
+
+    #[test]
     fn capability() {
         let response = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
             a1 OK CAPABILITY completed\r\n"
