@@ -646,6 +646,13 @@ mod tests {
         assert!(recv.try_recv().is_err());
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(ids, HashSet::<u32>::new());
+
+        let lines = b"* SORT\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let ids = parse_id_seq(lines, &mut send).unwrap();
+        assert!(recv.try_recv().is_err());
+        let ids: Vec<u32> = ids.iter().cloned().collect();
+        assert_eq!(ids, Vec::<u32>::new());
     }
 
     #[test]
