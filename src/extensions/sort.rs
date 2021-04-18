@@ -23,10 +23,12 @@ impl<'c> fmt::Display for SortCriteria<'c> {
 
 /// Message sorting preferences used for [`Session::sort`] and [`Session::uid_sort`].
 ///
-/// References:
-/// - [IMAP ref](https://tools.ietf.org/html/rfc5256#ref-IMAP)
-/// - [Address formal syntax](https://tools.ietf.org/html/rfc3501#section-9)
-/// - [Address spec](https://tools.ietf.org/html/rfc2822#section-3.4.1)
+/// Any sorting criterion that refers to an address (`From`, `To`, etc.) sorts according to the
+/// "addr-mailbox" of the indicated address. You can find the formal syntax for addr-mailbox [in
+/// the IMAP spec](https://tools.ietf.org/html/rfc3501#section-9), and a more detailed discussion
+/// of the relevant semantics [in RFC 2822](https://tools.ietf.org/html/rfc2822#section-3.4.1).
+/// Essentially, the address refers _either_ to the name of the contact _or_ to its local-part (the
+/// left part of the email address, before the `@`).
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum SortCriterion<'c> {
@@ -35,8 +37,6 @@ pub enum SortCriterion<'c> {
     Arrival,
 
     /// IMAP addr-mailbox of the first "Cc" address.
-    /// The addr-mailbox refers either to the name of the contact or to
-    /// its local-part (the left part of the email address, before the `@`).
     Cc,
 
     /// Sent date and time, as described in
@@ -44,8 +44,6 @@ pub enum SortCriterion<'c> {
     Date,
 
     /// IMAP addr-mailbox of the first "From" address.
-    /// The addr-mailbox refers either to the name of the contact or to
-    /// its local-part (the left part of the email address, before the `@`).
     From,
 
     /// Followed by another sort criterion, has the effect of that
@@ -59,8 +57,6 @@ pub enum SortCriterion<'c> {
     Subject,
 
     /// IMAP addr-mailbox of the first "To" address.
-    /// The addr-mailbox refers either to the name of the contact or to
-    /// its local-part (the left part of the email address, before the `@`).
     To,
 }
 
@@ -84,6 +80,8 @@ impl<'c> fmt::Display for SortCriterion<'c> {
 /// The character encoding to use for strings that are subject to a [`SortCriterion`].
 ///
 /// Servers are only required to implement [`SortCharset::UsAscii`] and [`SortCharset::Utf8`].
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SortCharset<'c> {
     /// Strings are UTF-8 encoded.
     Utf8,
@@ -93,7 +91,7 @@ pub enum SortCharset<'c> {
 
     /// Strings are encoded using some other character set.
     ///
-    /// Note that this option is subject to server support for the specified character
+    /// Note that this option is subject to server support for the specified character set.
     Custom(Cow<'c, str>),
 }
 

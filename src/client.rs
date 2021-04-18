@@ -1287,7 +1287,9 @@ impl<T: Read + Write> Session<T> {
     }
 
     /// This issues the [SORT command](https://tools.ietf.org/html/rfc5256#section-3),
-    /// which returns sorted search results. This command is like [`Session::search`], except that
+    /// which returns sorted search results.
+    ///
+    /// This command is like [`Session::search`], except that
     /// the results are also sorted according to the supplied criteria (subject to the given charset).
     pub fn sort<S: AsRef<str>>(
         &mut self,
