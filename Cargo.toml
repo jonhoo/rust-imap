@@ -22,9 +22,9 @@ native-tls = { version = "0.2.2", optional = true }
 regex = "1.0"
 bufstream = "0.1"
 imap-proto = "0.14.1"
-nom = "6.0"
+nom = { version = "6.0", default-features = false }
 base64 = "0.13"
-chrono = "0.4"
+chrono = { version = "0.4", default-features = false }
 lazy_static = "1.4"
 
 [dev-dependencies]
