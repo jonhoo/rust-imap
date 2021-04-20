@@ -1275,7 +1275,7 @@ impl<T: Read + Write> Session<T> {
     ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
     pub fn search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query.as_ref()))
-            .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Equivalent to [`Session::search`], except that the returned identifiers
@@ -1283,7 +1283,45 @@ impl<T: Read + Write> Session<T> {
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query.as_ref()))
-            .and_then(|lines| parse_ids(&lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
+    }
+
+    /// This issues the [SORT command](https://tools.ietf.org/html/rfc5256#section-3),
+    /// which returns sorted search results.
+    ///
+    /// This command is like [`Session::search`], except that
+    /// the results are also sorted according to the supplied criteria (subject to the given charset).
+    pub fn sort<S: AsRef<str>>(
+        &mut self,
+        criteria: &[extensions::sort::SortCriterion<'_>],
+        charset: extensions::sort::SortCharset<'_>,
+        query: S,
+    ) -> Result<Vec<Seq>> {
+        self.run_command_and_read_response(&format!(
+            "SORT {} {} {}",
+            extensions::sort::SortCriteria(criteria),
+            charset,
+            query.as_ref()
+        ))
+        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
+    }
+
+    /// Equivalent to [`Session::sort`], except that it returns [`Uid`]s.
+    ///
+    /// See also [`Session::uid_search`].
+    pub fn uid_sort<S: AsRef<str>>(
+        &mut self,
+        criteria: &[extensions::sort::SortCriterion<'_>],
+        charset: extensions::sort::SortCharset<'_>,
+        query: S,
+    ) -> Result<Vec<Uid>> {
+        self.run_command_and_read_response(&format!(
+            "UID SORT {} {} {}",
+            extensions::sort::SortCriteria(criteria),
+            charset,
+            query.as_ref()
+        ))
+        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
     }
 
     // these are only here because they are public interface, the rest is in `Connection`
@@ -1841,6 +1879,51 @@ mod tests {
             "Invalid search command"
         );
         assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect());
+    }
+
+    #[test]
+    fn sort() {
+        use extensions::sort::{SortCharset, SortCriterion};
+
+        let response = b"* SORT 1 2 3 4 5\r\n\
+            a1 OK Sort completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let ids = session
+            .sort(&[SortCriterion::Arrival], SortCharset::Utf8, "ALL")
+            .unwrap();
+        let ids: Vec<u32> = ids.iter().cloned().collect();
+        assert!(
+            session.stream.get_ref().written_buf == b"a1 SORT (ARRIVAL) UTF-8 ALL\r\n".to_vec(),
+            "Invalid sort command"
+        );
+        assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn uid_sort() {
+        use extensions::sort::{SortCharset, SortCriterion};
+
+        let response = b"* SORT 1 2 3 4 5\r\n\
+            a1 OK Sort completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let ids = session
+            .uid_sort(
+                &[SortCriterion::Reverse(&SortCriterion::Size)],
+                SortCharset::UsAscii,
+                "SUBJECT",
+            )
+            .unwrap();
+        let ids: Vec<Uid> = ids.iter().cloned().collect();
+        assert!(
+            session.stream.get_ref().written_buf
+                == b"a1 UID SORT (REVERSE SIZE) US-ASCII SUBJECT\r\n".to_vec(),
+            "Invalid sort command"
+        );
+        assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect::<Vec<_>>());
     }
 
     #[test]
