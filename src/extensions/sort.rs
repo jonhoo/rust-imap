@@ -40,7 +40,7 @@ pub enum SortCriterion<'c> {
     Cc,
 
     /// Sent date and time, as described in
-    /// [section 2.2](https://tools.ietf.org/html/rfc5256#section-2.20).
+    /// [section 2.2](https://tools.ietf.org/html/rfc5256#section-2.2).
     Date,
 
     /// IMAP addr-mailbox of the first "From" address.
