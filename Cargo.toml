@@ -1,6 +1,6 @@
 [package]
 name = "imap"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 authors = ["Jon Gjengset <jon@thesquareplanet.com>",
            "Matt McCoy <mattnenterprise@yahoo.com>"]
 documentation = "https://docs.rs/imap/"
@@ -21,7 +21,7 @@ default = ["tls"]
 native-tls = { version = "0.2.2", optional = true }
 regex = "1.0"
 bufstream = "0.1"
-imap-proto = "0.14.0"
+imap-proto = "0.14.1"
 nom = { version = "6.0", default-features = false }
 base64 = "0.13"
 chrono = { version = "0.4", default-features = false }
@@ -31,6 +31,7 @@ lazy_static = "1.4"
 lettre = "0.9"
 lettre_email = "0.9"
 rustls-connector = "0.13.0"
+structopt = "0.3"
 
 [[example]]
 name = "basic"
@@ -38,6 +39,10 @@ required-features = ["default"]
 
 [[example]]
 name = "gmail_oauth2"
+required-features = ["default"]
+
+[[example]]
+name = "idle"
 required-features = ["default"]
 
 [[test]]

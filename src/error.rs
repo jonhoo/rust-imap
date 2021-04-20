@@ -76,6 +76,10 @@ pub enum Error {
     Validate(ValidateError),
     /// Error appending an e-mail.
     Append,
+    /// An unexpected response was received. This could be a response from a command,
+    /// or an unsolicited response that could not be converted into a local type in
+    /// [`UnsolicitedResponse`].
+    Unexpected(Response<'static>),
 }
 
 impl From<IoError> for Error {
@@ -112,7 +116,7 @@ impl From<TlsError> for Error {
 
 impl<'a> From<Response<'a>> for Error {
     fn from(err: Response<'a>) -> Error {
-        Error::Parse(ParseError::Unexpected(format!("{:?}", err)))
+        Error::Unexpected(err.into_owned())
     }
 }
 
@@ -130,6 +134,7 @@ impl fmt::Display for Error {
             Error::Bad(ref data) => write!(f, "Bad Response: {}", data),
             Error::ConnectionLost => f.write_str("Connection Lost"),
             Error::Append => f.write_str("Could not append mail to mailbox"),
+            Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
         }
     }
 }
@@ -149,6 +154,7 @@ impl StdError for Error {
             Error::No(_) => "No Response",
             Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
+            Error::Unexpected(_) => "Unexpected Response",
         }
     }
 
@@ -170,8 +176,6 @@ impl StdError for Error {
 pub enum ParseError {
     /// Indicates an error parsing the status response. Such as OK, NO, and BAD.
     Invalid(Vec<u8>),
-    /// An unexpected response was encountered.
-    Unexpected(String),
     /// The client could not find or decode the server's authentication challenge.
     Authentication(String, Option<DecodeError>),
     /// The client received data that was not UTF-8 encoded.
@@ -182,7 +186,6 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ParseError::Invalid(_) => f.write_str("Unable to parse status response"),
-            ParseError::Unexpected(_) => f.write_str("Encountered unexpected parse response"),
             ParseError::Authentication(_, _) => {
                 f.write_str("Unable to parse authentication response")
             }
@@ -195,7 +198,6 @@ impl StdError for ParseError {
     fn description(&self) -> &str {
         match *self {
             ParseError::Invalid(_) => "Unable to parse status response",
-            ParseError::Unexpected(_) => "Encountered unexpected parsed response",
             ParseError::Authentication(_, _) => "Unable to parse authentication response",
             ParseError::DataNotUtf8(_, _) => "Unable to parse data as UTF-8 text",
         }
