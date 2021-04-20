@@ -348,7 +348,6 @@ fn parse_ids_with<T: Extend<u32>>(
     }
 }
 
-
 pub fn parse_id_set(
     lines: &[u8],
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
