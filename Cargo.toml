@@ -24,7 +24,7 @@ bufstream = "0.1"
 imap-proto = "0.14.1"
 nom = { version = "6.0", default-features = false }
 base64 = "0.13"
-chrono = { version = "0.4", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std"]}
 lazy_static = "1.4"
 
 [dev-dependencies]
