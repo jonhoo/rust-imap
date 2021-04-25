@@ -505,6 +505,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_fetches_w_dovecot_info() {
+        // Dovecot will sometimes send informational unsolicited
+        // OK messages while performing long operations.
+        // * OK Searched 91% of the mailbox, ETA 0:01
+        let lines = b"\
+            * OK Searched 91% of the mailbox, ETA 0:01\r\n\
+            * 37 FETCH (UID 74)\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        assert_eq!(
+            recv.try_recv(),
+            Ok(UnsolicitedResponse::Ok {
+                code: None,
+                information: Some(String::from("Searched 91% of the mailbox, ETA 0:01")),
+            })
+        );
+        assert_eq!(fetches.len(), 1);
+        assert_eq!(fetches[0].message, 37);
+        assert_eq!(fetches[0].uid, Some(74));
+    }
+
+    #[test]
     fn parse_names_w_unilateral() {
         let lines = b"\
                     * LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n\
