@@ -70,8 +70,8 @@ where
     #[cfg(feature = "native-tls")]
     #[cfg_attr(docsrs, doc(cfg(feature = "native-tls")))]
     pub fn native_tls(&mut self) -> Result<Client<TlsStream<TcpStream>>> {
+        let tcp = TcpStream::connect((self.domain.as_ref(), self.port))?;
         if self.starttls {
-            let tcp = TcpStream::connect((self.domain.as_ref(), self.port))?;
             let mut client = Client::new(tcp);
             client.read_greeting()?;
             client.run_command_and_check_ok("STARTTLS")?;
@@ -79,7 +79,6 @@ where
             let tls = TlsConnector::connect(&ssl_conn, self.domain.as_ref(), client.into_inner()?)?;
             Ok(Client::new(tls))
         } else {
-            let tcp = TcpStream::connect((self.domain.as_ref(), self.port))?;
             let ssl_conn = TlsConnector::builder().build()?;
             let tls = TlsConnector::connect(&ssl_conn, self.domain.as_ref(), tcp)?;
             Ok(Client::new(tls))
@@ -90,8 +89,8 @@ where
     #[cfg(feature = "rustls-tls")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rustls-tls")))]
     pub fn rustls(&mut self) -> Result<Client<RustlsStream<TcpStream>>> {
+        let tcp = TcpStream::connect((self.domain.as_ref(), self.port))?;
         if self.starttls {
-            let tcp = TcpStream::connect((self.domain.as_ref(), self.port))?;
             let mut client = Client::new(tcp);
             client.read_greeting()?;
             client.run_command_and_check_ok("STARTTLS")?;
@@ -99,7 +98,6 @@ where
             let tls = ssl_conn.connect(self.domain.as_ref(), client.into_inner()?)?;
             Ok(Client::new(tls))
         } else {
-            let tcp = TcpStream::connect((self.domain.as_ref(), self.port))?;
             let ssl_conn = RustlsConnector::new_with_native_certs()?;
             let tls = ssl_conn.connect(self.domain.as_ref(), tcp)?;
             Ok(Client::new(tls))
