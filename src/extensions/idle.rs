@@ -7,6 +7,8 @@ use crate::parse::parse_idle;
 use crate::types::UnsolicitedResponse;
 #[cfg(feature = "tls")]
 use native_tls::TlsStream;
+#[cfg(feature = "rustls-tls")]
+use rustls_connector::TlsStream as RustlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
@@ -280,6 +282,13 @@ impl<'a> SetReadTimeout for TcpStream {
 
 #[cfg(feature = "tls")]
 impl<'a> SetReadTimeout for TlsStream<TcpStream> {
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
+        self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
+    }
+}
+
+#[cfg(feature = "rustls-tls")]
+impl<'a> SetReadTimeout for RustlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
     }

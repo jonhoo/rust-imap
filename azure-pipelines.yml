@@ -25,13 +25,13 @@ jobs:
      - template: install-rust.yml@templates
        parameters:
          rust: $(rust)
-     - script: cargo check --all-targets
+     - script: cargo check --all-targets --all-features
        displayName: cargo check
-     - script: cargo test --examples
+     - script: cargo test --examples --all-features
        displayName: cargo test --examples
-     - script: cargo test --doc
+     - script: cargo test --doc --all-features
        displayName: cargo test --doc
-     - script: cargo test --lib
+     - script: cargo test --lib --all-features
        displayName: cargo test --lib
      - script: |
          set -e

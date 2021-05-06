@@ -414,6 +414,14 @@ impl<T: Read + Write> Client<T> {
         }
     }
 
+    /// Yield the underlying connection for this Client.
+    /// This consumes `self` since the Client is not much use without
+    /// an underlying transport.
+    pub(crate) fn into_inner(self) -> Result<T> {
+        let res = self.conn.stream.into_inner()?;
+        Ok(res)
+    }
+
     /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
     /// returned; on error the original `Client` instance is returned in addition to the error.
     /// This is because `login` takes ownership of `self`, so in order to try again (e.g. after
@@ -1379,7 +1387,7 @@ impl<T: Read + Write> Connection<T> {
         Ok(v)
     }
 
-    fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
+    pub(crate) fn run_command_and_check_ok(&mut self, command: &str) -> Result<()> {
         self.run_command_and_read_response(command).map(|_| ())
     }
 
