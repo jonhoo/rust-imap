@@ -1,7 +1,7 @@
 use crate::{Client, Result};
 use std::net::TcpStream;
 
-#[cfg(feature = "native-tls")]
+#[cfg(feature = "tls")]
 use native_tls::{TlsConnector, TlsStream};
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
@@ -60,15 +60,15 @@ where
     }
 
     /// Use `STARTTLS` for this connection.
-    #[cfg(any(feature = "native-tls", feature = "rustls-tls"))]
+    #[cfg(any(feature = "tls", feature = "rustls-tls"))]
     pub fn starttls(&mut self) -> &mut Self {
         self.starttls = true;
         self
     }
 
     /// Return a new [`Client`] using a `native-tls` transport.
-    #[cfg(feature = "native-tls")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "native-tls")))]
+    #[cfg(feature = "tls")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "tls")))]
     pub fn native_tls(&mut self) -> Result<Client<TlsStream<TcpStream>>> {
         let tcp = TcpStream::connect((self.domain.as_ref(), self.port))?;
         if self.starttls {
