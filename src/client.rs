@@ -415,6 +415,7 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Yield the underlying connection for this Client.
+    ///
     /// This consumes `self` since the Client is not much use without
     /// an underlying transport.
     pub(crate) fn into_inner(self) -> Result<T> {
