@@ -384,20 +384,18 @@ impl<T: Read + Write> Client<T> {
     /// # use imap::Client;
     /// # use std::io;
     /// # use std::net::TcpStream;
+    /// # {} #[cfg(feature = "tls")]
     /// # fn main() {
     /// # let server = "imap.example.com";
     /// # let username = "";
     /// # let password = "";
     /// # let tcp = TcpStream::connect((server, 993)).unwrap();
-    /// # #[cfg(feature = "tls")]
-    /// # {
     /// # use native_tls::TlsConnector;
     /// # let ssl_connector = TlsConnector::builder().build().unwrap();
     /// # let tls = TlsConnector::connect(&ssl_connector, server.as_ref(), tcp).unwrap();
     /// let mut client = Client::new(tls);
     /// client.read_greeting().unwrap();
     /// let session = client.login(username, password).unwrap();
-    /// # }
     /// # }
     /// ```
     pub fn new(stream: T) -> Client<T> {
@@ -427,9 +425,8 @@ impl<T: Read + Write> Client<T> {
     /// transferred back to the caller.
     ///
     /// ```rust,no_run
+    /// # {} #[cfg(feature = "tls")]
     /// # fn main() {
-    /// # #[cfg(feature = "tls")]
-    /// # {
     /// # use native_tls::TlsConnector;
     /// # let tls_connector = TlsConnector::builder().build().unwrap();
     /// let client = imap::connect(
@@ -446,7 +443,6 @@ impl<T: Read + Write> Client<T> {
     ///         // prompt user and try again with orig_client here
     ///         return;
     ///     }
-    /// # }
     /// }
     /// # }
     /// ```
@@ -487,14 +483,13 @@ impl<T: Read + Write> Client<T> {
     ///     }
     /// }
     ///
+    /// # {} #[cfg(feature = "tls")]
     /// fn main() {
     ///     let auth = OAuth2 {
     ///         user: String::from("me@example.com"),
     ///         access_token: String::from("<access_token>"),
     ///     };
     ///     let domain = "imap.example.com";
-    /// # #[cfg(feature = "tls")]
-    /// # {
     ///     let tls = TlsConnector::builder().build().unwrap();
     ///     let client = imap::connect((domain, 993), domain, &tls).unwrap();
     ///     match client.authenticate("XOAUTH2", &auth) {
@@ -507,7 +502,6 @@ impl<T: Read + Write> Client<T> {
     ///             return;
     ///         }
     ///     };
-    /// # }
     /// }
     /// ```
     pub fn authenticate<A: Authenticator, S: AsRef<str>>(

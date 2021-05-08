@@ -12,8 +12,8 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// Creating a [`Client`] using `native-tls` transport is straightforward:
 /// ```no_run
 /// # use imap::ClientBuilder;
+/// # {} #[cfg(feature = "tls")]
 /// # fn main() -> Result<(), imap::Error> {
-/// # #[cfg(feature = "tls")]
 /// let client = ClientBuilder::new("imap.example.com", 993).native_tls()?;
 /// # Ok(())
 /// # }
@@ -22,8 +22,8 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// Similarly, if using the `rustls-tls` feature you can create a [`Client`] using rustls:
 /// ```no_run
 /// # use imap::ClientBuilder;
+/// # {} #[cfg(feature = "rustls-tls")]
 /// # fn main() -> Result<(), imap::Error> {
-/// # #[cfg(feature = "rustls-tls")]
 /// let client = ClientBuilder::new("imap.example.com", 993).rustls()?;
 /// # Ok(())
 /// # }
@@ -33,8 +33,8 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// functions:
 /// ```no_run
 /// # use imap::ClientBuilder;
+/// # {} #[cfg(feature = "rustls-tls")]
 /// # fn main() -> Result<(), imap::Error> {
-/// # #[cfg(feature = "rustls-tls")]
 /// let client = ClientBuilder::new("imap.example.com", 993)
 ///     .starttls()
 ///     .rustls()?;
@@ -110,8 +110,8 @@ where
     /// ```no_run
     /// # use imap::ClientBuilder;
     /// # use rustls_connector::RustlsConnector;
+    /// # {} #[cfg(feature = "rustls-tls")]
     /// # fn main() -> Result<(), imap::Error> {
-    /// # #[cfg(feature = "rustls-tls")]
     /// let client = ClientBuilder::new("imap.example.com", 993)
     ///     .starttls()
     ///     .connect(|domain, tcp| {

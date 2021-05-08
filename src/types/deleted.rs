@@ -18,9 +18,9 @@ use std::ops::RangeInclusive;
 ///
 /// # Examples
 /// ```no_run
+/// # {} #[cfg(feature = "tls")]
+/// # fn main() {
 /// # let domain = "imap.example.com";
-/// # #[cfg(feature = "tls")]
-/// # {
 /// # let tls = native_tls::TlsConnector::builder().build().unwrap();
 /// # let client = imap::connect((domain, 993), domain, &tls).unwrap();
 /// # let mut session = client.login("name", "pw").unwrap();
@@ -36,8 +36,8 @@ use std::ops::RangeInclusive;
 ///     for uid in deleted.uids() {
 ///         // Do something with uid
 ///     }
-/// # }
 /// }
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub enum Deleted {
