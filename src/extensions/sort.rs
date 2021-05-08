@@ -21,7 +21,8 @@ impl<'c> fmt::Display for SortCriteria<'c> {
     }
 }
 
-/// Message sorting preferences used for [`Session::sort`] and [`Session::uid_sort`].
+/// Message sorting preferences used for [`Session::sort`](crate::Session::sort)
+/// and [`Session::uid_sort`](crate::Session::uid_sort).
 ///
 /// Any sorting criterion that refers to an address (`From`, `To`, etc.) sorts according to the
 /// "addr-mailbox" of the indicated address. You can find the formal syntax for addr-mailbox [in
