@@ -21,9 +21,7 @@
 //! Below is a basic client example. See the `examples/` directory for more.
 //!
 //! ```no_run
-//! extern crate imap;
-//! extern crate native_tls;
-//!
+//! # #[cfg(feature = "tls")]
 //! fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
 //!     let domain = "imap.example.com";
 //!     let tls = native_tls::TlsConnector::builder().build().unwrap();

@@ -27,8 +27,10 @@ use std::time::Duration;
 /// a convenience callback function [`stop_on_any`] is provided.
 ///
 /// ```no_run
-/// # use native_tls::TlsConnector;
 /// use imap::extensions::idle;
+/// # #[cfg(feature = "tls")]
+/// # {
+/// # use native_tls::TlsConnector;
 /// let ssl_conn = TlsConnector::builder().build().unwrap();
 /// let client = imap::connect(("example.com", 993), "example.com", &ssl_conn)
 ///     .expect("Could not connect to imap server");
@@ -41,6 +43,7 @@ use std::time::Duration;
 ///
 /// // Exit on any mailbox change
 /// let result = idle.wait_keepalive_while(idle::stop_on_any);
+/// # }
 /// ```
 ///
 /// Note that the server MAY consider a client inactive if it has an IDLE command running, and if

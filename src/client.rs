@@ -264,8 +264,6 @@ impl<T: Read + Write> DerefMut for Session<T> {
 /// # Examples
 ///
 /// ```no_run
-/// # extern crate native_tls;
-/// # extern crate imap;
 /// # use std::io;
 /// # use native_tls::TlsConnector;
 /// # fn main() {
@@ -302,8 +300,6 @@ pub fn connect<A: ToSocketAddrs, S: AsRef<str>>(
 /// # Examples
 ///
 /// ```no_run
-/// # extern crate native_tls;
-/// # extern crate imap;
 /// # use std::io;
 /// # use native_tls::TlsConnector;
 /// # fn main() {
@@ -385,10 +381,7 @@ impl<T: Read + Write> Client<T> {
     /// listen for the IMAP protocol server greeting before authenticating:
     ///
     /// ```rust,no_run
-    /// # extern crate imap;
-    /// # extern crate native_tls;
     /// # use imap::Client;
-    /// # use native_tls::TlsConnector;
     /// # use std::io;
     /// # use std::net::TcpStream;
     /// # fn main() {
@@ -396,11 +389,15 @@ impl<T: Read + Write> Client<T> {
     /// # let username = "";
     /// # let password = "";
     /// # let tcp = TcpStream::connect((server, 993)).unwrap();
+    /// # #[cfg(feature = "tls")]
+    /// # {
+    /// # use native_tls::TlsConnector;
     /// # let ssl_connector = TlsConnector::builder().build().unwrap();
     /// # let tls = TlsConnector::connect(&ssl_connector, server.as_ref(), tcp).unwrap();
     /// let mut client = Client::new(tls);
     /// client.read_greeting().unwrap();
     /// let session = client.login(username, password).unwrap();
+    /// # }
     /// # }
     /// ```
     pub fn new(stream: T) -> Client<T> {
@@ -430,11 +427,10 @@ impl<T: Read + Write> Client<T> {
     /// transferred back to the caller.
     ///
     /// ```rust,no_run
-    /// # extern crate imap;
-    /// # extern crate native_tls;
-    /// # use std::io;
-    /// # use native_tls::TlsConnector;
     /// # fn main() {
+    /// # #[cfg(feature = "tls")]
+    /// # {
+    /// # use native_tls::TlsConnector;
     /// # let tls_connector = TlsConnector::builder().build().unwrap();
     /// let client = imap::connect(
     ///     ("imap.example.org", 993),
@@ -450,6 +446,7 @@ impl<T: Read + Write> Client<T> {
     ///         // prompt user and try again with orig_client here
     ///         return;
     ///     }
+    /// # }
     /// }
     /// # }
     /// ```
@@ -472,8 +469,7 @@ impl<T: Read + Write> Client<T> {
     /// challenge.
     ///
     /// ```no_run
-    /// extern crate imap;
-    /// extern crate native_tls;
+    /// # #[cfg(feature = "tls")]
     /// use native_tls::TlsConnector;
     ///
     /// struct OAuth2 {
@@ -497,6 +493,8 @@ impl<T: Read + Write> Client<T> {
     ///         access_token: String::from("<access_token>"),
     ///     };
     ///     let domain = "imap.example.com";
+    /// # #[cfg(feature = "tls")]
+    /// # {
     ///     let tls = TlsConnector::builder().build().unwrap();
     ///     let client = imap::connect((domain, 993), domain, &tls).unwrap();
     ///     match client.authenticate("XOAUTH2", &auth) {
@@ -509,6 +507,7 @@ impl<T: Read + Write> Client<T> {
     ///             return;
     ///         }
     ///     };
+    /// # }
     /// }
     /// ```
     pub fn authenticate<A: Authenticator, S: AsRef<str>>(

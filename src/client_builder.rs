@@ -13,6 +13,7 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// ```no_run
 /// # use imap::ClientBuilder;
 /// # fn main() -> Result<(), imap::Error> {
+/// # #[cfg(feature = "tls")]
 /// let client = ClientBuilder::new("imap.example.com", 993).native_tls()?;
 /// # Ok(())
 /// # }
@@ -22,6 +23,7 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// ```no_run
 /// # use imap::ClientBuilder;
 /// # fn main() -> Result<(), imap::Error> {
+/// # #[cfg(feature = "rustls-tls")]
 /// let client = ClientBuilder::new("imap.example.com", 993).rustls()?;
 /// # Ok(())
 /// # }
@@ -32,6 +34,7 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// ```no_run
 /// # use imap::ClientBuilder;
 /// # fn main() -> Result<(), imap::Error> {
+/// # #[cfg(feature = "rustls-tls")]
 /// let client = ClientBuilder::new("imap.example.com", 993)
 ///     .starttls()
 ///     .rustls()?;
@@ -108,6 +111,7 @@ where
     /// # use imap::ClientBuilder;
     /// # use rustls_connector::RustlsConnector;
     /// # fn main() -> Result<(), imap::Error> {
+    /// # #[cfg(feature = "rustls-tls")]
     /// let client = ClientBuilder::new("imap.example.com", 993)
     ///     .starttls()
     ///     .connect(|domain, tcp| {
