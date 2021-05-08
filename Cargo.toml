@@ -47,6 +47,14 @@ required-features = ["default"]
 name = "idle"
 required-features = ["default"]
 
+[[example]]
+name = "starttls"
+required-features = ["default"]
+
+[[example]]
+name = "timeout"
+required-features = ["default"]
+
 [[test]]
 name = "imap_integration"
 required-features = ["default"]

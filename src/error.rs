@@ -3,7 +3,6 @@
 use std::error::Error as StdError;
 use std::fmt;
 use std::io::Error as IoError;
-#[cfg(feature = "tls")]
 use std::net::TcpStream;
 use std::result;
 use std::str::Utf8Error;
