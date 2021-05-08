@@ -78,7 +78,7 @@ pub enum Error {
     Append,
     /// An unexpected response was received. This could be a response from a command,
     /// or an unsolicited response that could not be converted into a local type in
-    /// [`UnsolicitedResponse`].
+    /// [`UnsolicitedResponse`](crate::types::UnsolicitedResponse).
     Unexpected(Response<'static>),
 }
 
