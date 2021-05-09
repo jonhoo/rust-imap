@@ -30,9 +30,7 @@ use std::time::Duration;
 /// use imap::extensions::idle;
 /// # #[cfg(feature = "tls")]
 /// # {
-/// # use native_tls::TlsConnector;
-/// let ssl_conn = TlsConnector::builder().build().unwrap();
-/// let client = imap::connect(("example.com", 993), "example.com", &ssl_conn)
+/// let client = imap::ClientBuilder::new("example.com", 993).native_tls()
 ///     .expect("Could not connect to imap server");
 /// let mut imap = client.login("user@example.com", "password")
 ///     .expect("Could not authenticate");

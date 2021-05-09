@@ -1,11 +1,8 @@
 use bufstream::BufStream;
 use chrono::{DateTime, FixedOffset};
 use imap_proto::Response;
-#[cfg(feature = "tls")]
-use native_tls::{TlsConnector, TlsStream};
 use std::collections::HashSet;
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::{Deref, DerefMut};
 use std::str;
 use std::sync::mpsc;
@@ -253,105 +250,6 @@ impl<T: Read + Write> DerefMut for Session<T> {
     }
 }
 
-/// Connect to a server using a TLS-encrypted connection.
-///
-/// The returned [`Client`] is unauthenticated; to access session-related methods (through
-/// [`Session`]), use [`Client::login`] or [`Client::authenticate`].
-///
-/// The domain must be passed in separately from the `TlsConnector` so that the certificate of the
-/// IMAP server can be validated.
-///
-/// # Examples
-///
-/// ```no_run
-/// # use std::io;
-/// # use native_tls::TlsConnector;
-/// # fn main() {
-/// let tls = TlsConnector::builder().build().unwrap();
-/// let client = imap::connect(("imap.example.org", 993), "imap.example.org", &tls).unwrap();
-/// # }
-/// ```
-#[cfg(feature = "tls")]
-pub fn connect<A: ToSocketAddrs, S: AsRef<str>>(
-    addr: A,
-    domain: S,
-    ssl_connector: &TlsConnector,
-) -> Result<Client<TlsStream<TcpStream>>> {
-    match TcpStream::connect(addr) {
-        Ok(stream) => {
-            let ssl_stream = match TlsConnector::connect(ssl_connector, domain.as_ref(), stream) {
-                Ok(s) => s,
-                Err(e) => return Err(Error::TlsHandshake(e)),
-            };
-            let mut socket = Client::new(ssl_stream);
-
-            socket.read_greeting()?;
-            Ok(socket)
-        }
-        Err(e) => Err(Error::Io(e)),
-    }
-}
-
-/// Connect to a server and upgrade to a TLS-encrypted connection.
-///
-/// This is the [STARTTLS](https://tools.ietf.org/html/rfc2595) equivalent to [`connect`]. All
-/// notes there also apply here.
-///
-/// # Examples
-///
-/// ```no_run
-/// # use std::io;
-/// # use native_tls::TlsConnector;
-/// # fn main() {
-/// let tls = TlsConnector::builder().build().unwrap();
-/// let client = imap::connect_starttls(("imap.example.org", 143), "imap.example.org", &tls).unwrap();
-/// # }
-/// ```
-#[cfg(feature = "tls")]
-pub fn connect_starttls<A: ToSocketAddrs, S: AsRef<str>>(
-    addr: A,
-    domain: S,
-    ssl_connector: &TlsConnector,
-) -> Result<Client<TlsStream<TcpStream>>> {
-    match TcpStream::connect(addr) {
-        Ok(stream) => {
-            let mut socket = Client::new(stream);
-            socket.read_greeting()?;
-            socket.run_command_and_check_ok("STARTTLS")?;
-            TlsConnector::connect(
-                ssl_connector,
-                domain.as_ref(),
-                socket.conn.stream.into_inner()?,
-            )
-            .map(Client::new)
-            .map_err(Error::TlsHandshake)
-        }
-        Err(e) => Err(Error::Io(e)),
-    }
-}
-
-impl Client<TcpStream> {
-    /// This will upgrade an IMAP client from using a regular TCP connection to use TLS.
-    ///
-    /// The domain parameter is required to perform hostname verification.
-    #[cfg(feature = "tls")]
-    pub fn secure<S: AsRef<str>>(
-        mut self,
-        domain: S,
-        ssl_connector: &TlsConnector,
-    ) -> Result<Client<TlsStream<TcpStream>>> {
-        // TODO This needs to be tested
-        self.run_command_and_check_ok("STARTTLS")?;
-        TlsConnector::connect(
-            ssl_connector,
-            domain.as_ref(),
-            self.conn.stream.into_inner()?,
-        )
-        .map(Client::new)
-        .map_err(Error::TlsHandshake)
-    }
-}
-
 // As the pattern of returning the unauthenticated `Client` (a.k.a. `self`) back with a login error
 // is relatively common, it's abstacted away into a macro here.
 //
@@ -371,14 +269,16 @@ macro_rules! ok_or_unauth_client_err {
 impl<T: Read + Write> Client<T> {
     /// Creates a new client over the given stream.
     ///
-    /// For an example of how to use this method to provide a pure-Rust TLS integration, see the
-    /// rustls.rs in the examples/ directory.
+    /// This method primarily exists for writing tests that mock the underlying transport,
+    /// but can also be used to support IMAP over custom tunnels. If you do not need to do
+    /// that, then it is simpler to use the [`ClientBuilder`](crate::ClientBuilder) to get
+    /// a new client.
     ///
-    /// This method primarily exists for writing tests that mock the underlying transport, but can
-    /// also be used to support IMAP over custom tunnels.
+    /// For an example, see `examples/timeout.rs` which uses a custom timeout on the
+    /// tcp stream.
     ///
-    /// **Note:** In case you do need to use `Client::new` over `imap::connect`, you will need to
-    /// listen for the IMAP protocol server greeting before authenticating:
+    /// **Note:** In case you do need to use `Client::new` instead of the `ClientBuilder`
+    /// you will need to listen for the IMAP protocol server greeting before authenticating:
     ///
     /// ```rust,no_run
     /// # use imap::Client;
@@ -427,12 +327,8 @@ impl<T: Read + Write> Client<T> {
     /// ```rust,no_run
     /// # {} #[cfg(feature = "tls")]
     /// # fn main() {
-    /// # use native_tls::TlsConnector;
-    /// # let tls_connector = TlsConnector::builder().build().unwrap();
-    /// let client = imap::connect(
-    ///     ("imap.example.org", 993),
-    ///     "imap.example.org",
-    ///     &tls_connector).unwrap();
+    /// let client = imap::ClientBuilder::new("imap.example.org", 993)
+    ///     .native_tls().unwrap();
     ///
     /// match client.login("user", "pass") {
     ///     Ok(s) => {
@@ -465,9 +361,6 @@ impl<T: Read + Write> Client<T> {
     /// challenge.
     ///
     /// ```no_run
-    /// # #[cfg(feature = "tls")]
-    /// use native_tls::TlsConnector;
-    ///
     /// struct OAuth2 {
     ///     user: String,
     ///     access_token: String,
@@ -489,9 +382,9 @@ impl<T: Read + Write> Client<T> {
     ///         user: String::from("me@example.com"),
     ///         access_token: String::from("<access_token>"),
     ///     };
-    ///     let domain = "imap.example.com";
-    ///     let tls = TlsConnector::builder().build().unwrap();
-    ///     let client = imap::connect((domain, 993), domain, &tls).unwrap();
+    ///     let client = imap::ClientBuilder::new("imap.example.com", 993).native_tls()
+    ///         .expect("Could not connect to server");
+    ///
     ///     match client.authenticate("XOAUTH2", &auth) {
     ///         Ok(session) => {
     ///             // you are successfully authenticated!

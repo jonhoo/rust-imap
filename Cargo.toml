@@ -48,6 +48,10 @@ name = "idle"
 required-features = ["default"]
 
 [[example]]
+name = "rustls"
+required-features = ["rustls-tls"]
+
+[[example]]
 name = "starttls"
 required-features = ["default"]
 

@@ -9,7 +9,7 @@
 //!
 //! [@jonhoo]: https://thesquareplanet.com/
 //!
-//! To connect, use the [`connect`] function. This gives you an unauthenticated [`Client`]. You can
+//! To connect, use the [`ClientBuilder`]. This gives you an unauthenticated [`Client`]. You can
 //! then use [`Client::login`] or [`Client::authenticate`] to perform username/password or
 //! challenge/response authentication respectively. This in turn gives you an authenticated
 //! [`Session`], which lets you access the mailboxes at the server.
@@ -23,12 +23,8 @@
 //! ```no_run
 //! # #[cfg(feature = "tls")]
 //! fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
-//!     let domain = "imap.example.com";
-//!     let tls = native_tls::TlsConnector::builder().build().unwrap();
 //!
-//!     // we pass in the domain twice to check that the server's TLS
-//!     // certificate is valid for the domain we're connecting to.
-//!     let client = imap::connect((domain, 993), domain, &tls).unwrap();
+//!     let client = imap::ClientBuilder::new("imap.example.com", 993).native_tls()?;
 //!
 //!     // the client we have here is unauthenticated.
 //!     // to do anything useful with the e-mails, we need to log in
@@ -75,7 +71,8 @@
 //! ```
 //!
 //! Even without `native_tls`, you can still use TLS by leveraging the pure Rust `rustls`
-//! crate. See the example/rustls.rs file for a working example.
+//! crate, which is enabled with the `rustls-tls` feature. See the example/rustls.rs file
+//! for a working example.
 #![deny(missing_docs)]
 #![warn(rust_2018_idioms)]
 

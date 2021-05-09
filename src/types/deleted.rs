@@ -20,9 +20,8 @@ use std::ops::RangeInclusive;
 /// ```no_run
 /// # {} #[cfg(feature = "tls")]
 /// # fn main() {
-/// # let domain = "imap.example.com";
-/// # let tls = native_tls::TlsConnector::builder().build().unwrap();
-/// # let client = imap::connect((domain, 993), domain, &tls).unwrap();
+/// # let client = imap::ClientBuilder::new("imap.example.com", 993)
+///     .native_tls().unwrap();
 /// # let mut session = client.login("name", "pw").unwrap();
 /// // Iterate over whatever is returned
 /// if let Ok(deleted) = session.expunge() {

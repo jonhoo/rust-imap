@@ -1,4 +1,3 @@
-use native_tls::TlsConnector;
 use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
@@ -39,9 +38,10 @@ struct Opt {
 fn main() {
     let opt = Opt::from_args();
 
-    let ssl_conn = TlsConnector::builder().build().unwrap();
-    let client = imap::connect((opt.server.clone(), opt.port), opt.server, &ssl_conn)
+    let client = imap::ClientBuilder::new(opt.server.clone(), opt.port)
+        .native_tls()
         .expect("Could not connect to imap server");
+
     let mut imap = client
         .login(opt.username, opt.password)
         .expect("Could not authenticate");

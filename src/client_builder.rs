@@ -41,6 +41,8 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// # Ok(())
 /// # }
 /// ```
+/// The returned [`Client`] is unauthenticated; to access session-related methods (through
+/// [`Session`](crate::Session)), use [`Client::login`] or [`Client::authenticate`].
 pub struct ClientBuilder<D>
 where
     D: AsRef<str>,
@@ -63,7 +65,7 @@ where
         }
     }
 
-    /// Use `STARTTLS` for this connection.
+    /// Use [`STARTTLS`](https://tools.ietf.org/html/rfc2595) for this connection.
     #[cfg(any(feature = "tls", feature = "rustls-tls"))]
     pub fn starttls(&mut self) -> &mut Self {
         self.starttls = true;

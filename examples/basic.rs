@@ -1,5 +1,4 @@
 extern crate imap;
-extern crate native_tls;
 
 fn main() {
     // To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
@@ -9,12 +8,7 @@ fn main() {
 }
 
 fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
-    let domain = "imap.example.com";
-    let tls = native_tls::TlsConnector::builder().build().unwrap();
-
-    // we pass in the domain twice to check that the server's TLS
-    // certificate is valid for the domain we're connecting to.
-    let client = imap::connect((domain, 993), domain, &tls).unwrap();
+    let client = imap::ClientBuilder::new("imap.example.com", 993).native_tls()?;
 
     // the client we have here is unauthenticated.
     // to do anything useful with the e-mails, we need to log in
