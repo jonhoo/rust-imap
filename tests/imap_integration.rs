@@ -21,7 +21,10 @@ fn tls() -> native_tls::TlsConnector {
 fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
     let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
     let mut s = imap::ClientBuilder::new(&host, 3993)
-        .native_tls()
+        .connect(|domain, tcp| {
+            let ssl_conn = tls();
+            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
+        })
         .unwrap()
         .login(user, user)
         .unwrap();
@@ -53,14 +56,22 @@ fn connect_insecure_then_secure() {
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
     imap::ClientBuilder::new(&host, 3143)
         .starttls()
-        .native_tls()
+        .connect(|domain, tcp| {
+            let ssl_conn = tls();
+            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
+        })
         .unwrap();
 }
 
 #[test]
 fn connect_secure() {
     let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
-    imap::ClientBuilder::new(&host, 3993).native_tls().unwrap();
+    imap::ClientBuilder::new(&host, 3993)
+        .connect(|domain, tcp| {
+            let ssl_conn = tls();
+            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
+        })
+        .unwrap();
 }
 
 #[test]
