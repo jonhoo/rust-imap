@@ -19,17 +19,15 @@ fn tls() -> native_tls::TlsConnector {
 }
 
 fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
-    let mut s = imap::connect(
-        &format!(
-            "{}:3993",
-            std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
-        ),
-        "imap.example.com",
-        &tls(),
-    )
-    .unwrap()
-    .login(user, user)
-    .unwrap();
+    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
+    let mut s = imap::ClientBuilder::new(&host, 3993)
+        .connect(|domain, tcp| {
+            let ssl_conn = tls();
+            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
+        })
+        .unwrap()
+        .login(user, user)
+        .unwrap();
     s.debug = true;
     s
 }
@@ -55,25 +53,25 @@ fn smtp(user: &str) -> lettre::SmtpTransport {
 #[ignore]
 fn connect_insecure_then_secure() {
     let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
-    let stream = TcpStream::connect((host.as_ref(), 3143)).unwrap();
-
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
-    imap::Client::new(stream)
-        .secure("imap.example.com", &tls())
+    imap::ClientBuilder::new(&host, 3143)
+        .starttls()
+        .connect(|domain, tcp| {
+            let ssl_conn = tls();
+            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
+        })
         .unwrap();
 }
 
 #[test]
 fn connect_secure() {
-    imap::connect(
-        &format!(
-            "{}:3993",
-            std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
-        ),
-        "imap.example.com",
-        &tls(),
-    )
-    .unwrap();
+    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
+    imap::ClientBuilder::new(&host, 3993)
+        .connect(|domain, tcp| {
+            let ssl_conn = tls();
+            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
+        })
+        .unwrap();
 }
 
 #[test]

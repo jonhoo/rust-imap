@@ -7,6 +7,8 @@ use crate::parse::parse_idle;
 use crate::types::UnsolicitedResponse;
 #[cfg(feature = "tls")]
 use native_tls::TlsStream;
+#[cfg(feature = "rustls-tls")]
+use rustls_connector::TlsStream as RustlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
@@ -25,10 +27,10 @@ use std::time::Duration;
 /// a convenience callback function [`stop_on_any`] is provided.
 ///
 /// ```no_run
-/// # use native_tls::TlsConnector;
 /// use imap::extensions::idle;
-/// let ssl_conn = TlsConnector::builder().build().unwrap();
-/// let client = imap::connect(("example.com", 993), "example.com", &ssl_conn)
+/// # #[cfg(feature = "tls")]
+/// # {
+/// let client = imap::ClientBuilder::new("example.com", 993).native_tls()
 ///     .expect("Could not connect to imap server");
 /// let mut imap = client.login("user@example.com", "password")
 ///     .expect("Could not authenticate");
@@ -39,6 +41,7 @@ use std::time::Duration;
 ///
 /// // Exit on any mailbox change
 /// let result = idle.wait_keepalive_while(idle::stop_on_any);
+/// # }
 /// ```
 ///
 /// Note that the server MAY consider a client inactive if it has an IDLE command running, and if
@@ -280,6 +283,13 @@ impl<'a> SetReadTimeout for TcpStream {
 
 #[cfg(feature = "tls")]
 impl<'a> SetReadTimeout for TlsStream<TcpStream> {
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
+        self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
+    }
+}
+
+#[cfg(feature = "rustls-tls")]
+impl<'a> SetReadTimeout for RustlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
     }

@@ -1,9 +1,6 @@
 extern crate imap;
-extern crate rustls_connector;
 
-use std::{env, error::Error, net::TcpStream};
-
-use rustls_connector::RustlsConnector;
+use std::{env, error::Error};
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Read config from environment or .env file
@@ -25,14 +22,7 @@ fn fetch_inbox_top(
     password: String,
     port: u16,
 ) -> Result<Option<String>, Box<dyn Error>> {
-    // Setup Rustls TcpStream
-    let stream = TcpStream::connect((host.as_ref(), port))?;
-    let tls = RustlsConnector::default();
-    let tlsstream = tls.connect(&host, stream)?;
-
-    // we pass in the domain twice to check that the server's TLS
-    // certificate is valid for the domain we're connecting to.
-    let client = imap::Client::new(tlsstream);
+    let client = imap::ClientBuilder::new(&host, port).rustls()?;
 
     // the client we have here is unauthenticated.
     // to do anything useful with the e-mails, we need to log in

@@ -1,8 +1,5 @@
 extern crate base64;
 extern crate imap;
-extern crate native_tls;
-
-use native_tls::TlsConnector;
 
 struct GmailOAuth2 {
     user: String,
@@ -25,11 +22,10 @@ fn main() {
         user: String::from("sombody@gmail.com"),
         access_token: String::from("<access_token>"),
     };
-    let domain = "imap.gmail.com";
-    let port = 993;
-    let socket_addr = (domain, port);
-    let ssl_connector = TlsConnector::builder().build().unwrap();
-    let client = imap::connect(socket_addr, domain, &ssl_connector).unwrap();
+
+    let client = imap::ClientBuilder::new("imap.gmail.com", 993)
+        .native_tls()
+        .expect("Could not connect to imap.gmail.com");
 
     let mut imap_session = match client.authenticate("XOAUTH2", &gmail_auth) {
         Ok(c) => c,

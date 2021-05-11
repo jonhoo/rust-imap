@@ -15,10 +15,12 @@ categories = ["email", "network-programming"]
 
 [features]
 tls = ["native-tls"]
+rustls-tls = ["rustls-connector"]
 default = ["tls"]
 
 [dependencies]
 native-tls = { version = "0.2.2", optional = true }
+rustls-connector = { version = "0.13.1", optional = true }
 regex = "1.0"
 bufstream = "0.1"
 imap-proto = "0.14.1"
@@ -43,6 +45,18 @@ required-features = ["default"]
 
 [[example]]
 name = "idle"
+required-features = ["default"]
+
+[[example]]
+name = "rustls"
+required-features = ["rustls-tls"]
+
+[[example]]
+name = "starttls"
+required-features = ["default"]
+
+[[example]]
+name = "timeout"
 required-features = ["default"]
 
 [[test]]

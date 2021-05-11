@@ -58,8 +58,7 @@ fn connect_timeout<S: AsRef<str>>(
     Ok(client)
 }
 
-// resolve address and try to connect to all in order; note that this function is required to fully
-// mimic `imap::connect` with the usage of `ToSocketAddrs`
+// resolve address and try to connect to all in order
 fn connect_all_timeout<A: ToSocketAddrs, S: AsRef<str>>(
     addr: A,
     domain: S,
