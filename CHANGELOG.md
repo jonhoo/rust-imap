@@ -4,18 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - ???
-
-TODO
+## [Unreleased]
 
 ### Added
  - VANISHED support in EXPUNGE responses and unsolicited responses (#172).
+ - SORT command extension (#178).
 
 ### Changed
  - MSRV increased to 1.43 for nom6 and bitvec
  - `expunge` and `uid_expunge` return `Result<Deleted>` instead of `Result<Vec<u32>>`.
-
-### Removed
+ - Idle `wait_keepalive_while` replaces `wait_keepalive` and takes a callback with an `UnsolicitedResponse` in parameter.
+ - All `Session.append_with_*` methods are obsoleted by `append` which returns now an `AppendCmd` builder.
+ - Envelope `&'a [u8]` attributes are replaced by `Cow<'a, [u8]>`.
+ - `Flag`, `Mailbox`, `UnsolicitedResponse` and `Error` are now declared as non exhaustive.
+ - `ClientBuilder` now replaces the `imap::connect` function [#197](https://github.com/jonhoo/rust-imap/pull/197).
 
 ## [2.4.1] - 2021-01-12
 ### Changed
