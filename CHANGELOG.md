@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Idle `wait_keepalive_while` replaces `wait_keepalive` and takes a callback with an `UnsolicitedResponse` in parameter.
  - All `Session.append_with_*` methods are obsoleted by `append` which returns now an `AppendCmd` builder.
  - Envelope `&'a [u8]` attributes are replaced by `Cow<'a, [u8]>`.
- - `Flag` enum is now declared as non exhaustive.
+ - `Flag`, `Mailbox`, `UnsolicitedResponse` and `Error` are now declared as non exhaustive.
  - `ClientBuilder` now replaces the `imap::connect` function [#197](https://github.com/jonhoo/rust-imap/pull/197).
 
 ## [2.4.1] - 2021-01-12
