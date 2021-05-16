@@ -1,4 +1,4 @@
-use imap_proto::{MailboxDatum, Response, ResponseCode};
+use imap_proto::{MailboxDatum, Response, ResponseCode, StatusAttribute};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
@@ -313,6 +313,53 @@ pub fn parse_mailbox(
             break Ok(mailbox);
         }
     }
+}
+
+pub fn parse_status(
+    mut lines: &[u8],
+    mailbox_name: &str,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Mailbox> {
+    let mut mailbox = Mailbox::default();
+    let mut got_anything = false;
+    while !lines.is_empty() {
+        match imap_proto::parser::parse_response(lines) {
+            Ok((
+                rest,
+                Response::MailboxData(MailboxDatum::Status {
+                    mailbox: their_mailbox_name,
+                    status,
+                }),
+            )) if their_mailbox_name == mailbox_name => {
+                lines = rest;
+                got_anything = true;
+                for attr in status {
+                    match attr {
+                        StatusAttribute::HighestModSeq(v) => mailbox.highest_mod_seq = Some(v),
+                        StatusAttribute::Messages(v) => mailbox.exists = v,
+                        StatusAttribute::Recent(v) => mailbox.recent = v,
+                        StatusAttribute::UidNext(v) => mailbox.uid_next = Some(v),
+                        StatusAttribute::UidValidity(v) => mailbox.uid_validity = Some(v),
+                        StatusAttribute::Unseen(v) => mailbox.unseen = Some(v),
+                        _ => {} // needed because StatusAttribute is #[non_exhaustive]
+                    }
+                }
+            }
+            Ok((rest, data)) => {
+                lines = rest;
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                    return Err(resp.into());
+                }
+            }
+            _ => {
+                return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+    }
+    if !got_anything {
+        return Err(Error::MissingStatusResponse);
+    }
+    Ok(mailbox)
 }
 
 fn parse_ids_with<T: Extend<u32>>(
