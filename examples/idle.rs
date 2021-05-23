@@ -54,8 +54,6 @@ fn main() {
 
     imap.select(opt.mailbox).expect("Could not select mailbox");
 
-    let idle = imap.idle().expect("Could not IDLE");
-
     // Implement a trivial counter that causes the IDLE callback to end the IDLE
     // after a fixed number of responses.
     //
@@ -63,7 +61,7 @@ fn main() {
     // rest of the program and update mailbox state, decide to exit the IDLE, etc.
     let mut num_responses = 0;
     let max_responses = opt.max_responses;
-    let idle_result = idle.wait_keepalive_while(|response| {
+    let idle_result = imap.idle().wait_while(|response| {
         num_responses += 1;
         println!("IDLE response #{}: {:?}", num_responses, response);
         if num_responses >= max_responses {

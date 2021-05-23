@@ -1093,7 +1093,7 @@ impl<T: Read + Write> Session<T> {
     /// command, as specified in the base IMAP specification.
     ///
     /// See [`extensions::idle::Handle`] for details.
-    pub fn idle(&mut self) -> Result<extensions::idle::Handle<'_, T>> {
+    pub fn idle(&mut self) -> extensions::idle::Handle<'_, T> {
         extensions::idle::Handle::make(self)
     }
 
