@@ -5,7 +5,7 @@ use crate::client::Session;
 use crate::error::{Error, Result};
 use crate::parse::parse_idle;
 use crate::types::UnsolicitedResponse;
-#[cfg(feature = "tls")]
+#[cfg(feature = "native-tls")]
 use native_tls::TlsStream;
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::TlsStream as RustlsStream;
@@ -28,7 +28,7 @@ use std::time::Duration;
 ///
 /// ```no_run
 /// use imap::extensions::idle;
-/// # #[cfg(feature = "tls")]
+/// # #[cfg(feature = "native-tls")]
 /// # {
 /// let client = imap::ClientBuilder::new("example.com", 993).native_tls()
 ///     .expect("Could not connect to imap server");
@@ -281,7 +281,7 @@ impl<'a> SetReadTimeout for TcpStream {
     }
 }
 
-#[cfg(feature = "tls")]
+#[cfg(feature = "native-tls")]
 impl<'a> SetReadTimeout for TlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.get_ref().set_read_timeout(timeout).map_err(Error::Io)

@@ -14,9 +14,8 @@ keywords = ["email", "imap"]
 categories = ["email", "network-programming"]
 
 [features]
-tls = ["native-tls"]
 rustls-tls = ["rustls-connector"]
-default = ["tls"]
+default = ["native-tls"]
 
 [dependencies]
 native-tls = { version = "0.2.2", optional = true }

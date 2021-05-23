@@ -18,7 +18,7 @@ use std::ops::RangeInclusive;
 ///
 /// # Examples
 /// ```no_run
-/// # {} #[cfg(feature = "tls")]
+/// # {} #[cfg(feature = "native-tls")]
 /// # fn main() {
 /// # let client = imap::ClientBuilder::new("imap.example.com", 993)
 ///     .native_tls().unwrap();
