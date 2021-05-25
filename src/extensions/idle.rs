@@ -206,7 +206,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// Do not continuously refresh the IDLE connection in the background.
     ///
     /// By default, connections will periodically be refreshed in the background using the
-    /// timeout duration set by [`timeout`]. If you do not want this behaviour, call
+    /// timeout duration set by [`Handle::timeout`]. If you do not want this behaviour, call
     /// this function and the connection will simply IDLE until `wait_while` returns or
     /// the timeout expires.
     pub fn keepalive(&mut self, keepalive: bool) -> &mut Self {
