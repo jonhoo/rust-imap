@@ -74,7 +74,7 @@ fn main() {
     });
 
     match idle_result {
-        Ok(()) => println!("IDLE finished normally"),
+        Ok(reason) => println!("IDLE finished normally {:?}", reason),
         Err(e) => println!("IDLE finished with error {:?}", e),
     }
 

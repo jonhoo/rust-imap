@@ -48,7 +48,7 @@ use std::time::Duration;
 /// such a server has an inactivity timeout it MAY log the client off implicitly at the end of its
 /// timeout period. Because of that, clients using IDLE are advised to terminate the IDLE and
 /// re-issue it at least every 29 minutes to avoid being logged off. This is done by default, but
-/// can be disabled by calling [`Handle::no_keepalive`]
+/// can be disabled by calling [`Handle::keepalive`]
 ///
 /// As long as a [`Handle`] is active, the mailbox cannot be otherwise accessed.
 #[derive(Debug)]
@@ -198,7 +198,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// at which the connection is refreshed.
     ///
     /// The interval defaults to 29 minutes as given in RFC 2177.
-    pub fn set_timeout(&mut self, interval: Duration) -> &mut Self {
+    pub fn timeout(&mut self, interval: Duration) -> &mut Self {
         self.timeout = interval;
         self
     }
@@ -206,17 +206,17 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
     /// Do not continuously refresh the IDLE connection in the background.
     ///
     /// By default, connections will periodically be refreshed in the background using the
-    /// timeout duration set by [`set_timeout`]. If you do not want this behaviour, call
+    /// timeout duration set by [`timeout`]. If you do not want this behaviour, call
     /// this function and the connection will simply IDLE until `wait_while` returns or
     /// the timeout expires.
-    pub fn no_keepalive(&mut self) -> &mut Self {
-        self.keepalive = false;
+    pub fn keepalive(&mut self, keepalive: bool) -> &mut Self {
+        self.keepalive = keepalive;
         self
     }
 
     /// Block until the given callback returns `false`, or until a response
     /// arrives that is not explicitly handled by [`UnsolicitedResponse`].
-    pub fn wait_while<F>(&mut self, callback: F) -> Result<()>
+    pub fn wait_while<F>(&mut self, callback: F) -> Result<WaitOutcome>
     where
         F: FnMut(UnsolicitedResponse) -> bool,
     {
@@ -228,13 +228,6 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> Handle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        self.timed_wait(callback).map(|_| ())
-    }
-
-    fn timed_wait<F>(&mut self, callback: F) -> Result<WaitOutcome>
-    where
-        F: FnMut(UnsolicitedResponse) -> bool,
-    {
         self.session
             .stream
             .get_mut()
