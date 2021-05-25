@@ -456,7 +456,9 @@ fn status() {
 
     // Test all valid fields except HIGHESTMODSEQ, which apparently
     // isn't supported by the IMAP server used for this test.
-    let mb = s.status("INBOX", "(MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)").unwrap();
+    let mb = s
+        .status("INBOX", "(MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)")
+        .unwrap();
     assert_eq!(mb.flags, Vec::new());
     assert_eq!(mb.exists, 0);
     assert_eq!(mb.recent, 0);

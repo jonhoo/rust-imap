@@ -2,7 +2,7 @@ use crate::{Client, Result};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-#[cfg(feature = "tls")]
+#[cfg(feature = "native-tls")]
 use native_tls::{TlsConnector, TlsStream};
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
@@ -12,7 +12,7 @@ use rustls_connector::{RustlsConnector, TlsStream as RustlsStream};
 /// Creating a [`Client`] using `native-tls` transport is straightforward:
 /// ```no_run
 /// # use imap::ClientBuilder;
-/// # {} #[cfg(feature = "tls")]
+/// # {} #[cfg(feature = "native-tls")]
 /// # fn main() -> Result<(), imap::Error> {
 /// let client = ClientBuilder::new("imap.example.com", 993).native_tls()?;
 /// # Ok(())
@@ -66,15 +66,15 @@ where
     }
 
     /// Use [`STARTTLS`](https://tools.ietf.org/html/rfc2595) for this connection.
-    #[cfg(any(feature = "tls", feature = "rustls-tls"))]
+    #[cfg(any(feature = "native-tls", feature = "rustls-tls"))]
     pub fn starttls(&mut self) -> &mut Self {
         self.starttls = true;
         self
     }
 
     /// Return a new [`Client`] using a `native-tls` transport.
-    #[cfg(feature = "tls")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "tls")))]
+    #[cfg(feature = "native-tls")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "native-tls")))]
     pub fn native_tls(&mut self) -> Result<Client<TlsStream<TcpStream>>> {
         self.connect(|domain, tcp| {
             let ssl_conn = TlsConnector::builder().build()?;

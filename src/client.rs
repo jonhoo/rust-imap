@@ -284,7 +284,7 @@ impl<T: Read + Write> Client<T> {
     /// # use imap::Client;
     /// # use std::io;
     /// # use std::net::TcpStream;
-    /// # {} #[cfg(feature = "tls")]
+    /// # {} #[cfg(feature = "native-tls")]
     /// # fn main() {
     /// # let server = "imap.example.com";
     /// # let username = "";
@@ -325,7 +325,7 @@ impl<T: Read + Write> Client<T> {
     /// transferred back to the caller.
     ///
     /// ```rust,no_run
-    /// # {} #[cfg(feature = "tls")]
+    /// # {} #[cfg(feature = "native-tls")]
     /// # fn main() {
     /// let client = imap::ClientBuilder::new("imap.example.org", 993)
     ///     .native_tls().unwrap();
@@ -376,7 +376,7 @@ impl<T: Read + Write> Client<T> {
     ///     }
     /// }
     ///
-    /// # {} #[cfg(feature = "tls")]
+    /// # {} #[cfg(feature = "native-tls")]
     /// fn main() {
     ///     let auth = OAuth2 {
     ///         user: String::from("me@example.com"),

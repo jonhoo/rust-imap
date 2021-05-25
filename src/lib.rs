@@ -21,7 +21,7 @@
 //! Below is a basic client example. See the `examples/` directory for more.
 //!
 //! ```no_run
-//! # #[cfg(feature = "tls")]
+//! # #[cfg(feature = "native-tls")]
 //! fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
 //!
 //!     let client = imap::ClientBuilder::new("imap.example.com", 993).native_tls()?;

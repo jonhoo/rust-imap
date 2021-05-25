@@ -10,9 +10,9 @@ use std::str::Utf8Error;
 use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
 use imap_proto::{types::ResponseCode, Response};
-#[cfg(feature = "tls")]
+#[cfg(feature = "native-tls")]
 use native_tls::Error as TlsError;
-#[cfg(feature = "tls")]
+#[cfg(feature = "native-tls")]
 use native_tls::HandshakeError as TlsHandshakeError;
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::HandshakeError as RustlsHandshakeError;
@@ -62,10 +62,10 @@ pub enum Error {
     #[cfg(feature = "rustls-tls")]
     RustlsHandshake(RustlsHandshakeError<TcpStream>),
     /// An error from the `native_tls` library during the TLS handshake.
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "native-tls")]
     TlsHandshake(TlsHandshakeError<TcpStream>),
     /// An error from the `native_tls` library while managing the socket.
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "native-tls")]
     Tls(TlsError),
     /// A BAD response from the IMAP server.
     Bad(Bad),
@@ -114,14 +114,14 @@ impl From<RustlsHandshakeError<TcpStream>> for Error {
     }
 }
 
-#[cfg(feature = "tls")]
+#[cfg(feature = "native-tls")]
 impl From<TlsHandshakeError<TcpStream>> for Error {
     fn from(err: TlsHandshakeError<TcpStream>) -> Error {
         Error::TlsHandshake(err)
     }
 }
 
-#[cfg(feature = "tls")]
+#[cfg(feature = "native-tls")]
 impl From<TlsError> for Error {
     fn from(err: TlsError) -> Error {
         Error::Tls(err)
@@ -140,9 +140,9 @@ impl fmt::Display for Error {
             Error::Io(ref e) => fmt::Display::fmt(e, f),
             #[cfg(feature = "rustls-tls")]
             Error::RustlsHandshake(ref e) => fmt::Display::fmt(e, f),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "native-tls")]
             Error::Tls(ref e) => fmt::Display::fmt(e, f),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "native-tls")]
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             Error::Validate(ref e) => fmt::Display::fmt(e, f),
             Error::Parse(ref e) => fmt::Display::fmt(e, f),
@@ -163,9 +163,9 @@ impl StdError for Error {
             Error::Io(ref e) => e.description(),
             #[cfg(feature = "rustls-tls")]
             Error::RustlsHandshake(ref e) => e.description(),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "native-tls")]
             Error::Tls(ref e) => e.description(),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "native-tls")]
             Error::TlsHandshake(ref e) => e.description(),
             Error::Parse(ref e) => e.description(),
             Error::Validate(ref e) => e.description(),
@@ -183,9 +183,9 @@ impl StdError for Error {
             Error::Io(ref e) => Some(e),
             #[cfg(feature = "rustls-tls")]
             Error::RustlsHandshake(ref e) => Some(e),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "native-tls")]
             Error::Tls(ref e) => Some(e),
-            #[cfg(feature = "tls")]
+            #[cfg(feature = "native-tls")]
             Error::TlsHandshake(ref e) => Some(e),
             Error::Parse(ParseError::DataNotUtf8(_, ref e)) => Some(e),
             _ => None,
