@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Envelope `&'a [u8]` attributes are replaced by `Cow<'a, [u8]>`.
  - `Flag`, `Mailbox`, `UnsolicitedResponse` and `Error` are now declared as non exhaustive.
  - `ClientBuilder` now replaces the `imap::connect` function [#197](https://github.com/jonhoo/rust-imap/pull/197).
+ - The `tls` feature is now `native-tls` to disambiguate it from the new `rustls-tls` feature. `native-tls` remains in the default feature set.
 
 ## [2.4.1] - 2021-01-12
 ### Changed
