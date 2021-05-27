@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
  - MSRV increased to 1.43 for nom6 and bitvec
  - `expunge` and `uid_expunge` return `Result<Deleted>` instead of `Result<Vec<u32>>`.
- - Idle `wait_keepalive_while` replaces `wait_keepalive` and takes a callback with an `UnsolicitedResponse` in parameter.
+ - IDLE capability now provides a builder interface. All `wait_*` functions are merged into `wait_while` which takes a callback with an `UnsolicitedResponse` in parameter.
  - All `Session.append_with_*` methods are obsoleted by `append` which returns now an `AppendCmd` builder.
  - Envelope `&'a [u8]` attributes are replaced by `Cow<'a, [u8]>`.
  - `Flag`, `Mailbox`, `UnsolicitedResponse` and `Error` are now declared as non exhaustive.
