@@ -521,7 +521,7 @@ impl<T: Read + Write> Session<T> {
     ///  - `ALL`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)`
     ///  - `FAST`: equivalent to: `(FLAGS INTERNALDATE RFC822.SIZE)`
     ///
-    /// The currently defined data items that can be fetched are listen [in the
+    /// The currently defined data items that can be fetched are listed [in the
     /// RFC](https://tools.ietf.org/html/rfc3501#section-6.4.5), but here are some common ones:
     ///
     ///  - `FLAGS`: The flags that are set for this message.
