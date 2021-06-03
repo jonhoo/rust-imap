@@ -96,7 +96,7 @@ impl Fetch {
         })
     }
 
-    /// Extract the bytes that makes up the given `BOD[<section>]` of a `FETCH` response.
+    /// Extract the bytes that makes up the given `BODY[<section>]` of a `FETCH` response.
     ///
     /// See [section 7.4.2 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-7.4.2) for
     /// details.
