@@ -177,6 +177,24 @@ impl Flag<'static> {
     }
 }
 
+impl<'flag> Flag<'flag> {
+    /// Converts a `Flag<'flag>` into a `Flag<'static>` or in other words: It's
+    /// making sure that `Flag::Custom` includes a `String` and not a `&str`
+    /// anymore.
+    pub fn into_static(&self) -> Flag<'static> {
+        match self {
+            Flag::Seen => Flag::Seen,
+            Flag::Answered => Flag::Answered,
+            Flag::Flagged => Flag::Flagged,
+            Flag::Deleted => Flag::Deleted,
+            Flag::Draft => Flag::Draft,
+            Flag::Recent => Flag::Recent,
+            Flag::MayCreate => Flag::MayCreate,
+            Flag::Custom(cow) => Flag::Custom(Cow::Owned(cow.to_string())),
+        }
+    }
+}
+
 impl<'a> fmt::Display for Flag<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
