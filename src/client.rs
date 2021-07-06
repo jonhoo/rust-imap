@@ -717,9 +717,9 @@ impl<T: Read + Write> Session<T> {
     /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
     /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
     /// one of the listed capabilities. See [`Capabilities`] for further details.
-    pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
+    pub fn capabilities(&mut self) -> Result<Capabilities> {
         self.run_command_and_read_response("CAPABILITY")
-            .and_then(|lines| parse_capabilities(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| Capabilities::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`EXPUNGE` command](https://tools.ietf.org/html/rfc3501#section-6.4.3) permanently

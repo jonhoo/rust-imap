@@ -169,38 +169,6 @@ pub fn parse_expunge(
     }
 }
 
-pub fn parse_capabilities(
-    lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Capabilities> {
-    let f = |mut lines| {
-        let mut caps = HashSet::new();
-        loop {
-            match imap_proto::parser::parse_response(lines) {
-                Ok((rest, Response::Capabilities(c))) => {
-                    lines = rest;
-                    caps.extend(c);
-                }
-                Ok((rest, data)) => {
-                    lines = rest;
-                    if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                        break Err(resp.into());
-                    }
-                }
-                _ => {
-                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
-            }
-
-            if lines.is_empty() {
-                break Ok(Capabilities(caps));
-            }
-        }
-    };
-
-    unsafe { ZeroCopy::make(lines, f) }
-}
-
 pub fn parse_noop(
     lines: Vec<u8>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -456,7 +424,7 @@ mod tests {
         ];
         let lines = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
         let (mut send, recv) = mpsc::channel();
-        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
         // shouldn't be any unexpected responses parsed
         assert!(recv.try_recv().is_err());
         assert_eq!(capabilities.len(), 4);
@@ -474,7 +442,7 @@ mod tests {
         ];
         let lines = b"* CAPABILITY IMAP4REV1 STARTTLS\r\n";
         let (mut send, recv) = mpsc::channel();
-        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
         // shouldn't be any unexpected responses parsed
         assert!(recv.try_recv().is_err());
         assert_eq!(capabilities.len(), 2);
@@ -488,7 +456,7 @@ mod tests {
     fn parse_capability_invalid_test() {
         let (mut send, recv) = mpsc::channel();
         let lines = b"* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
-        parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        Capabilities::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
     }
 
@@ -605,7 +573,7 @@ mod tests {
                     * STATUS dev.github (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n\
                     * 4 EXISTS\r\n";
         let (mut send, recv) = mpsc::channel();
-        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
 
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
