@@ -1,7 +1,5 @@
 //! This module contains types used throughout the IMAP protocol.
 
-use std::borrow::Cow;
-
 /// From section [2.3.1.1 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.1.1).
 ///
 /// A 32-bit value assigned to each message, which when used with the unique identifier validity
@@ -105,121 +103,17 @@ pub type Uid = u32;
 /// messages which have greater UIDs.
 pub type Seq = u32;
 
-/// With the exception of [`Flag::Custom`], these flags are system flags that are pre-defined in
-/// [RFC 3501 section 2.3.2](https://tools.ietf.org/html/rfc3501#section-2.3.2). All system flags
-/// begin with `\` in the IMAP protocol.  Certain system flags (`\Deleted` and `\Seen`) have
-/// special semantics described elsewhere.
-///
-/// A flag can be permanent or session-only on a per-flag basis. Permanent flags are those which
-/// the client can add or remove from the message flags permanently; that is, concurrent and
-/// subsequent sessions will see any change in permanent flags.  Changes to session flags are valid
-/// only in that session.
-///
-/// > Note: The `\Recent` system flag is a special case of a session flag.  `\Recent` can not be
-/// > used as an argument in a `STORE` or `APPEND` command, and thus can not be changed at all.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Flag<'a> {
-    /// Message has been read
-    Seen,
+mod fetch;
+pub use self::fetch::{Fetch, Fetches};
 
-    /// Message has been answered
-    Answered,
-
-    /// Message is "flagged" for urgent/special attention
-    Flagged,
-
-    /// Message is "deleted" for removal by later EXPUNGE
-    Deleted,
-
-    /// Message has not completed composition (marked as a draft).
-    Draft,
-
-    /// Message is "recently" arrived in this mailbox.  This session is the first session to have
-    /// been notified about this message; if the session is read-write, subsequent sessions will
-    /// not see `\Recent` set for this message.  This flag can not be altered by the client.
-    ///
-    /// If it is not possible to determine whether or not this session is the first session to be
-    /// notified about a message, then that message will generally be considered recent.
-    ///
-    /// If multiple connections have the same mailbox selected simultaneously, it is undefined
-    /// which of these connections will see newly-arrived messages with `\Recent` set and which
-    /// will see it without `\Recent` set.
-    Recent,
-
-    /// The [`Mailbox::permanent_flags`] can include this special flag (`\*`), which indicates that
-    /// it is possible to create new keywords by attempting to store those flags in the mailbox.
-    MayCreate,
-
-    /// A non-standard user- or server-defined flag.
-    Custom(Cow<'a, str>),
-}
-
-impl Flag<'static> {
-    fn system(s: &str) -> Option<Self> {
-        match s {
-            "\\Seen" => Some(Flag::Seen),
-            "\\Answered" => Some(Flag::Answered),
-            "\\Flagged" => Some(Flag::Flagged),
-            "\\Deleted" => Some(Flag::Deleted),
-            "\\Draft" => Some(Flag::Draft),
-            "\\Recent" => Some(Flag::Recent),
-            "\\*" => Some(Flag::MayCreate),
-            _ => None,
-        }
-    }
-
-    /// Helper function to transform Strings into owned Flags
-    pub fn from_strs<S: ToString>(
-        v: impl IntoIterator<Item = S>,
-    ) -> impl Iterator<Item = Flag<'static>> {
-        v.into_iter().map(|s| Flag::from(s.to_string()))
-    }
-}
-
-impl<'a> fmt::Display for Flag<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Flag::Seen => write!(f, "\\Seen"),
-            Flag::Answered => write!(f, "\\Answered"),
-            Flag::Flagged => write!(f, "\\Flagged"),
-            Flag::Deleted => write!(f, "\\Deleted"),
-            Flag::Draft => write!(f, "\\Draft"),
-            Flag::Recent => write!(f, "\\Recent"),
-            Flag::MayCreate => write!(f, "\\*"),
-            Flag::Custom(ref s) => write!(f, "{}", s),
-        }
-    }
-}
-
-impl<'a> From<String> for Flag<'a> {
-    fn from(s: String) -> Self {
-        if let Some(f) = Flag::system(&s) {
-            f
-        } else {
-            Flag::Custom(Cow::Owned(s))
-        }
-    }
-}
-
-impl<'a> From<&'a str> for Flag<'a> {
-    fn from(s: &'a str) -> Self {
-        if let Some(f) = Flag::system(s) {
-            f
-        } else {
-            Flag::Custom(Cow::Borrowed(s))
-        }
-    }
-}
+mod flag;
+pub use self::flag::Flag;
 
 mod mailbox;
 pub use self::mailbox::Mailbox;
 
-mod fetch;
-pub use self::fetch::Fetch;
-
 mod name;
-pub use self::name::{Name, NameAttribute};
+pub use self::name::{Name, NameAttribute, Names};
 
 mod capabilities;
 pub use self::capabilities::Capabilities;
@@ -229,129 +123,3 @@ pub use self::deleted::Deleted;
 
 mod unsolicited_response;
 pub use self::unsolicited_response::{AttributeValue, UnsolicitedResponse};
-
-/// This type wraps an input stream and a type that was constructed by parsing that input stream,
-/// which allows the parsed type to refer to data in the underlying stream instead of copying it.
-///
-/// Any references given out by a `ZeroCopy` should never be used after the `ZeroCopy` is dropped.
-pub struct ZeroCopy<D> {
-    _owned: Box<[u8]>,
-    derived: D,
-}
-
-impl<D> ZeroCopy<D> {
-    /// Derive a new `ZeroCopy` view of the byte data stored in `owned`.
-    ///
-    /// # Safety
-    ///
-    /// The `derive` callback will be passed a `&'static [u8]`. However, this reference is not, in
-    /// fact `'static`. Instead, it is only valid for as long as the `ZeroCopy` lives. Therefore,
-    /// it is *only* safe to call this function if *every* accessor on `D` returns either a type
-    /// that does not contain any borrows, *or* where the return type is bound to the lifetime of
-    /// `&self`.
-    ///
-    /// It is *not* safe for the error type `E` to borrow from the passed reference.
-    pub(crate) unsafe fn make<F, E>(owned: Vec<u8>, derive: F) -> Result<Self, E>
-    where
-        F: FnOnce(&'static [u8]) -> Result<D, E>,
-    {
-        use std::mem;
-
-        // the memory pointed to by `owned` now has a stable address (on the heap).
-        // even if we move the `Box` (i.e., into `ZeroCopy`), a slice to it will remain valid.
-        let _owned = owned.into_boxed_slice();
-
-        // this is the unsafe part -- the implementor of `derive` must be aware that the reference
-        // they are passed is not *really* 'static, but rather the lifetime of `&self`.
-        let static_owned_ref: &'static [u8] = mem::transmute(&*_owned);
-
-        Ok(ZeroCopy {
-            _owned,
-            derived: derive(static_owned_ref)?,
-        })
-    }
-
-    /// Take out the derived value of this `ZeroCopy`.
-    ///
-    /// Only safe if `D` contains no references into the underlying input stream (i.e., the `owned`
-    /// passed to `ZeroCopy::new`).
-    #[allow(dead_code)]
-    pub(crate) unsafe fn take(self) -> D {
-        self.derived
-    }
-}
-
-use super::error::Error;
-pub(crate) type ZeroCopyResult<T> = Result<ZeroCopy<T>, Error>;
-
-use std::ops::Deref;
-impl<D> Deref for ZeroCopy<D> {
-    type Target = D;
-    fn deref(&self) -> &Self::Target {
-        &self.derived
-    }
-}
-
-// re-implement standard traits
-// basically copied from Rc
-
-impl<D: PartialEq> PartialEq for ZeroCopy<D> {
-    fn eq(&self, other: &ZeroCopy<D>) -> bool {
-        **self == **other
-    }
-}
-impl<D: Eq> Eq for ZeroCopy<D> {}
-
-use std::cmp::Ordering;
-impl<D: PartialOrd> PartialOrd for ZeroCopy<D> {
-    fn partial_cmp(&self, other: &ZeroCopy<D>) -> Option<Ordering> {
-        (**self).partial_cmp(&**other)
-    }
-    fn lt(&self, other: &ZeroCopy<D>) -> bool {
-        **self < **other
-    }
-    fn le(&self, other: &ZeroCopy<D>) -> bool {
-        **self <= **other
-    }
-    fn gt(&self, other: &ZeroCopy<D>) -> bool {
-        **self > **other
-    }
-    fn ge(&self, other: &ZeroCopy<D>) -> bool {
-        **self >= **other
-    }
-}
-impl<D: Ord> Ord for ZeroCopy<D> {
-    fn cmp(&self, other: &ZeroCopy<D>) -> Ordering {
-        (**self).cmp(&**other)
-    }
-}
-
-use std::hash::{Hash, Hasher};
-impl<D: Hash> Hash for ZeroCopy<D> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (**self).hash(state);
-    }
-}
-
-use std::fmt;
-impl<D: fmt::Display> fmt::Display for ZeroCopy<D> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&**self, f)
-    }
-}
-impl<D: fmt::Debug> fmt::Debug for ZeroCopy<D> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&**self, f)
-    }
-}
-
-impl<'a, D> IntoIterator for &'a ZeroCopy<D>
-where
-    &'a D: IntoIterator,
-{
-    type Item = <&'a D as IntoIterator>::Item;
-    type IntoIter = <&'a D as IntoIterator>::IntoIter;
-    fn into_iter(self) -> Self::IntoIter {
-        (**self).into_iter()
-    }
-}

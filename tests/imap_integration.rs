@@ -147,7 +147,7 @@ fn inbox() {
     // let's see that we can also fetch the e-mails
     let fetch = c.fetch("1", "(ALL UID)").unwrap();
     assert_eq!(fetch.len(), 1);
-    let fetch = &fetch[0];
+    let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.message, 1);
     assert_ne!(fetch.uid, None);
     assert_eq!(fetch.size, Some(138));
@@ -265,7 +265,7 @@ fn inbox_uid() {
     // let's see that we can also fetch the e-mail
     let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
     assert_eq!(fetch.len(), 1);
-    let fetch = &fetch[0];
+    let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
     let e = fetch.envelope().unwrap();
     assert_eq!(e.subject, Some(b"My first e-mail"[..].into()));
@@ -325,7 +325,7 @@ fn append() {
     // fetch the e-mail
     let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
     assert_eq!(fetch.len(), 1);
-    let fetch = &fetch[0];
+    let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
     let e = fetch.envelope().unwrap();
     assert_eq!(e.subject, Some(b"My second e-mail"[..].into()));
@@ -376,7 +376,7 @@ fn append_with_flags() {
     // fetch the e-mail
     let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
     assert_eq!(fetch.len(), 1);
-    let fetch = &fetch[0];
+    let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
     let e = fetch.envelope().unwrap();
     assert_eq!(e.subject, Some(b"My third e-mail"[..].into()));
@@ -436,7 +436,7 @@ fn append_with_flags_and_date() {
     // fetch the e-mail
     let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
     assert_eq!(fetch.len(), 1);
-    let fetch = &fetch[0];
+    let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
     assert_eq!(fetch.internal_date(), Some(date));
 
