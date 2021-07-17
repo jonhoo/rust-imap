@@ -1,13 +1,61 @@
+use crate::error::Error;
+use crate::parse::{parse_many_into, MapOrNot};
+use crate::types::UnsolicitedResponse;
+use imap_proto::{MailboxDatum, Response};
+use ouroboros::self_referencing;
 use std::borrow::Cow;
+use std::slice::Iter;
+use std::sync::mpsc;
+
+/// A wrapper for one or more [`Name`] responses.
+#[self_referencing]
+pub struct Names {
+    data: Vec<u8>,
+    #[borrows(data)]
+    #[covariant]
+    pub(crate) names: Vec<Name<'this>>,
+}
+
+impl Names {
+    /// Parse one or more [`Name`] from a response buffer
+    pub fn parse(
+        owned: Vec<u8>,
+        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    ) -> Result<Self, Error> {
+        NamesTryBuilder {
+            data: owned,
+            names_builder: |input| {
+                let mut names = Vec::new();
+                parse_many_into(input, &mut names, unsolicited, |response| match response {
+                    Response::MailboxData(MailboxDatum::List {
+                        flags,
+                        delimiter,
+                        name,
+                    }) => Ok(MapOrNot::Map(Name {
+                        attributes: flags.into_iter().map(NameAttribute::from).collect(),
+                        delimiter,
+                        name,
+                    })),
+                    resp => Ok(MapOrNot::Not(resp)),
+                })?;
+                Ok(names)
+            },
+        }
+        .try_build()
+    }
+
+    /// Iterate over the contained [`Name`]s
+    pub fn iter(&self) -> Iter<'_, Name<'_>> {
+        self.borrow_names().iter()
+    }
+}
 
 /// A name that matches a `LIST` or `LSUB` command.
 #[derive(Debug, Eq, PartialEq)]
-pub struct Name {
-    // Note that none of these fields are *actually* 'static.
-    // Rather, they are tied to the lifetime of the `ZeroCopy` that contains this `Name`.
-    pub(crate) attributes: Vec<NameAttribute<'static>>,
-    pub(crate) delimiter: Option<Cow<'static, str>>,
-    pub(crate) name: Cow<'static, str>,
+pub struct Name<'a> {
+    pub(crate) attributes: Vec<NameAttribute<'a>>,
+    pub(crate) delimiter: Option<Cow<'a, str>>,
+    pub(crate) name: Cow<'a, str>,
 }
 
 /// An attribute set for an IMAP name.
@@ -34,7 +82,7 @@ pub enum NameAttribute<'a> {
     Custom(Cow<'a, str>),
 }
 
-impl NameAttribute<'static> {
+impl<'a> NameAttribute<'a> {
     fn system(s: &str) -> Option<Self> {
         match s {
             "\\Noinferiors" => Some(NameAttribute::NoInferiors),
@@ -76,9 +124,9 @@ impl<'a> From<&'a str> for NameAttribute<'a> {
     }
 }
 
-impl Name {
+impl<'a> Name<'a> {
     /// Attributes of this name.
-    pub fn attributes(&self) -> &[NameAttribute<'_>] {
+    pub fn attributes(&self) -> &[NameAttribute<'a>] {
         &self.attributes[..]
     }
 

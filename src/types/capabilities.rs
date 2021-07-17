@@ -1,5 +1,5 @@
-use crate::error::{Error, ParseError};
-use crate::parse::try_handle_unilateral;
+use crate::error::Error;
+use crate::parse::{parse_many_into, MapOrNot};
 use crate::types::UnsolicitedResponse;
 use imap_proto::{Capability, Response};
 use ouroboros::self_referencing;
@@ -52,29 +52,12 @@ impl Capabilities {
         CapabilitiesTryBuilder {
             data: owned,
             capabilities_builder: |input| {
-                let mut lines = input;
                 let mut caps = HashSet::new();
-                loop {
-                    match imap_proto::parser::parse_response(lines) {
-                        Ok((rest, Response::Capabilities(c))) => {
-                            lines = rest;
-                            caps.extend(c);
-                        }
-                        Ok((rest, data)) => {
-                            lines = rest;
-                            if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                                break Err(resp.into());
-                            }
-                        }
-                        _ => {
-                            break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                        }
-                    }
-
-                    if lines.is_empty() {
-                        break Ok(caps);
-                    }
-                }
+                parse_many_into(input, &mut caps, unsolicited, |response| match response {
+                    Response::Capabilities(c) => Ok(MapOrNot::MapVec(c)),
+                    resp => Ok(MapOrNot::Not(resp)),
+                })?;
+                Ok(caps)
             },
         }
         .try_build()

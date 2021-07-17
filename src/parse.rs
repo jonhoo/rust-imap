@@ -3,6 +3,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
 use std::convert::TryFrom;
+use std::iter::Extend;
 use std::sync::mpsc;
 
 use super::error::{Error, ParseError, Result};
@@ -23,105 +24,51 @@ pub fn parse_authenticate_response(line: &str) -> Result<&str> {
     )))
 }
 
-enum MapOrNot<T> {
+pub(crate) enum MapOrNot<'a, T> {
     Map(T),
-    Not(Response<'static>),
+    MapVec(Vec<T>),
+    Not(Response<'a>),
     #[allow(dead_code)]
     Ignore,
 }
 
-unsafe fn parse_many<T, F>(
-    lines: Vec<u8>,
+/// Parse many `T` Responses with `F` and extend `into` with them.
+/// Responses other than `T` go into the `unsolicited` channel.
+pub(crate) fn parse_many_into<'input, T, F>(
+    input: &'input [u8],
+    into: &mut impl Extend<T>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     mut map: F,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Vec<T>>
+) -> Result<()>
 where
-    F: FnMut(Response<'static>) -> Result<MapOrNot<T>>,
+    F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
 {
-    let f = |mut lines: &'static [u8]| {
-        let mut things = Vec::new();
-        loop {
-            if lines.is_empty() {
-                break Ok(things);
+    let mut lines = input;
+    loop {
+        if lines.is_empty() {
+            break Ok(());
+        }
+
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, resp)) => {
+                lines = rest;
+
+                match map(resp)? {
+                    MapOrNot::Map(t) => into.extend(Some(t)),
+                    MapOrNot::MapVec(t) => into.extend(t),
+                    MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
+                        Some(Response::Fetch(..)) => continue,
+                        Some(resp) => break Err(resp.into()),
+                        None => {}
+                    },
+                    MapOrNot::Ignore => continue,
+                }
             }
-
-            match imap_proto::parser::parse_response(lines) {
-                Ok((rest, resp)) => {
-                    lines = rest;
-
-                    match map(resp)? {
-                        MapOrNot::Map(t) => things.push(t),
-                        MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
-                            Some(Response::Fetch(..)) => continue,
-                            Some(resp) => break Err(resp.into()),
-                            None => {}
-                        },
-                        MapOrNot::Ignore => continue,
-                    }
-                }
-                _ => {
-                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
             }
         }
-    };
-
-    ZeroCopy::make(lines, f)
-}
-
-pub fn parse_names(
-    lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Vec<Name>> {
-    let f = |resp| match resp {
-        // https://github.com/djc/imap-proto/issues/4
-        Response::MailboxData(MailboxDatum::List {
-            flags,
-            delimiter,
-            name,
-        }) => Ok(MapOrNot::Map(Name {
-            attributes: flags.into_iter().map(NameAttribute::from).collect(),
-            delimiter,
-            name,
-        })),
-        resp => Ok(MapOrNot::Not(resp)),
-    };
-
-    unsafe { parse_many(lines, f, unsolicited) }
-}
-
-pub fn parse_fetches(
-    lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Vec<Fetch>> {
-    let f = |resp| match resp {
-        Response::Fetch(num, attrs) => {
-            let mut fetch = Fetch {
-                message: num,
-                flags: vec![],
-                uid: None,
-                size: None,
-                fetch: attrs,
-            };
-
-            // set some common fields eaglery
-            for attr in &fetch.fetch {
-                match attr {
-                    AttributeValue::Flags(flags) => {
-                        fetch.flags.extend(Flag::from_strs(flags));
-                    }
-                    AttributeValue::Uid(uid) => fetch.uid = Some(*uid),
-                    AttributeValue::Rfc822Size(sz) => fetch.size = Some(*sz),
-                    _ => {}
-                }
-            }
-
-            Ok(MapOrNot::Map(fetch))
-        }
-        resp => Ok(MapOrNot::Not(resp)),
-    };
-
-    unsafe { parse_many(lines, f, unsolicited) }
+    }
 }
 
 pub fn parse_expunge(
