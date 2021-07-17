@@ -411,22 +411,23 @@ mod tests {
     fn parse_names_test() {
         let lines = b"* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n";
         let (mut send, recv) = mpsc::channel();
-        let names = parse_names(lines.to_vec(), &mut send).unwrap();
+        let names = Names::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert_eq!(names.len(), 1);
+        let first = names.iter().next().unwrap();
         assert_eq!(
-            names[0].attributes(),
+            first.attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
         );
-        assert_eq!(names[0].delimiter(), Some("."));
-        assert_eq!(names[0].name(), "INBOX");
+        assert_eq!(first.delimiter(), Some("."));
+        assert_eq!(first.name(), "INBOX");
     }
 
     #[test]
     fn parse_fetches_empty() {
         let lines = b"";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert!(fetches.is_empty());
     }
@@ -437,19 +438,22 @@ mod tests {
                     * 24 FETCH (FLAGS (\\Seen) UID 4827943)\r\n\
                     * 25 FETCH (FLAGS (\\Seen))\r\n";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert_eq!(fetches.len(), 2);
-        assert_eq!(fetches[0].message, 24);
-        assert_eq!(fetches[0].flags(), &[Flag::Seen]);
-        assert_eq!(fetches[0].uid, Some(4827943));
-        assert_eq!(fetches[0].body(), None);
-        assert_eq!(fetches[0].header(), None);
-        assert_eq!(fetches[1].message, 25);
-        assert_eq!(fetches[1].flags(), &[Flag::Seen]);
-        assert_eq!(fetches[1].uid, None);
-        assert_eq!(fetches[1].body(), None);
-        assert_eq!(fetches[1].header(), None);
+        let mut iter = fetches.iter();
+        let first = iter.next().unwrap();
+        assert_eq!(first.message, 24);
+        assert_eq!(first.flags(), &[Flag::Seen]);
+        assert_eq!(first.uid, Some(4827943));
+        assert_eq!(first.body(), None);
+        assert_eq!(first.header(), None);
+        let second = iter.next().unwrap();
+        assert_eq!(second.message, 25);
+        assert_eq!(second.flags(), &[Flag::Seen]);
+        assert_eq!(second.uid, None);
+        assert_eq!(second.body(), None);
+        assert_eq!(second.header(), None);
     }
 
     #[test]
@@ -459,11 +463,12 @@ mod tests {
             * 37 FETCH (UID 74)\r\n\
             * 1 RECENT\r\n";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert_eq!(recv.try_recv(), Ok(UnsolicitedResponse::Recent(1)));
         assert_eq!(fetches.len(), 1);
-        assert_eq!(fetches[0].message, 37);
-        assert_eq!(fetches[0].uid, Some(74));
+        let first = fetches.iter().next().unwrap();
+        assert_eq!(first.message, 37);
+        assert_eq!(first.uid, Some(74));
     }
 
     #[test]
@@ -475,7 +480,7 @@ mod tests {
             * OK Searched 91% of the mailbox, ETA 0:01\r\n\
             * 37 FETCH (UID 74)\r\n";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert_eq!(
             recv.try_recv(),
             Ok(UnsolicitedResponse::Ok {
@@ -484,8 +489,9 @@ mod tests {
             })
         );
         assert_eq!(fetches.len(), 1);
-        assert_eq!(fetches[0].message, 37);
-        assert_eq!(fetches[0].uid, Some(74));
+        let first = fetches.iter().next().unwrap();
+        assert_eq!(first.message, 37);
+        assert_eq!(first.uid, Some(74));
     }
 
     #[test]
@@ -494,17 +500,18 @@ mod tests {
                     * LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n\
                     * 4 EXPUNGE\r\n";
         let (mut send, recv) = mpsc::channel();
-        let names = parse_names(lines.to_vec(), &mut send).unwrap();
+        let names = Names::parse(lines.to_vec(), &mut send).unwrap();
 
         assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Expunge(4));
 
         assert_eq!(names.len(), 1);
+        let first = names.iter().next().unwrap();
         assert_eq!(
-            names[0].attributes(),
+            first.attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
         );
-        assert_eq!(names[0].delimiter(), Some("."));
-        assert_eq!(names[0].name(), "INBOX");
+        assert_eq!(first.delimiter(), Some("."));
+        assert_eq!(first.name(), "INBOX");
     }
 
     #[test]
@@ -635,7 +642,7 @@ mod tests {
         let lines = b"* VANISHED (EARLIER) 3:8,12,50:60\r\n\
                       * 49 FETCH (UID 117 FLAGS (\\Seen \\Answered) MODSEQ (90060115194045001))\r\n";
 
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         match recv.try_recv().unwrap() {
             UnsolicitedResponse::Vanished { earlier, uids } => {
                 assert!(earlier);
@@ -651,10 +658,11 @@ mod tests {
         }
         assert!(recv.try_recv().is_err());
         assert_eq!(fetches.len(), 1);
-        assert_eq!(fetches[0].message, 49);
-        assert_eq!(fetches[0].flags(), &[Flag::Seen, Flag::Answered]);
-        assert_eq!(fetches[0].uid, Some(117));
-        assert_eq!(fetches[0].body(), None);
-        assert_eq!(fetches[0].header(), None);
+        let first = fetches.iter().next().unwrap();
+        assert_eq!(first.message, 49);
+        assert_eq!(first.flags(), &[Flag::Seen, Flag::Answered]);
+        assert_eq!(first.uid, Some(117));
+        assert_eq!(first.body(), None);
+        assert_eq!(first.header(), None);
     }
 }

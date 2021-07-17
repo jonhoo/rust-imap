@@ -71,6 +71,16 @@ impl Fetches {
     pub fn iter(&self) -> Iter<'_, Fetch<'_>> {
         self.borrow_fetches().iter()
     }
+
+    /// Get the number of [`Fetch`]es in this container.
+    pub fn len(&self) -> usize {
+        self.borrow_fetches().len()
+    }
+
+    /// Return true if there are no [`Fetch`]es in the container.
+    pub fn is_empty(&self) -> bool {
+        self.borrow_fetches().is_empty()
+    }
 }
 
 /// An IMAP [`FETCH` response](https://tools.ietf.org/html/rfc3501#section-7.4.2) that contains

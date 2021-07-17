@@ -48,6 +48,16 @@ impl Names {
     pub fn iter(&self) -> Iter<'_, Name<'_>> {
         self.borrow_names().iter()
     }
+
+    /// Get the number of [`Name`]s in this container.
+    pub fn len(&self) -> usize {
+        self.borrow_names().len()
+    }
+
+    /// Return true of there are no [`Name`]s in the container.
+    pub fn is_empty(&self) -> bool {
+        self.borrow_names().is_empty()
+    }
 }
 
 /// A name that matches a `LIST` or `LSUB` command.
