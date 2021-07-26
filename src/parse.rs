@@ -54,7 +54,7 @@ where
                 lines = rest;
 
                 match map(resp)? {
-                    MapOrNot::Map(t) => into.extend(Some(t)),
+                    MapOrNot::Map(t) => into.extend(std::iter::once(t)),
                     MapOrNot::MapVec(t) => into.extend(t),
                     MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
                         Some(Response::Fetch(..)) => continue,
