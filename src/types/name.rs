@@ -92,7 +92,7 @@ pub enum NameAttribute<'a> {
     Custom(Cow<'a, str>),
 }
 
-impl<'a> NameAttribute<'a> {
+impl NameAttribute<'static> {
     fn system(s: &str) -> Option<Self> {
         match s {
             "\\Noinferiors" => Some(NameAttribute::NoInferiors),
