@@ -58,6 +58,11 @@ impl Names {
     pub fn is_empty(&self) -> bool {
         self.borrow_names().is_empty()
     }
+
+    /// Get the element at the given index
+    pub fn get(&self, index: usize) -> Option<&Name<'_>> {
+        self.borrow_names().get(index)
+    }
 }
 
 /// A name that matches a `LIST` or `LSUB` command.

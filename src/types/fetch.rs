@@ -81,6 +81,11 @@ impl Fetches {
     pub fn is_empty(&self) -> bool {
         self.borrow_fetches().is_empty()
     }
+
+    /// Get the element at the given index
+    pub fn get(&self, index: usize) -> Option<&Fetch<'_>> {
+        self.borrow_fetches().get(index)
+    }
 }
 
 /// An IMAP [`FETCH` response](https://tools.ietf.org/html/rfc3501#section-7.4.2) that contains
