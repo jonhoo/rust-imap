@@ -104,6 +104,18 @@ impl NameAttribute<'static> {
     }
 }
 
+impl<'a> NameAttribute<'a> {
+    fn into_owned(self) -> NameAttribute<'static> {
+        match self {
+            NameAttribute::NoInferiors => NameAttribute::NoInferiors,
+            NameAttribute::NoSelect => NameAttribute::NoSelect,
+            NameAttribute::Marked => NameAttribute::Marked,
+            NameAttribute::Unmarked => NameAttribute::Unmarked,
+            NameAttribute::Custom(cow) => NameAttribute::Custom(Cow::Owned(cow.into_owned())),
+        }
+    }
+}
+
 impl<'a> From<String> for NameAttribute<'a> {
     fn from(s: String) -> Self {
         if let Some(f) = NameAttribute::system(&s) {
@@ -154,5 +166,18 @@ impl<'a> Name<'a> {
     /// names.
     pub fn name(&self) -> &str {
         &*self.name
+    }
+
+    /// Get an owned version of this [`Name`].
+    pub fn into_owned(self) -> Name<'static> {
+        Name {
+            attributes: self
+                .attributes
+                .into_iter()
+                .map(|av| av.into_owned())
+                .collect(),
+            delimiter: self.delimiter.map(|cow| Cow::Owned(cow.into_owned())),
+            name: Cow::Owned(self.name.into_owned()),
+        }
     }
 }

@@ -72,6 +72,22 @@ impl Flag<'static> {
     }
 }
 
+impl<'a> Flag<'a> {
+    /// Get an owned version of the [`Flag`].
+    pub fn into_owned(self) -> Flag<'static> {
+        match self {
+            Flag::Custom(cow) => Flag::Custom(Cow::Owned(cow.into_owned())),
+            Flag::Seen => Flag::Seen,
+            Flag::Answered => Flag::Answered,
+            Flag::Flagged => Flag::Flagged,
+            Flag::Deleted => Flag::Deleted,
+            Flag::Draft => Flag::Draft,
+            Flag::Recent => Flag::Recent,
+            Flag::MayCreate => Flag::MayCreate,
+        }
+    }
+}
+
 impl<'a> std::fmt::Display for Flag<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {

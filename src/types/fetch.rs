@@ -213,4 +213,15 @@ impl<'a> Fetch<'a> {
             _ => None,
         })
     }
+
+    /// Get an owned copy of the [`Fetch`].
+    pub fn into_owned(self) -> Fetch<'static> {
+        Fetch {
+            message: self.message,
+            uid: self.uid,
+            size: self.size,
+            fetch: self.fetch.into_iter().map(|av| av.into_owned()).collect(),
+            flags: self.flags.clone(),
+        }
+    }
 }
