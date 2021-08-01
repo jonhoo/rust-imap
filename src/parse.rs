@@ -414,7 +414,7 @@ mod tests {
         let names = Names::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert_eq!(names.len(), 1);
-        let first = names.iter().next().unwrap();
+        let first = names.get(0).unwrap();
         assert_eq!(
             first.attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
@@ -441,14 +441,13 @@ mod tests {
         let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert_eq!(fetches.len(), 2);
-        let mut iter = fetches.iter();
-        let first = iter.next().unwrap();
+        let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 24);
         assert_eq!(first.flags(), &[Flag::Seen]);
         assert_eq!(first.uid, Some(4827943));
         assert_eq!(first.body(), None);
         assert_eq!(first.header(), None);
-        let second = iter.next().unwrap();
+        let second = fetches.get(1).unwrap();
         assert_eq!(second.message, 25);
         assert_eq!(second.flags(), &[Flag::Seen]);
         assert_eq!(second.uid, None);
@@ -466,7 +465,7 @@ mod tests {
         let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert_eq!(recv.try_recv(), Ok(UnsolicitedResponse::Recent(1)));
         assert_eq!(fetches.len(), 1);
-        let first = fetches.iter().next().unwrap();
+        let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 37);
         assert_eq!(first.uid, Some(74));
     }
@@ -489,7 +488,7 @@ mod tests {
             })
         );
         assert_eq!(fetches.len(), 1);
-        let first = fetches.iter().next().unwrap();
+        let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 37);
         assert_eq!(first.uid, Some(74));
     }
@@ -505,7 +504,7 @@ mod tests {
         assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Expunge(4));
 
         assert_eq!(names.len(), 1);
-        let first = names.iter().next().unwrap();
+        let first = names.get(0).unwrap();
         assert_eq!(
             first.attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
@@ -658,7 +657,7 @@ mod tests {
         }
         assert!(recv.try_recv().is_err());
         assert_eq!(fetches.len(), 1);
-        let first = fetches.iter().next().unwrap();
+        let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 49);
         assert_eq!(first.flags(), &[Flag::Seen, Flag::Answered]);
         assert_eq!(first.uid, Some(117));
