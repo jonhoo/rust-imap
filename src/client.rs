@@ -8,7 +8,7 @@ use std::str;
 use std::sync::mpsc;
 
 use super::authenticator::Authenticator;
-use super::error::{Bad, Error, No, ParseError, Result, ValidateError};
+use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
@@ -609,7 +609,18 @@ impl<T: Read + Write> Session<T> {
 
     /// Logout informs the server that the client is done with the connection.
     pub fn logout(&mut self) -> Result<()> {
-        self.run_command_and_check_ok("LOGOUT")
+        // Check for OK or BYE.
+        // According to the RFC:
+        // https://datatracker.ietf.org/doc/html/rfc3501#section-6.1.3
+        // We should get an untagged BYE and a tagged OK.
+        // Apparently some servers send a tagged BYE (imap.wp.pl #210)
+        // instead, so we just treat it like OK since we are logging out
+        // anyway and this avoids returning an error on logout.
+        match self.run_command_and_check_ok("LOGOUT") {
+            Ok(_) => Ok(()),
+            Err(Error::Bye(_)) => Ok(()),
+            resp => resp,
+        }
     }
 
     /// The [`CREATE` command](https://tools.ietf.org/html/rfc3501#section-6.3.3) creates a mailbox
@@ -1337,7 +1348,7 @@ impl<T: Read + Write> Connection<T> {
                     )) => {
                         assert_eq!(tag.as_bytes(), match_tag.as_bytes());
                         Some(match status {
-                            Status::Bad | Status::No => Err((
+                            Status::Bad | Status::No | Status::Bye => Err((
                                 status,
                                 information.map(|v| v.into_owned()),
                                 code.map(|v| v.into_owned()),
@@ -1371,6 +1382,13 @@ impl<T: Read + Write> Connection<T> {
                         }
                         Status::No => {
                             break Err(Error::No(No {
+                                code,
+                                information: expl
+                                    .unwrap_or_else(|| "no explanation given".to_string()),
+                            }));
+                        }
+                        Status::Bye => {
+                            break Err(Error::Bye(Bye {
                                 code,
                                 information: expl
                                     .unwrap_or_else(|| "no explanation given".to_string()),
@@ -1560,6 +1578,32 @@ mod tests {
     #[test]
     fn logout() {
         let response = b"a1 OK Logout completed.\r\n".to_vec();
+        let command = format!("a1 LOGOUT\r\n");
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.logout().unwrap();
+        assert!(
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            "Invalid logout command"
+        );
+    }
+
+    #[test]
+    fn logout_with_untagged_bye() {
+        let response = b"* BYE Logging out\r\na1 OK Logout completed.\r\n".to_vec();
+        let command = format!("a1 LOGOUT\r\n");
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.logout().unwrap();
+        assert!(
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            "Invalid logout command"
+        );
+    }
+
+    #[test]
+    fn logout_with_tagged_bye() {
+        let response = b"a1 BYE IMAP4rev1 Server logging out\r\n".to_vec();
         let command = format!("a1 LOGOUT\r\n");
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);

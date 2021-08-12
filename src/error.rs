@@ -52,6 +52,21 @@ impl fmt::Display for No {
     }
 }
 
+/// A BYE response from the server, which indicates it is going to hang up on us.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct Bye {
+    /// Human-redable message included with the response.
+    pub information: String,
+    /// A more specific error status code included with the response.
+    pub code: Option<ResponseCode<'static>>,
+}
+
+impl fmt::Display for Bye {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.information)
+    }
+}
 /// A set of errors that can occur in the IMAP client
 #[derive(Debug)]
 #[non_exhaustive]
@@ -71,6 +86,8 @@ pub enum Error {
     Bad(Bad),
     /// A NO response from the IMAP server.
     No(No),
+    /// A BYE response from the IMAP server.
+    Bye(Bye),
     /// The connection was terminated unexpectedly.
     ConnectionLost,
     /// Error parsing a server response.
@@ -148,6 +165,7 @@ impl fmt::Display for Error {
             Error::Parse(ref e) => fmt::Display::fmt(e, f),
             Error::No(ref data) => write!(f, "No Response: {}", data),
             Error::Bad(ref data) => write!(f, "Bad Response: {}", data),
+            Error::Bye(ref data) => write!(f, "Bye Response: {}", data),
             Error::ConnectionLost => f.write_str("Connection Lost"),
             Error::Append => f.write_str("Could not append mail to mailbox"),
             Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
@@ -171,6 +189,7 @@ impl StdError for Error {
             Error::Validate(ref e) => e.description(),
             Error::Bad(_) => "Bad Response",
             Error::No(_) => "No Response",
+            Error::Bye(_) => "Bye Response",
             Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
             Error::Unexpected(_) => "Unexpected Response",
