@@ -1,13 +1,76 @@
+use crate::error::Error;
+use crate::parse::{parse_many_into, MapOrNot};
+use crate::types::UnsolicitedResponse;
+use imap_proto::{MailboxDatum, Response};
+use ouroboros::self_referencing;
 use std::borrow::Cow;
+use std::slice::Iter;
+use std::sync::mpsc;
+
+/// A wrapper for one or more [`Name`] responses.
+#[self_referencing]
+pub struct Names {
+    data: Vec<u8>,
+    #[borrows(data)]
+    #[covariant]
+    pub(crate) names: Vec<Name<'this>>,
+}
+
+impl Names {
+    /// Parse one or more [`Name`] from a response buffer
+    pub fn parse(
+        owned: Vec<u8>,
+        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    ) -> Result<Self, Error> {
+        NamesTryBuilder {
+            data: owned,
+            names_builder: |input| {
+                let mut names = Vec::new();
+                parse_many_into(input, &mut names, unsolicited, |response| match response {
+                    Response::MailboxData(MailboxDatum::List {
+                        flags,
+                        delimiter,
+                        name,
+                    }) => Ok(MapOrNot::Map(Name {
+                        attributes: flags.into_iter().map(NameAttribute::from).collect(),
+                        delimiter,
+                        name,
+                    })),
+                    resp => Ok(MapOrNot::Not(resp)),
+                })?;
+                Ok(names)
+            },
+        }
+        .try_build()
+    }
+
+    /// Iterate over the contained [`Name`]s
+    pub fn iter(&self) -> Iter<'_, Name<'_>> {
+        self.borrow_names().iter()
+    }
+
+    /// Get the number of [`Name`]s in this container.
+    pub fn len(&self) -> usize {
+        self.borrow_names().len()
+    }
+
+    /// Return true of there are no [`Name`]s in the container.
+    pub fn is_empty(&self) -> bool {
+        self.borrow_names().is_empty()
+    }
+
+    /// Get the element at the given index
+    pub fn get(&self, index: usize) -> Option<&Name<'_>> {
+        self.borrow_names().get(index)
+    }
+}
 
 /// A name that matches a `LIST` or `LSUB` command.
 #[derive(Debug, Eq, PartialEq)]
-pub struct Name {
-    // Note that none of these fields are *actually* 'static.
-    // Rather, they are tied to the lifetime of the `ZeroCopy` that contains this `Name`.
-    pub(crate) attributes: Vec<NameAttribute<'static>>,
-    pub(crate) delimiter: Option<Cow<'static, str>>,
-    pub(crate) name: Cow<'static, str>,
+pub struct Name<'a> {
+    pub(crate) attributes: Vec<NameAttribute<'a>>,
+    pub(crate) delimiter: Option<Cow<'a, str>>,
+    pub(crate) name: Cow<'a, str>,
 }
 
 /// An attribute set for an IMAP name.
@@ -46,6 +109,18 @@ impl NameAttribute<'static> {
     }
 }
 
+impl<'a> NameAttribute<'a> {
+    fn into_owned(self) -> NameAttribute<'static> {
+        match self {
+            NameAttribute::NoInferiors => NameAttribute::NoInferiors,
+            NameAttribute::NoSelect => NameAttribute::NoSelect,
+            NameAttribute::Marked => NameAttribute::Marked,
+            NameAttribute::Unmarked => NameAttribute::Unmarked,
+            NameAttribute::Custom(cow) => NameAttribute::Custom(Cow::Owned(cow.into_owned())),
+        }
+    }
+}
+
 impl<'a> From<String> for NameAttribute<'a> {
     fn from(s: String) -> Self {
         if let Some(f) = NameAttribute::system(&s) {
@@ -76,9 +151,9 @@ impl<'a> From<&'a str> for NameAttribute<'a> {
     }
 }
 
-impl Name {
+impl<'a> Name<'a> {
     /// Attributes of this name.
-    pub fn attributes(&self) -> &[NameAttribute<'_>] {
+    pub fn attributes(&self) -> &[NameAttribute<'a>] {
         &self.attributes[..]
     }
 
@@ -96,5 +171,18 @@ impl Name {
     /// names.
     pub fn name(&self) -> &str {
         &*self.name
+    }
+
+    /// Get an owned version of this [`Name`].
+    pub fn into_owned(self) -> Name<'static> {
+        Name {
+            attributes: self
+                .attributes
+                .into_iter()
+                .map(|av| av.into_owned())
+                .collect(),
+            delimiter: self.delimiter.map(|cow| Cow::Owned(cow.into_owned())),
+            name: Cow::Owned(self.name.into_owned()),
+        }
     }
 }

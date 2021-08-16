@@ -565,39 +565,39 @@ impl<T: Read + Write> Session<T> {
     ///  - `RFC822.HEADER`: Functionally equivalent to `BODY.PEEK[HEADER]`.
     ///  - `RFC822.SIZE`: The [RFC-2822](https://tools.ietf.org/html/rfc2822) size of the message.
     ///  - `UID`: The unique identifier for the message.
-    pub fn fetch<S1, S2>(&mut self, sequence_set: S1, query: S2) -> ZeroCopyResult<Vec<Fetch>>
+    pub fn fetch<S1, S2>(&mut self, sequence_set: S1, query: S2) -> Result<Fetches>
     where
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
         if sequence_set.as_ref().is_empty() {
-            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
+            Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
             self.run_command_and_read_response(&format!(
                 "FETCH {} {}",
                 validate_sequence_set(sequence_set.as_ref())?,
                 validate_str_noquote(query.as_ref())?
             ))
-            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
         }
     }
 
     /// Equivalent to [`Session::fetch`], except that all identifiers in `uid_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_fetch<S1, S2>(&mut self, uid_set: S1, query: S2) -> ZeroCopyResult<Vec<Fetch>>
+    pub fn uid_fetch<S1, S2>(&mut self, uid_set: S1, query: S2) -> Result<Fetches>
     where
         S1: AsRef<str>,
         S2: AsRef<str>,
     {
         if uid_set.as_ref().is_empty() {
-            parse_fetches(vec![], &mut self.unsolicited_responses_tx)
+            Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
             self.run_command_and_read_response(&format!(
                 "UID FETCH {} {}",
                 validate_sequence_set(uid_set.as_ref())?,
                 validate_str_noquote(query.as_ref())?
             ))
-            .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
         }
     }
 
@@ -728,9 +728,9 @@ impl<T: Read + Write> Session<T> {
     /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
     /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
     /// one of the listed capabilities. See [`Capabilities`] for further details.
-    pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
+    pub fn capabilities(&mut self) -> Result<Capabilities> {
         self.run_command_and_read_response("CAPABILITY")
-            .and_then(|lines| parse_capabilities(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| Capabilities::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`EXPUNGE` command](https://tools.ietf.org/html/rfc3501#section-6.4.3) permanently
@@ -845,7 +845,7 @@ impl<T: Read + Write> Session<T> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn store<S1, S2>(&mut self, sequence_set: S1, query: S2) -> ZeroCopyResult<Vec<Fetch>>
+    pub fn store<S1, S2>(&mut self, sequence_set: S1, query: S2) -> Result<Fetches>
     where
         S1: AsRef<str>,
         S2: AsRef<str>,
@@ -855,12 +855,12 @@ impl<T: Read + Write> Session<T> {
             sequence_set.as_ref(),
             query.as_ref()
         ))
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// Equivalent to [`Session::store`], except that all identifiers in `sequence_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_store<S1, S2>(&mut self, uid_set: S1, query: S2) -> ZeroCopyResult<Vec<Fetch>>
+    pub fn uid_store<S1, S2>(&mut self, uid_set: S1, query: S2) -> Result<Fetches>
     where
         S1: AsRef<str>,
         S2: AsRef<str>,
@@ -870,7 +870,7 @@ impl<T: Read + Write> Session<T> {
             uid_set.as_ref(),
             query.as_ref()
         ))
-        .and_then(|lines| parse_fetches(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`COPY` command](https://tools.ietf.org/html/rfc3501#section-6.4.7) copies the
@@ -999,13 +999,13 @@ impl<T: Read + Write> Session<T> {
         &mut self,
         reference_name: Option<&str>,
         mailbox_pattern: Option<&str>,
-    ) -> ZeroCopyResult<Vec<Name>> {
+    ) -> Result<Names> {
         self.run_command_and_read_response(&format!(
             "LIST {} {}",
             quote!(reference_name.unwrap_or("")),
             mailbox_pattern.unwrap_or("\"\"")
         ))
-        .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Names::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`LSUB` command](https://tools.ietf.org/html/rfc3501#section-6.3.9) returns a subset of
@@ -1027,13 +1027,13 @@ impl<T: Read + Write> Session<T> {
         &mut self,
         reference_name: Option<&str>,
         mailbox_pattern: Option<&str>,
-    ) -> ZeroCopyResult<Vec<Name>> {
+    ) -> Result<Names> {
         self.run_command_and_read_response(&format!(
             "LSUB {} {}",
             quote!(reference_name.unwrap_or("")),
             mailbox_pattern.unwrap_or("")
         ))
-        .and_then(|lines| parse_names(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Names::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`STATUS` command](https://tools.ietf.org/html/rfc3501#section-6.3.10) requests the

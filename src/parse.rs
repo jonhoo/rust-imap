@@ -3,6 +3,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
 use std::convert::TryFrom;
+use std::iter::Extend;
 use std::sync::mpsc;
 
 use super::error::{Error, ParseError, Result};
@@ -23,105 +24,51 @@ pub fn parse_authenticate_response(line: &str) -> Result<&str> {
     )))
 }
 
-enum MapOrNot<T> {
+pub(crate) enum MapOrNot<'a, T> {
     Map(T),
-    Not(Response<'static>),
+    MapVec(Vec<T>),
+    Not(Response<'a>),
     #[allow(dead_code)]
     Ignore,
 }
 
-unsafe fn parse_many<T, F>(
-    lines: Vec<u8>,
+/// Parse many `T` Responses with `F` and extend `into` with them.
+/// Responses other than `T` go into the `unsolicited` channel.
+pub(crate) fn parse_many_into<'input, T, F>(
+    input: &'input [u8],
+    into: &mut impl Extend<T>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     mut map: F,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Vec<T>>
+) -> Result<()>
 where
-    F: FnMut(Response<'static>) -> Result<MapOrNot<T>>,
+    F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
 {
-    let f = |mut lines: &'static [u8]| {
-        let mut things = Vec::new();
-        loop {
-            if lines.is_empty() {
-                break Ok(things);
+    let mut lines = input;
+    loop {
+        if lines.is_empty() {
+            break Ok(());
+        }
+
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, resp)) => {
+                lines = rest;
+
+                match map(resp)? {
+                    MapOrNot::Map(t) => into.extend(std::iter::once(t)),
+                    MapOrNot::MapVec(t) => into.extend(t),
+                    MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
+                        Some(Response::Fetch(..)) => continue,
+                        Some(resp) => break Err(resp.into()),
+                        None => {}
+                    },
+                    MapOrNot::Ignore => continue,
+                }
             }
-
-            match imap_proto::parser::parse_response(lines) {
-                Ok((rest, resp)) => {
-                    lines = rest;
-
-                    match map(resp)? {
-                        MapOrNot::Map(t) => things.push(t),
-                        MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
-                            Some(Response::Fetch(..)) => continue,
-                            Some(resp) => break Err(resp.into()),
-                            None => {}
-                        },
-                        MapOrNot::Ignore => continue,
-                    }
-                }
-                _ => {
-                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
             }
         }
-    };
-
-    ZeroCopy::make(lines, f)
-}
-
-pub fn parse_names(
-    lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Vec<Name>> {
-    let f = |resp| match resp {
-        // https://github.com/djc/imap-proto/issues/4
-        Response::MailboxData(MailboxDatum::List {
-            flags,
-            delimiter,
-            name,
-        }) => Ok(MapOrNot::Map(Name {
-            attributes: flags.into_iter().map(NameAttribute::from).collect(),
-            delimiter,
-            name,
-        })),
-        resp => Ok(MapOrNot::Not(resp)),
-    };
-
-    unsafe { parse_many(lines, f, unsolicited) }
-}
-
-pub fn parse_fetches(
-    lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Vec<Fetch>> {
-    let f = |resp| match resp {
-        Response::Fetch(num, attrs) => {
-            let mut fetch = Fetch {
-                message: num,
-                flags: vec![],
-                uid: None,
-                size: None,
-                fetch: attrs,
-            };
-
-            // set some common fields eaglery
-            for attr in &fetch.fetch {
-                match attr {
-                    AttributeValue::Flags(flags) => {
-                        fetch.flags.extend(Flag::from_strs(flags));
-                    }
-                    AttributeValue::Uid(uid) => fetch.uid = Some(*uid),
-                    AttributeValue::Rfc822Size(sz) => fetch.size = Some(*sz),
-                    _ => {}
-                }
-            }
-
-            Ok(MapOrNot::Map(fetch))
-        }
-        resp => Ok(MapOrNot::Not(resp)),
-    };
-
-    unsafe { parse_many(lines, f, unsolicited) }
+    }
 }
 
 pub fn parse_expunge(
@@ -167,38 +114,6 @@ pub fn parse_expunge(
     } else {
         Ok(Deleted::from_expunged(expunged))
     }
-}
-
-pub fn parse_capabilities(
-    lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> ZeroCopyResult<Capabilities> {
-    let f = |mut lines| {
-        let mut caps = HashSet::new();
-        loop {
-            match imap_proto::parser::parse_response(lines) {
-                Ok((rest, Response::Capabilities(c))) => {
-                    lines = rest;
-                    caps.extend(c);
-                }
-                Ok((rest, data)) => {
-                    lines = rest;
-                    if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                        break Err(resp.into());
-                    }
-                }
-                _ => {
-                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
-            }
-
-            if lines.is_empty() {
-                break Ok(Capabilities(caps));
-            }
-        }
-    };
-
-    unsafe { ZeroCopy::make(lines, f) }
 }
 
 pub fn parse_noop(
@@ -456,7 +371,7 @@ mod tests {
         ];
         let lines = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
         let (mut send, recv) = mpsc::channel();
-        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
         // shouldn't be any unexpected responses parsed
         assert!(recv.try_recv().is_err());
         assert_eq!(capabilities.len(), 4);
@@ -474,7 +389,7 @@ mod tests {
         ];
         let lines = b"* CAPABILITY IMAP4REV1 STARTTLS\r\n";
         let (mut send, recv) = mpsc::channel();
-        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
         // shouldn't be any unexpected responses parsed
         assert!(recv.try_recv().is_err());
         assert_eq!(capabilities.len(), 2);
@@ -488,7 +403,7 @@ mod tests {
     fn parse_capability_invalid_test() {
         let (mut send, recv) = mpsc::channel();
         let lines = b"* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
-        parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        Capabilities::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
     }
 
@@ -496,22 +411,23 @@ mod tests {
     fn parse_names_test() {
         let lines = b"* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n";
         let (mut send, recv) = mpsc::channel();
-        let names = parse_names(lines.to_vec(), &mut send).unwrap();
+        let names = Names::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert_eq!(names.len(), 1);
+        let first = names.get(0).unwrap();
         assert_eq!(
-            names[0].attributes(),
+            first.attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
         );
-        assert_eq!(names[0].delimiter(), Some("."));
-        assert_eq!(names[0].name(), "INBOX");
+        assert_eq!(first.delimiter(), Some("."));
+        assert_eq!(first.name(), "INBOX");
     }
 
     #[test]
     fn parse_fetches_empty() {
         let lines = b"";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert!(fetches.is_empty());
     }
@@ -522,19 +438,21 @@ mod tests {
                     * 24 FETCH (FLAGS (\\Seen) UID 4827943)\r\n\
                     * 25 FETCH (FLAGS (\\Seen))\r\n";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert!(recv.try_recv().is_err());
         assert_eq!(fetches.len(), 2);
-        assert_eq!(fetches[0].message, 24);
-        assert_eq!(fetches[0].flags(), &[Flag::Seen]);
-        assert_eq!(fetches[0].uid, Some(4827943));
-        assert_eq!(fetches[0].body(), None);
-        assert_eq!(fetches[0].header(), None);
-        assert_eq!(fetches[1].message, 25);
-        assert_eq!(fetches[1].flags(), &[Flag::Seen]);
-        assert_eq!(fetches[1].uid, None);
-        assert_eq!(fetches[1].body(), None);
-        assert_eq!(fetches[1].header(), None);
+        let first = fetches.get(0).unwrap();
+        assert_eq!(first.message, 24);
+        assert_eq!(first.flags(), &[Flag::Seen]);
+        assert_eq!(first.uid, Some(4827943));
+        assert_eq!(first.body(), None);
+        assert_eq!(first.header(), None);
+        let second = fetches.get(1).unwrap();
+        assert_eq!(second.message, 25);
+        assert_eq!(second.flags(), &[Flag::Seen]);
+        assert_eq!(second.uid, None);
+        assert_eq!(second.body(), None);
+        assert_eq!(second.header(), None);
     }
 
     #[test]
@@ -544,11 +462,12 @@ mod tests {
             * 37 FETCH (UID 74)\r\n\
             * 1 RECENT\r\n";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert_eq!(recv.try_recv(), Ok(UnsolicitedResponse::Recent(1)));
         assert_eq!(fetches.len(), 1);
-        assert_eq!(fetches[0].message, 37);
-        assert_eq!(fetches[0].uid, Some(74));
+        let first = fetches.get(0).unwrap();
+        assert_eq!(first.message, 37);
+        assert_eq!(first.uid, Some(74));
     }
 
     #[test]
@@ -560,7 +479,7 @@ mod tests {
             * OK Searched 91% of the mailbox, ETA 0:01\r\n\
             * 37 FETCH (UID 74)\r\n";
         let (mut send, recv) = mpsc::channel();
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         assert_eq!(
             recv.try_recv(),
             Ok(UnsolicitedResponse::Ok {
@@ -569,8 +488,9 @@ mod tests {
             })
         );
         assert_eq!(fetches.len(), 1);
-        assert_eq!(fetches[0].message, 37);
-        assert_eq!(fetches[0].uid, Some(74));
+        let first = fetches.get(0).unwrap();
+        assert_eq!(first.message, 37);
+        assert_eq!(first.uid, Some(74));
     }
 
     #[test]
@@ -579,17 +499,18 @@ mod tests {
                     * LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n\
                     * 4 EXPUNGE\r\n";
         let (mut send, recv) = mpsc::channel();
-        let names = parse_names(lines.to_vec(), &mut send).unwrap();
+        let names = Names::parse(lines.to_vec(), &mut send).unwrap();
 
         assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Expunge(4));
 
         assert_eq!(names.len(), 1);
+        let first = names.get(0).unwrap();
         assert_eq!(
-            names[0].attributes(),
+            first.attributes(),
             &[NameAttribute::from("\\HasNoChildren")]
         );
-        assert_eq!(names[0].delimiter(), Some("."));
-        assert_eq!(names[0].name(), "INBOX");
+        assert_eq!(first.delimiter(), Some("."));
+        assert_eq!(first.name(), "INBOX");
     }
 
     #[test]
@@ -605,7 +526,7 @@ mod tests {
                     * STATUS dev.github (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n\
                     * 4 EXISTS\r\n";
         let (mut send, recv) = mpsc::channel();
-        let capabilities = parse_capabilities(lines.to_vec(), &mut send).unwrap();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
 
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
@@ -720,7 +641,7 @@ mod tests {
         let lines = b"* VANISHED (EARLIER) 3:8,12,50:60\r\n\
                       * 49 FETCH (UID 117 FLAGS (\\Seen \\Answered) MODSEQ (90060115194045001))\r\n";
 
-        let fetches = parse_fetches(lines.to_vec(), &mut send).unwrap();
+        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
         match recv.try_recv().unwrap() {
             UnsolicitedResponse::Vanished { earlier, uids } => {
                 assert!(earlier);
@@ -736,10 +657,11 @@ mod tests {
         }
         assert!(recv.try_recv().is_err());
         assert_eq!(fetches.len(), 1);
-        assert_eq!(fetches[0].message, 49);
-        assert_eq!(fetches[0].flags(), &[Flag::Seen, Flag::Answered]);
-        assert_eq!(fetches[0].uid, Some(117));
-        assert_eq!(fetches[0].body(), None);
-        assert_eq!(fetches[0].header(), None);
+        let first = fetches.get(0).unwrap();
+        assert_eq!(first.message, 49);
+        assert_eq!(first.flags(), &[Flag::Seen, Flag::Answered]);
+        assert_eq!(first.uid, Some(117));
+        assert_eq!(first.body(), None);
+        assert_eq!(first.header(), None);
     }
 }

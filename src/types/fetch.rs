@@ -1,17 +1,98 @@
 use super::{Flag, Seq, Uid};
+use crate::error::Error;
+use crate::parse::{parse_many_into, MapOrNot};
+use crate::types::UnsolicitedResponse;
 use chrono::{DateTime, FixedOffset};
-use imap_proto::types::{AttributeValue, BodyStructure, Envelope, MessageSection, SectionPath};
+use imap_proto::types::{
+    AttributeValue, BodyStructure, Envelope, MessageSection, Response, SectionPath,
+};
+use ouroboros::self_referencing;
+use std::slice::Iter;
+use std::sync::mpsc;
 
 /// Format of Date and Time as defined RFC3501.
 /// See `date-time` element in [Formal Syntax](https://tools.ietf.org/html/rfc3501#section-9)
 /// chapter of this RFC.
 const DATE_TIME_FORMAT: &str = "%d-%b-%Y %H:%M:%S %z";
 
+/// A wrapper for one or more [`Fetch`] responses.
+#[self_referencing]
+pub struct Fetches {
+    data: Vec<u8>,
+    #[borrows(data)]
+    #[covariant]
+    pub(crate) fetches: Vec<Fetch<'this>>,
+}
+
+impl Fetches {
+    /// Parse one or more [`Fetch`] responses from a response buffer.
+    pub fn parse(
+        owned: Vec<u8>,
+        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    ) -> Result<Self, Error> {
+        FetchesTryBuilder {
+            data: owned,
+            fetches_builder: |input| {
+                let mut fetches = Vec::new();
+                parse_many_into(input, &mut fetches, unsolicited, |response| {
+                    match response {
+                        Response::Fetch(num, attrs) => {
+                            let mut fetch = Fetch {
+                                message: num,
+                                flags: vec![],
+                                uid: None,
+                                size: None,
+                                fetch: attrs,
+                            };
+
+                            // set some common fields eagerly
+                            for attr in &fetch.fetch {
+                                match attr {
+                                    AttributeValue::Flags(flags) => {
+                                        fetch.flags.extend(Flag::from_strs(flags));
+                                    }
+                                    AttributeValue::Uid(uid) => fetch.uid = Some(*uid),
+                                    AttributeValue::Rfc822Size(sz) => fetch.size = Some(*sz),
+                                    _ => {}
+                                }
+                            }
+                            Ok(MapOrNot::Map(fetch))
+                        }
+                        resp => Ok(MapOrNot::Not(resp)),
+                    }
+                })?;
+                Ok(fetches)
+            },
+        }
+        .try_build()
+    }
+
+    /// Iterate over the contained [`Fetch`]es.
+    pub fn iter(&self) -> Iter<'_, Fetch<'_>> {
+        self.borrow_fetches().iter()
+    }
+
+    /// Get the number of [`Fetch`]es in this container.
+    pub fn len(&self) -> usize {
+        self.borrow_fetches().len()
+    }
+
+    /// Return true if there are no [`Fetch`]es in the container.
+    pub fn is_empty(&self) -> bool {
+        self.borrow_fetches().is_empty()
+    }
+
+    /// Get the element at the given index
+    pub fn get(&self, index: usize) -> Option<&Fetch<'_>> {
+        self.borrow_fetches().get(index)
+    }
+}
+
 /// An IMAP [`FETCH` response](https://tools.ietf.org/html/rfc3501#section-7.4.2) that contains
 /// data about a particular message. This response occurs as the result of a `FETCH` or `STORE`
 /// command, as well as by unilateral server decision (e.g., flag updates).
 #[derive(Debug, Eq, PartialEq)]
-pub struct Fetch {
+pub struct Fetch<'a> {
     /// The ordinal number of this message in its containing mailbox.
     pub message: Seq,
 
@@ -24,16 +105,13 @@ pub struct Fetch {
     /// Only present if `RFC822.SIZE` was specified in the query argument to `FETCH`.
     pub size: Option<u32>,
 
-    // Note that none of these fields are *actually* 'static. Rather, they are tied to the lifetime
-    // of the `ZeroCopy` that contains this `Name`. That's also why they can't be public -- we can
-    // only return them with a lifetime tied to self.
-    pub(crate) fetch: Vec<AttributeValue<'static>>,
+    pub(crate) fetch: Vec<AttributeValue<'a>>,
     pub(crate) flags: Vec<Flag<'static>>,
 }
 
-impl Fetch {
+impl<'a> Fetch<'a> {
     /// A list of flags that are set for this message.
-    pub fn flags(&self) -> &[Flag<'_>] {
+    pub fn flags(&self) -> &[Flag<'a>] {
         &self.flags[..]
     }
 
@@ -134,10 +212,21 @@ impl Fetch {
     ///
     /// See [section 2.3.6 of RFC 3501](https://tools.ietf.org/html/rfc3501#section-2.3.6) for
     /// details.
-    pub fn bodystructure<'a>(&self) -> Option<&BodyStructure<'a>> {
+    pub fn bodystructure(&self) -> Option<&BodyStructure<'a>> {
         self.fetch.iter().find_map(|av| match av {
             AttributeValue::BodyStructure(bs) => Some(bs),
             _ => None,
         })
+    }
+
+    /// Get an owned copy of the [`Fetch`].
+    pub fn into_owned(self) -> Fetch<'static> {
+        Fetch {
+            message: self.message,
+            uid: self.uid,
+            size: self.size,
+            fetch: self.fetch.into_iter().map(|av| av.into_owned()).collect(),
+            flags: self.flags.clone(),
+        }
     }
 }

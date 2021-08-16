@@ -42,7 +42,7 @@ fn main() {
 
     match imap_session.fetch("2", "body[text]") {
         Ok(msgs) => {
-            for msg in &msgs {
+            for msg in msgs.iter() {
                 print!("{:?}", msg);
             }
         }
