@@ -46,6 +46,7 @@ pub struct Mailbox {
     pub is_read_only: bool,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for Mailbox {
     fn default() -> Mailbox {
         Mailbox {
