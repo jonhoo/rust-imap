@@ -50,12 +50,12 @@ jobs:
  - job: msrv
    pool:
      vmImage: ubuntu-latest
-   displayName: "Minimum supported Rust version: 1.43.0"
+   displayName: "Minimum supported Rust version: 1.46.0"
    dependsOn: []
    steps:
      - template: install-rust.yml@templates
        parameters:
-         rust: 1.43.0 # nom6 depends on bitvec (1.43+)
+         rust: 1.46.0 # bitflags requires 1.46+
      - script: cargo check
        displayName: cargo check
  - job: integration
