@@ -252,24 +252,53 @@ impl StdError for ParseError {
     }
 }
 
-/// An [invalid character](https://tools.ietf.org/html/rfc3501#section-4.3) was found in an input
-/// string.
+/// An [invalid character](https://tools.ietf.org/html/rfc3501#section-4.3) was found in a command
+/// argument.
 #[derive(Debug)]
-pub struct ValidateError(pub char);
+pub struct ValidateError {
+    /// the synopsis of the invalid command
+    pub(crate) command_synopsis: String,
+    /// the name of the invalid argument
+    pub(crate) argument: String,
+    /// the invalid character contained in the argument
+    pub(crate) offending_char: char,
+}
 
 impl fmt::Display for ValidateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // print character in debug form because invalid ones are often whitespaces
-        write!(f, "Invalid character in input: {:?}", self.0)
+        write!(
+            f,
+            "Invalid character {:?} in argument '{}' of command '{}'",
+            self.offending_char, self.argument, self.command_synopsis
+        )
     }
 }
 
 impl StdError for ValidateError {
     fn description(&self) -> &str {
-        "Invalid character in input"
+        "Invalid character in command argument"
     }
 
     fn cause(&self) -> Option<&dyn StdError> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_error_display() {
+        assert_eq!(
+            ValidateError {
+                command_synopsis: "COMMAND arg1 arg2".to_owned(),
+                argument: "arg2".to_string(),
+                offending_char: '\n'
+            }
+            .to_string(),
+            "Invalid character '\\n' in argument 'arg2' of command 'COMMAND arg1 arg2'"
+        );
     }
 }

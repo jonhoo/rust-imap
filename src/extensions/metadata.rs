@@ -23,19 +23,24 @@ use std::sync::mpsc;
 use crate::error::No;
 
 trait CmdListItemFormat {
-    fn format_as_cmd_list_item(&self) -> String;
+    fn format_as_cmd_list_item(&self, item_index: usize) -> Result<String>;
 }
 
 impl CmdListItemFormat for Metadata {
-    fn format_as_cmd_list_item(&self) -> String {
-        format!(
+    fn format_as_cmd_list_item(&self, item_index: usize) -> Result<String> {
+        let synopsis = "SETMETADATA";
+        Ok(format!(
             "{} {}",
-            validate_str(self.entry.as_str()).unwrap(),
+            validate_str(
+                synopsis,
+                &format!("entry#{}", item_index + 1),
+                self.entry.as_str()
+            )?,
             self.value
                 .as_ref()
-                .map(|v| validate_str(v.as_str()).unwrap())
-                .unwrap_or_else(|| "NIL".to_string())
-        )
+                .map(|v| validate_str(synopsis, &format!("value#{}", item_index + 1), v.as_str()))
+                .unwrap_or_else(|| Ok("NIL".to_string()))?
+        ))
     }
 }
 
@@ -168,10 +173,12 @@ impl<T: Read + Write> Session<T> {
         depth: MetadataDepth,
         maxsize: Option<usize>,
     ) -> Result<(Vec<Metadata>, Option<u64>)> {
+        let synopsis = "GETMETADATA";
         let v: Vec<String> = entries
             .iter()
-            .map(|e| validate_str(e.as_ref()).unwrap())
-            .collect();
+            .enumerate()
+            .map(|(i, e)| validate_str(synopsis, format!("entry#{}", i + 1), e.as_ref()))
+            .collect::<Result<_>>()?;
         let s = v.as_slice().join(" ");
         let mut command = format!("GETMETADATA (DEPTH {}", depth.depth_str());
 
@@ -183,8 +190,8 @@ impl<T: Read + Write> Session<T> {
             format!(
                 ") {} ({})",
                 mailbox
-                    .map(|mbox| validate_str(mbox).unwrap())
-                    .unwrap_or_else(|| "\"\"".to_string()),
+                    .map(|mbox| validate_str(synopsis, "mailbox", mbox))
+                    .unwrap_or_else(|| Ok("\"\"".to_string()))?,
                 s
             )
             .as_str(),
@@ -235,10 +242,15 @@ impl<T: Read + Write> Session<T> {
     pub fn set_metadata(&mut self, mbox: impl AsRef<str>, annotations: &[Metadata]) -> Result<()> {
         let v: Vec<String> = annotations
             .iter()
-            .map(|metadata| metadata.format_as_cmd_list_item())
-            .collect();
+            .enumerate()
+            .map(|(i, metadata)| metadata.format_as_cmd_list_item(i))
+            .collect::<Result<_>>()?;
         let s = v.as_slice().join(" ");
-        let command = format!("SETMETADATA {} ({})", validate_str(mbox.as_ref())?, s);
+        let command = format!(
+            "SETMETADATA {} ({})",
+            validate_str("SETMETADATA", "mailbox", mbox.as_ref())?,
+            s
+        );
         self.run_command_and_check_ok(command)
     }
 }
@@ -275,5 +287,176 @@ mod tests {
             }
             Err(e) => panic!("Unexpected error: {:?}", e),
         }
+    }
+
+    use crate::client::testutils::assert_validation_error_session;
+
+    #[test]
+    fn test_getmetadata_validation_entry1() {
+        assert_validation_error_session(
+            |mut session| {
+                session.get_metadata(
+                    None,
+                    &[
+                        "/shared/vendor\n/vendor.coi",
+                        "/shared/comment",
+                        "/some/other/entry",
+                    ],
+                    MetadataDepth::Infinity,
+                    None,
+                )
+            },
+            "GETMETADATA",
+            "entry#1",
+            '\n',
+        )
+    }
+
+    #[test]
+    fn test_getmetadata_validation_entry2() {
+        assert_validation_error_session(
+            |mut session| {
+                session.get_metadata(
+                    Some("INBOX"),
+                    &["/shared/vendor/vendor.coi", "/\rshared/comment"],
+                    MetadataDepth::Infinity,
+                    None,
+                )
+            },
+            "GETMETADATA",
+            "entry#2",
+            '\r',
+        )
+    }
+
+    #[test]
+    fn test_getmetadata_validation_mailbox() {
+        assert_validation_error_session(
+            |mut session| {
+                session.get_metadata(
+                    Some("INB\nOX"),
+                    &["/shared/vendor/vendor.coi", "/shared/comment"],
+                    MetadataDepth::Infinity,
+                    None,
+                )
+            },
+            "GETMETADATA",
+            "mailbox",
+            '\n',
+        );
+    }
+
+    #[test]
+    fn test_setmetadata_validation_mailbox() {
+        assert_validation_error_session(
+            |mut session| {
+                session.set_metadata(
+                    "INB\nOX",
+                    &[
+                        Metadata {
+                            entry: "/shared/vendor/vendor.coi".to_string(),
+                            value: None,
+                        },
+                        Metadata {
+                            entry: "/shared/comment".to_string(),
+                            value: Some("value".to_string()),
+                        },
+                    ],
+                )
+            },
+            "SETMETADATA",
+            "mailbox",
+            '\n',
+        );
+    }
+
+    #[test]
+    fn test_setmetadata_validation_entry1() {
+        assert_validation_error_session(
+            |mut session| {
+                session.set_metadata(
+                    "INBOX",
+                    &[
+                        Metadata {
+                            entry: "/shared/\nvendor/vendor.coi".to_string(),
+                            value: None,
+                        },
+                        Metadata {
+                            entry: "/shared/comment".to_string(),
+                            value: Some("value".to_string()),
+                        },
+                    ],
+                )
+            },
+            "SETMETADATA",
+            "entry#1",
+            '\n',
+        );
+    }
+
+    #[test]
+    fn test_setmetadata_validation_entry2_key() {
+        assert_validation_error_session(
+            |mut session| {
+                session.set_metadata(
+                    "INBOX",
+                    &[
+                        Metadata {
+                            entry: "/shared/vendor/vendor.coi".to_string(),
+                            value: None,
+                        },
+                        Metadata {
+                            entry: "/shared\r/comment".to_string(),
+                            value: Some("value".to_string()),
+                        },
+                    ],
+                )
+            },
+            "SETMETADATA",
+            "entry#2",
+            '\r',
+        );
+    }
+
+    #[test]
+    fn test_setmetadata_validation_entry2_value() {
+        assert_validation_error_session(
+            |mut session| {
+                session.set_metadata(
+                    "INBOX",
+                    &[
+                        Metadata {
+                            entry: "/shared/vendor/vendor.coi".to_string(),
+                            value: None,
+                        },
+                        Metadata {
+                            entry: "/shared/comment".to_string(),
+                            value: Some("va\nlue".to_string()),
+                        },
+                    ],
+                )
+            },
+            "SETMETADATA",
+            "value#2",
+            '\n',
+        );
+    }
+
+    #[test]
+    fn test_setmetadata_validation_entry() {
+        assert_validation_error_session(
+            |mut session| {
+                session.set_metadata(
+                    "INBOX",
+                    &[Metadata {
+                        entry: "/shared/\nvendor/vendor.coi".to_string(),
+                        value: None,
+                    }],
+                )
+            },
+            "SETMETADATA",
+            "entry#1",
+            '\n',
+        );
     }
 }

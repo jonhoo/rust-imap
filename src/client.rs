@@ -41,8 +41,15 @@ impl<E> OptionExt<E> for Option<E> {
 /// grammar](https://tools.ietf.org/html/rfc3501#section-9)
 /// calls "quoted", which is reachable from "string" et al.
 /// Also ensure it doesn't contain a colliding command-delimiter (newline).
-pub(crate) fn validate_str(value: &str) -> Result<String> {
-    validate_str_noquote(value)?;
+///
+/// The arguments `synopsis` and `arg_name` are used to construct the error message of
+/// [ValidateError] in case validation fails.
+pub(crate) fn validate_str(
+    synopsis: impl Into<String>,
+    arg_name: impl Into<String>,
+    value: &str,
+) -> Result<String> {
+    validate_str_noquote(synopsis, arg_name, value)?;
     Ok(quote!(value))
 }
 
@@ -61,13 +68,26 @@ pub(crate) fn validate_str(value: &str) -> Result<String> {
 /// >             "BODY.PEEK" section ["<" number "." nz-number ">"]
 ///
 /// Note the lack of reference to any of the string-like rules or the quote characters themselves.
-fn validate_str_noquote(value: &str) -> Result<&str> {
+///
+/// The arguments `synopsis` and `arg_name` are used to construct the error message of
+/// [ValidateError] in case validation fails.
+fn validate_str_noquote(
+    synopsis: impl Into<String>,
+    arg_name: impl Into<String>,
+    value: &str,
+) -> Result<&str> {
     value
         .matches(|c| c == '\n' || c == '\r')
         .next()
         .and_then(|s| s.chars().next())
-        .map(|offender| Error::Validate(ValidateError(offender)))
-        .err()?;
+        .err()
+        .map_err(|c| {
+            Error::Validate(ValidateError {
+                command_synopsis: synopsis.into(),
+                argument: arg_name.into(),
+                offending_char: c,
+            })
+        })?;
     Ok(value)
 }
 
@@ -84,13 +104,23 @@ fn validate_str_noquote(value: &str) -> Result<&str> {
 ///
 /// Note the lack of reference to SP or any other such whitespace terminals.
 /// Per this grammar, in theory we ought to be even more restrictive than "no whitespace".
-fn validate_sequence_set(value: &str) -> Result<&str> {
+fn validate_sequence_set(
+    synopsis: impl Into<String>,
+    arg_name: impl Into<String>,
+    value: &str,
+) -> Result<&str> {
     value
         .matches(|c: char| c.is_ascii_whitespace())
         .next()
         .and_then(|s| s.chars().next())
-        .map(|offender| Error::Validate(ValidateError(offender)))
-        .err()?;
+        .err()
+        .map_err(|c| {
+            Error::Validate(ValidateError {
+                command_synopsis: synopsis.into(),
+                argument: arg_name.into(),
+                offending_char: c,
+            })
+        })?;
     Ok(value)
 }
 
@@ -347,8 +377,11 @@ impl<T: Read + Write> Client<T> {
         username: U,
         password: P,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
-        let u = ok_or_unauth_client_err!(validate_str(username.as_ref()), self);
-        let p = ok_or_unauth_client_err!(validate_str(password.as_ref()), self);
+        let synopsis = "LOGIN";
+        let u =
+            ok_or_unauth_client_err!(validate_str(synopsis, "username", username.as_ref()), self);
+        let p =
+            ok_or_unauth_client_err!(validate_str(synopsis, "password", password.as_ref()), self);
         ok_or_unauth_client_err!(
             self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p)),
             self
@@ -494,8 +527,11 @@ impl<T: Read + Write> Session<T> {
     /// `EXISTS`, `FETCH`, and `EXPUNGE` responses. You can get them from the
     /// `unsolicited_responses` channel of the [`Session`](struct.Session.html).
     pub fn select<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
-        self.run(&format!("SELECT {}", validate_str(mailbox_name.as_ref())?))
-            .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
+        self.run(&format!(
+            "SELECT {}",
+            validate_str("SELECT", "mailbox", mailbox_name.as_ref())?
+        ))
+        .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
     /// The `EXAMINE` command is identical to [`Session::select`] and returns the same output;
@@ -503,8 +539,11 @@ impl<T: Read + Write> Session<T> {
     /// of the mailbox, including per-user state, will happen in a mailbox opened with `examine`;
     /// in particular, messagess cannot lose [`Flag::Recent`] in an examined mailbox.
     pub fn examine<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
-        self.run(&format!("EXAMINE {}", validate_str(mailbox_name.as_ref())?))
-            .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
+        self.run(&format!(
+            "EXAMINE {}",
+            validate_str("EXAMINE", "mailbox", mailbox_name.as_ref())?
+        ))
+        .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
     }
 
     /// Fetch retrieves data associated with a set of messages in the mailbox.
@@ -573,10 +612,11 @@ impl<T: Read + Write> Session<T> {
         if sequence_set.as_ref().is_empty() {
             Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
+            let synopsis = "FETCH";
             self.run_command_and_read_response(&format!(
                 "FETCH {} {}",
-                validate_sequence_set(sequence_set.as_ref())?,
-                validate_str_noquote(query.as_ref())?
+                validate_sequence_set(synopsis, "seq", sequence_set.as_ref())?,
+                validate_str_noquote(synopsis, "query", query.as_ref())?
             ))
             .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
         }
@@ -592,10 +632,11 @@ impl<T: Read + Write> Session<T> {
         if uid_set.as_ref().is_empty() {
             Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
+            let synopsis = "UID FETCH";
             self.run_command_and_read_response(&format!(
                 "UID FETCH {} {}",
-                validate_sequence_set(uid_set.as_ref())?,
-                validate_str_noquote(query.as_ref())?
+                validate_sequence_set(synopsis, "seq", uid_set.as_ref())?,
+                validate_str_noquote(synopsis, "query", query.as_ref())?
             ))
             .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
         }
@@ -646,7 +687,10 @@ impl<T: Read + Write> Session<T> {
     /// See the description of the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
     pub fn create<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<()> {
-        self.run_command_and_check_ok(&format!("CREATE {}", validate_str(mailbox_name.as_ref())?))
+        self.run_command_and_check_ok(&format!(
+            "CREATE {}",
+            validate_str("CREATE", "mailbox", mailbox_name.as_ref())?
+        ))
     }
 
     /// The [`DELETE` command](https://tools.ietf.org/html/rfc3501#section-6.3.4) permanently
@@ -669,7 +713,10 @@ impl<T: Read + Write> Session<T> {
     /// See the description of the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
     pub fn delete<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<()> {
-        self.run_command_and_check_ok(&format!("DELETE {}", validate_str(mailbox_name.as_ref())?))
+        self.run_command_and_check_ok(&format!(
+            "DELETE {}",
+            validate_str("DELETE", "mailbox", mailbox_name.as_ref())?
+        ))
     }
 
     /// The [`RENAME` command](https://tools.ietf.org/html/rfc3501#section-6.3.5) changes the name
@@ -944,7 +991,7 @@ impl<T: Read + Write> Session<T> {
         self.run_command_and_check_ok(&format!(
             "MOVE {} {}",
             sequence_set.as_ref(),
-            validate_str(mailbox_name.as_ref())?
+            validate_str("MOVE", "mailbox", mailbox_name.as_ref())?
         ))
     }
 
@@ -960,7 +1007,7 @@ impl<T: Read + Write> Session<T> {
         self.run_command_and_check_ok(&format!(
             "UID MOVE {} {}",
             uid_set.as_ref(),
-            validate_str(mailbox_name.as_ref())?
+            validate_str("UID MOVE", "mailbox", mailbox_name.as_ref())?
         ))
     }
 
@@ -1078,7 +1125,7 @@ impl<T: Read + Write> Session<T> {
         let mailbox_name = mailbox_name.as_ref();
         self.run_command_and_read_response(&format!(
             "STATUS {} {}",
-            validate_str(mailbox_name)?,
+            validate_str("STATUS", "mailbox", mailbox_name)?,
             data_items.as_ref()
         ))
         .and_then(|lines| {
@@ -1436,12 +1483,73 @@ impl<T: Read + Write> Connection<T> {
 }
 
 #[cfg(test)]
+pub(crate) mod testutils {
+    use crate::mock_stream::MockStream;
+
+    use super::*;
+
+    pub(crate) fn assert_validation_error_client<F>(
+        run_command: F,
+        expected_synopsis: &'static str,
+        expected_argument: &'static str,
+        expected_char: char,
+    ) where
+        F: FnOnce(
+            Client<MockStream>,
+        ) -> std::result::Result<Session<MockStream>, (Error, Client<MockStream>)>,
+    {
+        let response = Vec::new();
+        let mock_stream = MockStream::new(response);
+        let client = Client::new(mock_stream);
+        assert_eq!(
+            run_command(client)
+                .expect_err("Error expected, but got success")
+                .0
+                .to_string(),
+            Error::Validate(ValidateError {
+                command_synopsis: expected_synopsis.to_owned(),
+                argument: expected_argument.to_string(),
+                offending_char: expected_char
+            })
+            .to_string()
+        );
+    }
+
+    pub(crate) fn assert_validation_error_session<F, R>(
+        run_command: F,
+        expected_synopsis: &'static str,
+        expected_argument: &'static str,
+        expected_char: char,
+    ) where
+        F: FnOnce(Session<MockStream>) -> Result<R>,
+    {
+        let response = Vec::new();
+        let mock_stream = MockStream::new(response);
+        let session = Session::new(Client::new(mock_stream).conn);
+        assert_eq!(
+            run_command(session)
+                .map(|_| ())
+                .expect_err("Error expected, but got success")
+                .to_string(),
+            Error::Validate(ValidateError {
+                command_synopsis: expected_synopsis.to_owned(),
+                argument: expected_argument.to_string(),
+                offending_char: expected_char
+            })
+            .to_string()
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
     use imap_proto::types::*;
     use std::borrow::Cow;
+
+    use super::testutils::*;
 
     macro_rules! mock_session {
         ($s:expr) => {
@@ -1572,6 +1680,30 @@ mod tests {
         assert!(
             session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid login command"
+        );
+    }
+
+    #[test]
+    fn login_validation_username() {
+        let username = "username\n";
+        let password = "password";
+        assert_validation_error_client(
+            |client| client.login(username, password),
+            "LOGIN",
+            "username",
+            '\n',
+        );
+    }
+
+    #[test]
+    fn login_validation_password() {
+        let username = "username";
+        let password = "passw\rord";
+        assert_validation_error_client(
+            |client| client.login(username, password),
+            "LOGIN",
+            "password",
+            '\r',
         );
     }
 
@@ -1744,6 +1876,16 @@ mod tests {
     }
 
     #[test]
+    fn examine_validation() {
+        assert_validation_error_session(
+            |mut session| session.examine("INB\nOX"),
+            "EXAMINE",
+            "mailbox",
+            '\n',
+        )
+    }
+
+    #[test]
     fn select() {
         let response = b"* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n\
             * OK [PERMANENTFLAGS (\\* \\Answered \\Flagged \\Deleted \\Draft \\Seen)] \
@@ -1789,6 +1931,16 @@ mod tests {
             "Invalid select command"
         );
         assert_eq!(mailbox, expected_mailbox);
+    }
+
+    #[test]
+    fn select_validation() {
+        assert_validation_error_session(
+            |mut session| session.select("INB\nOX"),
+            "SELECT",
+            "mailbox",
+            '\n',
+        )
     }
 
     #[test]
@@ -1907,6 +2059,16 @@ mod tests {
     }
 
     #[test]
+    fn create_validation() {
+        assert_validation_error_session(
+            |mut session| session.create("INB\nOX"),
+            "CREATE",
+            "mailbox",
+            '\n',
+        )
+    }
+
+    #[test]
     fn delete() {
         let response = b"a1 OK DELETE completed\r\n".to_vec();
         let mailbox_name = "INBOX";
@@ -1918,6 +2080,16 @@ mod tests {
             session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid delete command"
         );
+    }
+
+    #[test]
+    fn delete_validation() {
+        assert_validation_error_session(
+            |mut session| session.delete("INB\nOX"),
+            "DELETE",
+            "mailbox",
+            '\n',
+        )
     }
 
     #[test]
@@ -2009,6 +2181,16 @@ mod tests {
     }
 
     #[test]
+    fn mv_validation_query() {
+        assert_validation_error_session(
+            |mut session| session.mv("1:2", "MEE\nTING"),
+            "MOVE",
+            "mailbox",
+            '\n',
+        )
+    }
+
+    #[test]
     fn uid_mv() {
         let response = b"* OK [COPYUID 1511554416 142,399 41:42] Moved UIDs.\r\n\
             * 2 EXPUNGE\r\n\
@@ -2027,8 +2209,38 @@ mod tests {
     }
 
     #[test]
+    fn uid_mv_validation_query() {
+        assert_validation_error_session(
+            |mut session| session.uid_mv("1:2", "MEE\nTING"),
+            "UID MOVE",
+            "mailbox",
+            '\n',
+        )
+    }
+
+    #[test]
     fn fetch() {
         generic_fetch(" ", |c, seq, query| c.fetch(seq, query))
+    }
+
+    #[test]
+    fn fetch_validation_seq() {
+        assert_validation_error_session(
+            |mut session| session.fetch("\r1", "BODY[]"),
+            "FETCH",
+            "seq",
+            '\r',
+        )
+    }
+
+    #[test]
+    fn fetch_validation_query() {
+        assert_validation_error_session(
+            |mut session| session.fetch("1", "BODY[\n]"),
+            "FETCH",
+            "query",
+            '\n',
+        )
     }
 
     #[test]
@@ -2058,6 +2270,36 @@ mod tests {
     }
 
     #[test]
+    fn uid_fetch_validation_seq() {
+        assert_validation_error_session(
+            |mut session| session.uid_fetch("\r1", "BODY[]"),
+            "UID FETCH",
+            "seq",
+            '\r',
+        )
+    }
+
+    #[test]
+    fn uid_fetch_validation_query() {
+        assert_validation_error_session(
+            |mut session| session.uid_fetch("1", "BODY[\n]"),
+            "UID FETCH",
+            "query",
+            '\n',
+        )
+    }
+
+    #[test]
+    fn status_validation_mailbox() {
+        assert_validation_error_session(
+            |mut session| session.status("IN\nBOX", "(MESSAGES)"),
+            "STATUS",
+            "mailbox",
+            '\n',
+        )
+    }
+
+    #[test]
     fn quote_backslash() {
         assert_eq!("\"test\\\\text\"", quote!(r"test\text"));
     }
@@ -2071,15 +2313,15 @@ mod tests {
     fn validate_random() {
         assert_eq!(
             "\"~iCQ_k;>[&\\\"sVCvUW`e<<P!wJ\"",
-            &validate_str("~iCQ_k;>[&\"sVCvUW`e<<P!wJ").unwrap()
+            &validate_str("COMMAND", "arg1", "~iCQ_k;>[&\"sVCvUW`e<<P!wJ").unwrap()
         );
     }
 
     #[test]
     fn validate_newline() {
-        if let Err(ref e) = validate_str("test\nstring") {
+        if let Err(ref e) = validate_str("COMMAND", "arg1", "test\nstring") {
             if let &Error::Validate(ref ve) = e {
-                if ve.0 == '\n' {
+                if ve.offending_char == '\n' {
                     return;
                 }
             }
@@ -2091,9 +2333,9 @@ mod tests {
     #[test]
     #[allow(unreachable_patterns)]
     fn validate_carriage_return() {
-        if let Err(ref e) = validate_str("test\rstring") {
+        if let Err(ref e) = validate_str("COMMAND", "arg1", "test\rstring") {
             if let &Error::Validate(ref ve) = e {
-                if ve.0 == '\r' {
+                if ve.offending_char == '\r' {
                     return;
                 }
             }
