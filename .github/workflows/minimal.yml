@@ -1,0 +1,40 @@
+on:
+  push:
+    branches: [master]
+  pull_request:
+name: With dependencies at minimal versions
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - uses: actions/checkout@v2
+      - name: cargo update -Zminimal-versions
+        uses: actions-rs/cargo@v1
+        with:
+          command: update
+          toolchain: nightly
+          args: -Zminimal-versions
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+    services:
+      greenmail:
+        image: greenmail/standalone:1.6.3
+        ports:
+          - 3025:3025
+          - 3110:3110
+          - 3143:3143
+          - 3465:3465
+          - 3993:3993
+          - 3995:3995
+        env:
+          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"

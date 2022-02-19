@@ -1,0 +1,34 @@
+on:
+  push:
+    branches: [master]
+  pull_request:
+name: cargo test
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: ${{ matrix.toolchain }}
+    strategy:
+      matrix:
+        toolchain: [stable, beta, nightly]
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+      - uses: actions/checkout@v2
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+    services:
+      greenmail:
+        image: greenmail/standalone:1.6.3
+        ports:
+          - 3025:3025
+          - 3110:3110
+          - 3143:3143
+          - 3465:3465
+          - 3993:3993
+          - 3995:3995
+        env:
+          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
