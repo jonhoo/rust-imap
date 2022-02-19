@@ -8,7 +8,7 @@ repository = "https://github.com/jonhoo/rust-imap"
 homepage = "https://github.com/jonhoo/rust-imap"
 description = "IMAP client for Rust"
 license = "Apache-2.0 OR MIT"
-edition = "2018"
+edition = "2021"
 
 keywords = ["email", "imap"]
 categories = ["email", "network-programming"]
