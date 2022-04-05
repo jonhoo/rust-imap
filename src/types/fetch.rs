@@ -7,6 +7,7 @@ use imap_proto::types::{
     AttributeValue, BodyStructure, Envelope, MessageSection, Response, SectionPath,
 };
 use ouroboros::self_referencing;
+use std::borrow::Cow;
 use std::slice::Iter;
 use std::sync::mpsc;
 
@@ -215,6 +216,17 @@ impl<'a> Fetch<'a> {
     pub fn bodystructure(&self) -> Option<&BodyStructure<'a>> {
         self.fetch.iter().find_map(|av| match av {
             AttributeValue::BodyStructure(bs) => Some(bs),
+            _ => None,
+        })
+    }
+
+    /// Extract the `X-GM-LABELS` of a `FETCH` response
+    ///
+    /// This is a Gmail-specific extension. See their
+    /// [developer's page](https://developers.google.com/gmail/imap/imap-extensions) for details.
+    pub fn gmail_labels(&self) -> Option<&Vec<Cow<'a, str>>> {
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::GmailLabels(labels) => Some(labels),
             _ => None,
         })
     }
