@@ -417,7 +417,7 @@ mod tests {
         let first = names.get(0).unwrap();
         assert_eq!(
             first.attributes(),
-            &[NameAttribute::from("\\HasNoChildren")]
+            &[NameAttribute::Extension(Cow::Borrowed("\\HasNoChildren"))]
         );
         assert_eq!(first.delimiter(), Some("."));
         assert_eq!(first.name(), "INBOX");
@@ -507,7 +507,7 @@ mod tests {
         let first = names.get(0).unwrap();
         assert_eq!(
             first.attributes(),
-            &[NameAttribute::from("\\HasNoChildren")]
+            &[NameAttribute::Extension(Cow::Borrowed("\\HasNoChildren"))]
         );
         assert_eq!(first.delimiter(), Some("."));
         assert_eq!(first.name(), "INBOX");
