@@ -113,7 +113,7 @@ mod mailbox;
 pub use self::mailbox::Mailbox;
 
 mod name;
-pub use self::name::{Name, NameAttribute, Names};
+pub use self::name::{Name, Names};
 
 mod capabilities;
 pub use self::capabilities::Capabilities;

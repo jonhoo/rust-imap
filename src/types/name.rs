@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::parse::{parse_many_into, MapOrNot};
 use crate::types::UnsolicitedResponse;
-use imap_proto::{MailboxDatum, Response};
+use imap_proto::{MailboxDatum, NameAttribute, Response};
 use ouroboros::self_referencing;
 use std::borrow::Cow;
 use std::slice::Iter;
@@ -28,11 +28,11 @@ impl Names {
                 let mut names = Vec::new();
                 parse_many_into(input, &mut names, unsolicited, |response| match response {
                     Response::MailboxData(MailboxDatum::List {
-                        flags,
+                        name_attributes,
                         delimiter,
                         name,
                     }) => Ok(MapOrNot::Map(Name {
-                        attributes: flags.into_iter().map(NameAttribute::from).collect(),
+                        attributes: name_attributes,
                         delimiter,
                         name,
                     })),
@@ -71,84 +71,6 @@ pub struct Name<'a> {
     pub(crate) attributes: Vec<NameAttribute<'a>>,
     pub(crate) delimiter: Option<Cow<'a, str>>,
     pub(crate) name: Cow<'a, str>,
-}
-
-/// An attribute set for an IMAP name.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum NameAttribute<'a> {
-    /// It is not possible for any child levels of hierarchy to exist
-    /// under this name; no child levels exist now and none can be
-    /// created in the future.
-    NoInferiors,
-
-    /// It is not possible to use this name as a selectable mailbox.
-    NoSelect,
-
-    /// The mailbox has been marked "interesting" by the server; the
-    /// mailbox probably contains messages that have been added since
-    /// the last time the mailbox was selected.
-    Marked,
-
-    /// The mailbox does not contain any additional messages since the
-    /// last time the mailbox was selected.
-    Unmarked,
-
-    /// A non-standard user- or server-defined name attribute.
-    Custom(Cow<'a, str>),
-}
-
-impl NameAttribute<'static> {
-    fn system(s: &str) -> Option<Self> {
-        match s {
-            "\\Noinferiors" => Some(NameAttribute::NoInferiors),
-            "\\Noselect" => Some(NameAttribute::NoSelect),
-            "\\Marked" => Some(NameAttribute::Marked),
-            "\\Unmarked" => Some(NameAttribute::Unmarked),
-            _ => None,
-        }
-    }
-}
-
-impl<'a> NameAttribute<'a> {
-    fn into_owned(self) -> NameAttribute<'static> {
-        match self {
-            NameAttribute::NoInferiors => NameAttribute::NoInferiors,
-            NameAttribute::NoSelect => NameAttribute::NoSelect,
-            NameAttribute::Marked => NameAttribute::Marked,
-            NameAttribute::Unmarked => NameAttribute::Unmarked,
-            NameAttribute::Custom(cow) => NameAttribute::Custom(Cow::Owned(cow.into_owned())),
-        }
-    }
-}
-
-impl<'a> From<String> for NameAttribute<'a> {
-    fn from(s: String) -> Self {
-        if let Some(f) = NameAttribute::system(&s) {
-            f
-        } else {
-            NameAttribute::Custom(Cow::Owned(s))
-        }
-    }
-}
-
-impl<'a> From<Cow<'a, str>> for NameAttribute<'a> {
-    fn from(s: Cow<'a, str>) -> Self {
-        if let Some(f) = NameAttribute::system(&*s) {
-            f
-        } else {
-            NameAttribute::Custom(s)
-        }
-    }
-}
-
-impl<'a> From<&'a str> for NameAttribute<'a> {
-    fn from(s: &'a str) -> Self {
-        if let Some(f) = NameAttribute::system(s) {
-            f
-        } else {
-            NameAttribute::Custom(Cow::Borrowed(s))
-        }
-    }
 }
 
 impl<'a> Name<'a> {

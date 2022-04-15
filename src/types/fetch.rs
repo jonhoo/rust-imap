@@ -219,6 +219,17 @@ impl<'a> Fetch<'a> {
         })
     }
 
+    /// Extract the `X-GM-LABELS` of a `FETCH` response
+    ///
+    /// This is a Gmail-specific extension. See their
+    /// [developer's page](https://developers.google.com/gmail/imap/imap-extensions) for details.
+    pub fn gmail_labels(&'a self) -> Option<impl Iterator<Item = &'a str>> {
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::GmailLabels(labels) => Some(labels.iter().map(|cow| cow.as_ref())),
+            _ => None,
+        })
+    }
+
     /// Get an owned copy of the [`Fetch`].
     pub fn into_owned(self) -> Fetch<'static> {
         Fetch {
