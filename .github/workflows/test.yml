@@ -22,7 +22,7 @@ jobs:
           command: test
     services:
       greenmail:
-        image: greenmail/standalone:1.6.3
+        image: greenmail/standalone:1.6.8
         ports:
           - 3025:3025
           - 3110:3110
