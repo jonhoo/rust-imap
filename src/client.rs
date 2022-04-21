@@ -995,7 +995,7 @@ impl<T: Read + Write> Session<T> {
         ))
     }
 
-    /// Equivalent to [`Session::copy`], except that all identifiers in `sequence_set` are
+    /// Equivalent to [`Session::mv`], except that all identifiers in `sequence_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8)
     /// and the [semantics of `MOVE` and `UID
     /// MOVE`](https://tools.ietf.org/html/rfc6851#section-3.3).
