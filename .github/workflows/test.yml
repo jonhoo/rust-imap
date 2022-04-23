@@ -48,7 +48,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -- --ignored
+          args: --features test-full-imap -- --ignored
     services:
       cyrus_imapd:
         image: outoforder/cyrus-imapd-tester:latest

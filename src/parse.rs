@@ -71,6 +71,28 @@ where
     }
 }
 
+/// Parse and return an expected single `T` Response with `F`.
+/// Responses other than `T` go into the `unsolicited` channel.
+///
+/// If zero or more than one `T` is found then [`Error::Parse`] is returned
+pub(crate) fn parse_until_done<'input, T, F>(
+    input: &'input [u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    map: F,
+) -> Result<T>
+where
+    F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
+{
+    let mut temp_output = Vec::<T>::new();
+
+    parse_many_into(input, &mut temp_output, unsolicited, map)?;
+
+    match temp_output.len() {
+        1 => Ok(temp_output.remove(0)),
+        _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
+    }
+}
+
 pub fn parse_expunge(
     lines: Vec<u8>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,

@@ -510,6 +510,85 @@ fn append_with_flags_and_date() {
 }
 
 #[test]
+#[cfg(feature = "test-full-imap")]
+fn acl_tests() {
+    use imap::types::{AclEntry, AclModifyMode};
+
+    let user_friend = "inbox-acl-friend@localhost";
+    let user_me = "inbox-acl@localhost";
+
+    // ensure we have this user by logging in once
+    session(user_friend);
+
+    let mut s_me = session(user_me);
+    let acl = s_me.get_acl("INBOX").unwrap();
+    // one ACL
+    // assert_eq!(acl.acls().len(), 1);
+    // ACL is for me
+    assert_eq!(acl.acls()[0].identifier, user_me);
+    // ACL has administration rights
+    assert!(acl.acls()[0].rights.contains('a'));
+    // Grant read to friend
+    let ret = s_me.set_acl(
+        "INBOX",
+        user_friend,
+        &"lr".try_into().unwrap(),
+        AclModifyMode::Replace,
+    );
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.acls().len(), 2);
+    assert!(acl.acls().contains(&AclEntry {
+        identifier: user_friend.into(),
+        rights: "lr".try_into().unwrap()
+    }));
+    // Add "p" right (post)
+    let ret = s_me.set_acl(
+        "INBOX",
+        user_friend,
+        &"p".try_into().unwrap(),
+        AclModifyMode::Add,
+    );
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.acls().len(), 2);
+    assert!(acl.acls().contains(&AclEntry {
+        identifier: user_friend.into(),
+        rights: "lrp".try_into().unwrap()
+    }));
+    // remove "p" right (post)
+    let ret = s_me.set_acl(
+        "INBOX",
+        user_friend,
+        &"p".try_into().unwrap(),
+        AclModifyMode::Remove,
+    );
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.acls().len(), 2);
+    assert!(acl.acls().contains(&AclEntry {
+        identifier: user_friend.into(),
+        rights: "lr".try_into().unwrap()
+    }));
+    // Delete rights for friend
+    let ret = s_me.delete_acl("INBOX", user_friend);
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.acls().len(), 1);
+    assert_eq!(acl.acls()[0].identifier, user_me);
+    // List rights
+    let acl = s_me.list_rights("INBOX", user_friend).unwrap();
+    assert_eq!(acl.mailbox(), "INBOX");
+    assert_eq!(acl.identifier(), user_friend);
+    assert!(acl.optional().contains('0'));
+    assert!(!acl.required().contains('0'));
+}
+
+#[test]
 fn status() {
     let mut s = session("readonly-test@localhost");
 
