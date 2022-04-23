@@ -17,6 +17,9 @@ categories = ["email", "network-programming"]
 rustls-tls = ["rustls-connector"]
 default = ["native-tls"]
 
+[patch.crates-io]
+imap-proto = { git = "https://github.com/djc/tokio-imap" }
+
 [dependencies]
 native-tls = { version = "0.2.2", optional = true }
 rustls-connector = { version = "0.16.1", optional = true }
