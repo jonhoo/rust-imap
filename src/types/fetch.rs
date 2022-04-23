@@ -3,12 +3,15 @@ use crate::error::Error;
 use crate::parse::{parse_many_into, MapOrNot};
 use crate::types::UnsolicitedResponse;
 use chrono::{DateTime, FixedOffset};
-use imap_proto::types::{
-    AttributeValue, BodyStructure, Envelope, MessageSection, Response, SectionPath,
-};
+use imap_proto::types::{AttributeValue, MessageSection, Response};
 use ouroboros::self_referencing;
 use std::slice::Iter;
 use std::sync::mpsc;
+
+/// re-exported from imap_proto;
+pub use imap_proto::BodyStructure;
+pub use imap_proto::Envelope;
+pub use imap_proto::SectionPath;
 
 /// Format of Date and Time as defined RFC3501.
 /// See `date-time` element in [Formal Syntax](https://tools.ietf.org/html/rfc3501#section-9)

@@ -1,11 +1,14 @@
 use crate::error::Error;
 use crate::parse::{parse_many_into, MapOrNot};
 use crate::types::UnsolicitedResponse;
-use imap_proto::{MailboxDatum, NameAttribute, Response};
+use imap_proto::{MailboxDatum, Response};
 use ouroboros::self_referencing;
 use std::borrow::Cow;
 use std::slice::Iter;
 use std::sync::mpsc;
+
+/// re-exported from imap_proto;
+pub use imap_proto::types::NameAttribute;
 
 /// A wrapper for one or more [`Name`] responses.
 #[self_referencing]

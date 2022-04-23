@@ -104,7 +104,7 @@ pub type Uid = u32;
 pub type Seq = u32;
 
 mod fetch;
-pub use self::fetch::{Fetch, Fetches};
+pub use self::fetch::{Fetch, Fetches, BodyStructure, Envelope, SectionPath};
 
 mod flag;
 pub use self::flag::Flag;
@@ -113,10 +113,10 @@ mod mailbox;
 pub use self::mailbox::Mailbox;
 
 mod name;
-pub use self::name::{Name, Names};
+pub use self::name::{Name, Names, NameAttribute};
 
 mod capabilities;
-pub use self::capabilities::Capabilities;
+pub use self::capabilities::{Capabilities, Capability};
 
 mod deleted;
 pub use self::deleted::Deleted;

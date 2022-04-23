@@ -1,11 +1,14 @@
 use crate::error::Error;
 use crate::parse::{parse_many_into, MapOrNot};
 use crate::types::UnsolicitedResponse;
-use imap_proto::{Capability, Response};
+use imap_proto::Response;
 use ouroboros::self_referencing;
 use std::collections::hash_set::Iter;
 use std::collections::HashSet;
 use std::sync::mpsc;
+
+/// re-exported from imap_proto;
+pub use imap_proto::types::Capability;
 
 const IMAP4REV1_CAPABILITY: &str = "IMAP4rev1";
 const AUTH_CAPABILITY_PREFIX: &str = "AUTH=";
