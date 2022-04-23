@@ -1280,6 +1280,91 @@ impl<T: Read + Write> Session<T> {
         .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
     }
 
+    /// The [`SETACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.1)
+    /// Modifies the ACLs on the given mailbox for the specified identifier.
+    /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
+    pub fn setacl<S1: AsRef<str>, S2: AsRef<str>>(
+        &mut self,
+        mailbox_name: S1,
+        identifier: S2,
+        rights: &AclRightList,
+        modification: AclModifyMode,
+    ) -> Result<()> {
+        let mod_str = match modification {
+            AclModifyMode::Replace => "",
+            AclModifyMode::Add => "+",
+            AclModifyMode::Remove => "-",
+        };
+
+        self.run_command_and_check_ok(&format!(
+            "SETACL {} {} {}{}",
+            validate_str("SETACL", "mailbox", mailbox_name.as_ref())?,
+            validate_str("SETACL", "identifier", identifier.as_ref())?,
+            mod_str,
+            rights.to_string(),
+        ))
+    }
+
+    /// The [`DELETEACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.2)
+    /// Removes the ACL for the given identifier from the given mailbox.
+    /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
+    pub fn deleteacl<S1: AsRef<str>, S2: AsRef<str>>(
+        &mut self,
+        mailbox_name: S1,
+        identifier: S2,
+    ) -> Result<()> {
+        self.run_command_and_check_ok(&format!(
+            "DELETEACL {} {}",
+            validate_str("DELETEACL", "mailbox", mailbox_name.as_ref())?,
+            validate_str("DELETEACL", "identifier", identifier.as_ref())?,
+        ))
+    }
+
+    /// The [`GETACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.3)
+    /// returns the ACLs on the given mailbox. A set ot `ACL` responses are returned if the
+    /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
+    pub fn get_acl<S: AsRef<str>>(
+        &mut self,
+        mailbox_name: S,
+    ) -> Result<Acl> {
+        self.run_command_and_read_response(&format!(
+            "GETACL {}",
+            validate_str("GETACL", "mailbox", mailbox_name.as_ref())?
+        ))
+            .and_then(|lines| Acl::parse(lines, &mut self.unsolicited_responses_tx) )
+    }
+
+    /// The [`LISTRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.4)
+    /// returns the always granted and optionally granted rights on the given mailbox for the
+    /// specified identifier (login). A set ot `LISTRIGHTS` responses are returned if the
+    /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
+    pub fn list_rights<S1: AsRef<str>, S2: AsRef<str>>(
+        &mut self,
+        mailbox_name: S1,
+        identifier: S2,
+    ) -> Result<ListRights> {
+        self.run_command_and_read_response(&format!(
+            "LISTRIGHTS {} {}",
+            validate_str("LISTRIGHTS", "mailbox", mailbox_name.as_ref())?,
+            validate_str("LISTRIGHTS", "identifier", identifier.as_ref())?
+        ))
+            .and_then(|lines| ListRights::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
+
+    /// The [`MYRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.5)
+    /// returns the list of rights the logged in user has on the given mailbox.
+    pub fn my_rights<S: AsRef<str>>(
+        &mut self,
+        mailbox_name: S,
+    ) -> Result<MyRights> {
+        self.run_command_and_read_response(&format!(
+            "MYRIGHTS {}",
+            validate_str("MYRIGHTS", "mailbox", mailbox_name.as_ref())?,
+        ))
+            .and_then(|lines| MyRights::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
     // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok<S: AsRef<str>>(&mut self, command: S) -> Result<()> {
@@ -1546,7 +1631,6 @@ mod tests {
     use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
-    use imap_proto::types::*;
     use std::borrow::Cow;
 
     use super::testutils::*;
@@ -2018,6 +2102,146 @@ mod tests {
             "Invalid sort command"
         );
         assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn set_acl_replace() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.setacl(
+            "INBOX",
+            "myuser",
+            &"x".into(),
+            AclModifyMode::Replace,
+        ).unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETACL \"INBOX\" \"myuser\" x\r\n".to_vec(),
+            "Invalid setacl command"
+        );
+    }
+
+    #[test]
+    fn set_acl_add() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.setacl(
+            "INBOX",
+            "myuser",
+            &"x".into(),
+            AclModifyMode::Add,
+        ).unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETACL \"INBOX\" \"myuser\" +x\r\n".to_vec(),
+            "Invalid setacl command"
+        );
+    }
+
+    #[test]
+    fn set_acl_remove() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.setacl(
+            "INBOX",
+            "myuser",
+            &"x".into(),
+            AclModifyMode::Remove,
+        ).unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETACL \"INBOX\" \"myuser\" -x\r\n".to_vec(),
+            "Invalid setacl command"
+        );
+    }
+
+    #[test]
+    fn delete_acl() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.deleteacl(
+            "INBOX",
+            "myuser",
+        ).unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 DELETEACL \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid deleteacl command"
+        );
+    }
+
+    #[test]
+    fn get_acl() {
+        let response = b"* ACL INBOX myuser lr\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let expected_acl = Acl {
+            mailbox: "INBOX".to_string(),
+            acls: vec![
+                AclEntry {
+                    identifier: "myuser".to_string(),
+                    rights: vec![
+                        AclRight::Lookup,
+                        AclRight::Read,
+                    ].into()
+                }
+            ],
+        };
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert_eq!(acl, expected_acl);
+    }
+
+    #[test]
+    fn list_rights() {
+        let response = b"* LISTRIGHTS INBOX myuser lr x k\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let expected_acl = ListRights {
+            mailbox: "INBOX".to_string(),
+            identifier: "myuser".to_string(),
+            required: "lr".into(),
+            optional: "xk".into(),
+        };
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.list_rights("INBOX", "myuser").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid listrights command"
+        );
+        assert_eq!(acl, expected_acl);
+    }
+
+    #[test]
+    fn my_rights() {
+        let response = b"* MYRIGHTS INBOX lrxk\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let expected_acl = MyRights {
+            mailbox: "INBOX".to_string(),
+            rights: "lrkx".into(),
+        };
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.my_rights("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
+            "Invalid myrights command"
+        );
+        assert_eq!(acl, expected_acl);
     }
 
     #[test]
