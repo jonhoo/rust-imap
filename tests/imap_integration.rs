@@ -27,6 +27,7 @@ fn test_smtp_host() -> String {
         .unwrap_or_else(|_| std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string()))
 }
 
+#[cfg(feature = "test-full-imap")]
 fn test_imap_port() -> u16 {
     std::env::var("TEST_IMAP_PORT")
         .unwrap_or("3143".to_string())
@@ -109,10 +110,10 @@ fn smtp(user: &str) -> lettre::SmtpTransport {
 }
 
 #[test]
-#[ignore]
+#[cfg(feature = "test-full-imap")]
 fn connect_insecure_then_secure() {
     let host = test_host();
-    // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
+    // Not supported on greenmail because of https://github.com/greenmail-mail-test/greenmail/issues/135
     imap::ClientBuilder::new(&host, test_imap_port())
         .starttls()
         .connect(|domain, tcp| {
@@ -507,6 +508,97 @@ fn append_with_flags_and_date() {
     // the e-mail should be gone now
     let inbox = c.search("ALL").unwrap();
     assert_eq!(inbox.len(), 0);
+}
+
+#[test]
+#[cfg(feature = "test-full-imap")]
+fn acl_tests() {
+    use imap::types::AclModifyMode;
+
+    let user_friend = "inbox-acl-friend@localhost";
+    let user_me = "inbox-acl@localhost";
+
+    // ensure we have this user by logging in once
+    session(user_friend);
+
+    let mut s_me = session(user_me);
+    let acl = s_me.get_acl("INBOX").unwrap();
+    // one ACL
+    // assert_eq!(acl.acls().len(), 1);
+    // ACL is for me
+    assert_eq!(acl.parsed().acls()[0].identifier, user_me);
+    // ACL has administration rights
+    assert!(acl.parsed().acls()[0].rights.contains('a'));
+    // Grant read to friend
+    let ret = s_me.set_acl(
+        "INBOX",
+        user_friend,
+        &"lr".try_into().unwrap(),
+        AclModifyMode::Replace,
+    );
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.parsed().acls().len(), 2);
+    let idx = acl
+        .parsed()
+        .acls()
+        .binary_search_by(|e| (*e.identifier).cmp(user_friend))
+        .unwrap();
+    assert_eq!(acl.parsed().acls()[idx].rights, "lr".try_into().unwrap());
+
+    // Add "p" right (post)
+    let ret = s_me.set_acl(
+        "INBOX",
+        user_friend,
+        &"p".try_into().unwrap(),
+        AclModifyMode::Add,
+    );
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.parsed().acls().len(), 2);
+    let idx = acl
+        .parsed()
+        .acls()
+        .binary_search_by(|e| (*e.identifier).cmp(user_friend))
+        .unwrap();
+    assert_eq!(acl.parsed().acls()[idx].rights, "lrp".try_into().unwrap());
+    // remove "p" right (post)
+    let ret = s_me.set_acl(
+        "INBOX",
+        user_friend,
+        &"p".try_into().unwrap(),
+        AclModifyMode::Remove,
+    );
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.parsed().acls().len(), 2);
+    let idx = acl
+        .parsed()
+        .acls()
+        .binary_search_by(|e| (*e.identifier).cmp(user_friend))
+        .unwrap();
+    assert_eq!(acl.parsed().acls()[idx].rights, "lr".try_into().unwrap());
+    // Delete rights for friend
+    let ret = s_me.delete_acl("INBOX", user_friend);
+    assert!(ret.is_ok());
+    // Check rights again
+    let acl = s_me.get_acl("INBOX").unwrap();
+    assert_eq!(acl.parsed().acls().len(), 1);
+    assert_eq!(acl.parsed().acls()[0].identifier, user_me);
+    // List rights
+    let acl = s_me.list_rights("INBOX", user_friend).unwrap();
+    assert_eq!(acl.parsed().mailbox(), "INBOX");
+    assert_eq!(acl.parsed().identifier(), user_friend);
+    assert!(acl.parsed().optional().contains('0'));
+    assert!(!acl.parsed().required().contains('0'));
+
+    // My Rights
+    let acl = s_me.my_rights("INBOX").unwrap();
+    assert_eq!(acl.parsed().mailbox(), "INBOX");
+    assert!(acl.parsed().rights().contains('a'));
 }
 
 #[test]
