@@ -19,9 +19,34 @@ fn tls() -> native_tls::TlsConnector {
         .unwrap()
 }
 
+fn test_host() -> String {
+    std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
+}
+
+fn test_imap_port() -> u16 {
+    std::env::var("TEST_IMAP_PORT")
+        .unwrap_or("3143".to_string())
+        .parse()
+        .unwrap_or(3143)
+}
+
+fn test_imaps_port() -> u16 {
+    std::env::var("TEST_IMAPS_PORT")
+        .unwrap_or("3993".to_string())
+        .parse()
+        .unwrap_or(3993)
+}
+
+fn test_smtps_port() -> u16 {
+    std::env::var("TEST_SMTPS_PORT")
+        .unwrap_or("3465".to_string())
+        .parse()
+        .unwrap_or(3465)
+}
+
 fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
-    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
-    let mut s = imap::ClientBuilder::new(&host, 3993)
+    let host = test_host();
+    let mut s = imap::ClientBuilder::new(&host, test_imaps_port())
         .connect(|domain, tcp| {
             let ssl_conn = tls();
             Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
@@ -36,10 +61,7 @@ fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
 fn smtp(user: &str) -> lettre::SmtpTransport {
     let creds = lettre::smtp::authentication::Credentials::new(user.to_string(), user.to_string());
     lettre::SmtpClient::new(
-        &format!(
-            "{}:3465",
-            std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
-        ),
+        &format!("{}:{}", test_host(), test_smtps_port()),
         lettre::ClientSecurity::Wrapper(lettre::ClientTlsParameters {
             connector: tls(),
             domain: "smpt.example.com".to_string(),
@@ -53,9 +75,9 @@ fn smtp(user: &str) -> lettre::SmtpTransport {
 #[test]
 #[ignore]
 fn connect_insecure_then_secure() {
-    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
+    let host = test_host();
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
-    imap::ClientBuilder::new(&host, 3143)
+    imap::ClientBuilder::new(&host, test_imap_port())
         .starttls()
         .connect(|domain, tcp| {
             let ssl_conn = tls();
@@ -66,8 +88,8 @@ fn connect_insecure_then_secure() {
 
 #[test]
 fn connect_secure() {
-    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
-    imap::ClientBuilder::new(&host, 3993)
+    let host = test_host();
+    imap::ClientBuilder::new(&host, test_imaps_port())
         .connect(|domain, tcp| {
             let ssl_conn = tls();
             Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
