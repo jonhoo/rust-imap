@@ -88,7 +88,7 @@ impl Acl {
             match imap_proto::parser::parse_response(lines) {
                 Ok((rest, Response::Acl(a))) => {
                     lines = rest;
-                    acl = Some(a.into());
+                    acl = Some(Self::from_proto(a));
                 },
                 Ok((rest, data)) => {
                     lines = rest;
@@ -104,13 +104,11 @@ impl Acl {
 
         acl.ok_or_else(|| Error::Parse(ParseError::Invalid(lines.to_vec())))
     }
-}
 
-impl Into<Acl> for imap_proto::types::Acl<'_> {
-    fn into(self) -> Acl {
-        Acl {
-            mailbox: self.mailbox.to_string(),
-            acls: self.acls.into_iter().map(|e| e.into()).collect(),
+    fn from_proto(acl: imap_proto::types::Acl<'_>) -> Self {
+        Self {
+            mailbox: acl.mailbox.to_string(),
+            acls: acl.acls.into_iter().map(|e| AclEntry::from_proto(e)).collect(),
         }
     }
 }
@@ -126,11 +124,11 @@ pub struct AclEntry {
     pub rights: AclRightList,
 }
 
-impl Into<AclEntry> for imap_proto::types::AclEntry<'_> {
-    fn into(self) -> AclEntry {
-        AclEntry {
-            identifier: self.identifier.to_string(),
-            rights: self.rights.into(),
+impl AclEntry {
+    fn from_proto(acl_entry: imap_proto::types::AclEntry<'_>) -> Self {
+        Self {
+            identifier: acl_entry.identifier.to_string(),
+            rights: acl_entry.rights.into(),
         }
     }
 }
@@ -163,7 +161,7 @@ impl ListRights {
             match imap_proto::parser::parse_response(lines) {
                 Ok((rest, Response::ListRights(a))) => {
                     lines = rest;
-                    acl = Some(a.into());
+                    acl = Some(Self::from_proto(a));
                 },
                 Ok((rest, data)) => {
                     lines = rest;
@@ -179,18 +177,17 @@ impl ListRights {
 
         acl.ok_or_else(|| Error::Parse(ParseError::Invalid(lines.to_vec())))
     }
+
+    fn from_proto(list: imap_proto::types::ListRights<'_>) -> Self {
+        Self {
+            mailbox: list.mailbox.to_string(),
+            identifier: list.identifier.to_string(),
+            required: list.required.into(),
+            optional: list.optional.into(),
+        }
+}
 }
 
-impl Into<ListRights> for imap_proto::types::ListRights<'_> {
-    fn into(self) -> ListRights {
-        ListRights {
-            mailbox: self.mailbox.to_string(),
-            identifier: self.identifier.to_string(),
-            required: self.required.into(),
-            optional: self.optional.into(),
-        }
-    }
-}
 
 /// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
 ///
@@ -216,7 +213,7 @@ impl MyRights {
             match imap_proto::parser::parse_response(lines) {
                 Ok((rest, Response::MyRights(a))) => {
                     lines = rest;
-                    acl = Some(a.into());
+                    acl = Some(Self::from_proto(a));
                 },
                 Ok((rest, data)) => {
                     lines = rest;
@@ -232,13 +229,11 @@ impl MyRights {
 
         acl.ok_or_else(|| Error::Parse(ParseError::Invalid(lines.to_vec())))
     }
-}
 
-impl Into<MyRights> for imap_proto::types::MyRights<'_> {
-    fn into(self) -> MyRights {
-        MyRights {
-            mailbox: self.mailbox.to_string(),
-            rights: self.rights.into(),
+    fn from_proto(rights: imap_proto::types::MyRights<'_>) -> Self {
+        Self {
+            mailbox: rights.mailbox.to_string(),
+            rights: rights.rights.into(),
         }
     }
 }
@@ -249,15 +244,15 @@ mod tests {
 
     #[test]
     fn test_acl_right_list_to_string() {
-        let rights: AclRightList = vec![AclRight::Lookup, AclRight::Read, AclRight::Seen].into();
-        let expected = "lrs";
+        let rights: AclRightList = vec![AclRight::Lookup, AclRight::Read, AclRight::Seen, AclRight::Custom('0')].into();
+        let expected = "0lrs";
 
         assert_eq!(rights.to_string(), expected);
     }
 
     #[test]
     fn test_str_to_acl_right_list() {
-        let right_string = "lrskx";
+        let right_string = "lrskx0";
 
         let rights: AclRightList = right_string.into();
 
@@ -269,6 +264,7 @@ mod tests {
                 AclRight::Seen,
                 AclRight::CreateMailbox,
                 AclRight::DeleteMailbox,
+                AclRight::Custom('0'),
             ]
                 .into()
         );
