@@ -1326,15 +1326,12 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Returns the ACLs on the given mailbox. A set ot `ACL` responses are returned if the
     /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
-    pub fn get_acl<S: AsRef<str>>(
-        &mut self,
-        mailbox_name: S,
-    ) -> Result<Acl> {
+    pub fn get_acl<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Acl> {
         self.run_command_and_read_response(&format!(
             "GETACL {}",
             validate_str("GETACL", "mailbox", mailbox_name.as_ref())?
         ))
-            .and_then(|lines| Acl::parse(lines, &mut self.unsolicited_responses_tx) )
+        .and_then(|lines| Acl::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`LISTRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.4)
@@ -1352,22 +1349,18 @@ impl<T: Read + Write> Session<T> {
             validate_str("LISTRIGHTS", "mailbox", mailbox_name.as_ref())?,
             validate_str("LISTRIGHTS", "identifier", identifier.as_ref())?
         ))
-            .and_then(|lines| ListRights::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| ListRights::parse(lines, &mut self.unsolicited_responses_tx))
     }
-
 
     /// The [`MYRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.5)
     ///
     /// Returns the list of rights the logged in user has on the given mailbox.
-    pub fn my_rights<S: AsRef<str>>(
-        &mut self,
-        mailbox_name: S,
-    ) -> Result<MyRights> {
+    pub fn my_rights<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<MyRights> {
         self.run_command_and_read_response(&format!(
             "MYRIGHTS {}",
             validate_str("MYRIGHTS", "mailbox", mailbox_name.as_ref())?,
         ))
-            .and_then(|lines| MyRights::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| MyRights::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     // these are only here because they are public interface, the rest is in `Connection`
@@ -1636,7 +1629,7 @@ mod tests {
     use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
-    use imap_proto::types::{Capability, AclRight};
+    use imap_proto::types::Capability;
     use std::borrow::Cow;
 
     use super::testutils::*;
@@ -2115,12 +2108,9 @@ mod tests {
         let response = b"a1 OK completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
-        session.set_acl(
-            "INBOX",
-            "myuser",
-            &"x".into(),
-            AclModifyMode::Replace,
-        ).unwrap();
+        session
+            .set_acl("INBOX", "myuser", &"x".into(), AclModifyMode::Replace)
+            .unwrap();
         assert_eq!(
             session.stream.get_ref().written_buf,
             b"a1 SETACL \"INBOX\" \"myuser\" x\r\n".to_vec(),
@@ -2133,12 +2123,9 @@ mod tests {
         let response = b"a1 OK completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
-        session.set_acl(
-            "INBOX",
-            "myuser",
-            &"x".into(),
-            AclModifyMode::Add,
-        ).unwrap();
+        session
+            .set_acl("INBOX", "myuser", &"x".into(), AclModifyMode::Add)
+            .unwrap();
         assert_eq!(
             session.stream.get_ref().written_buf,
             b"a1 SETACL \"INBOX\" \"myuser\" +x\r\n".to_vec(),
@@ -2151,12 +2138,9 @@ mod tests {
         let response = b"a1 OK completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
-        session.set_acl(
-            "INBOX",
-            "myuser",
-            &"x".into(),
-            AclModifyMode::Remove,
-        ).unwrap();
+        session
+            .set_acl("INBOX", "myuser", &"x".into(), AclModifyMode::Remove)
+            .unwrap();
         assert_eq!(
             session.stream.get_ref().written_buf,
             b"a1 SETACL \"INBOX\" \"myuser\" -x\r\n".to_vec(),
@@ -2169,10 +2153,7 @@ mod tests {
         let response = b"a1 OK completed\r\n".to_vec();
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
-        session.delete_acl(
-            "INBOX",
-            "myuser",
-        ).unwrap();
+        session.delete_acl("INBOX", "myuser").unwrap();
         assert_eq!(
             session.stream.get_ref().written_buf,
             b"a1 DELETEACL \"INBOX\" \"myuser\"\r\n".to_vec(),
@@ -2185,18 +2166,6 @@ mod tests {
         let response = b"* ACL INBOX myuser lr\r\n\
             a1 OK completed\r\n"
             .to_vec();
-        let expected_acl = Acl {
-            mailbox: "INBOX".to_string(),
-            acls: vec![
-                AclEntry {
-                    identifier: "myuser".to_string(),
-                    rights: vec![
-                        AclRight::Lookup,
-                        AclRight::Read,
-                    ].into()
-                }
-            ],
-        };
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let acl = session.get_acl("INBOX").unwrap();
@@ -2205,7 +2174,37 @@ mod tests {
             b"a1 GETACL \"INBOX\"\r\n".to_vec(),
             "Invalid getacl command"
         );
-        assert_eq!(acl, expected_acl);
+        assert_eq!(acl.mailbox(), "INBOX");
+        assert_eq!(
+            acl.acls(),
+            vec![AclEntry {
+                identifier: "myuser".into(),
+                rights: "lr".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn get_acl_multiple_users() {
+        let response = b"* ACL INBOX myuser lr other_user lr\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert_eq!(acl.mailbox(), "INBOX");
+        assert_eq!(
+            acl.acls(),
+            vec![AclEntry {
+                identifier: "myuser".into(),
+                rights: "lr".into(),
+            }]
+        );
     }
 
     #[test]
@@ -2213,12 +2212,6 @@ mod tests {
         let response = b"* LISTRIGHTS INBOX myuser lr x k\r\n\
             a1 OK completed\r\n"
             .to_vec();
-        let expected_acl = ListRights {
-            mailbox: "INBOX".to_string(),
-            identifier: "myuser".to_string(),
-            required: "lr".into(),
-            optional: "xk".into(),
-        };
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let acl = session.list_rights("INBOX", "myuser").unwrap();
@@ -2227,7 +2220,10 @@ mod tests {
             b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
             "Invalid listrights command"
         );
-        assert_eq!(acl, expected_acl);
+        assert_eq!(acl.mailbox(), "INBOX");
+        assert_eq!(acl.identifier(), "myuser");
+        assert_eq!(*acl.required(), "lr".into());
+        assert_eq!(*acl.optional(), "kx".into());
     }
 
     #[test]
@@ -2235,10 +2231,6 @@ mod tests {
         let response = b"* MYRIGHTS INBOX lrxk\r\n\
             a1 OK completed\r\n"
             .to_vec();
-        let expected_acl = MyRights {
-            mailbox: "INBOX".to_string(),
-            rights: "lrkx".into(),
-        };
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let acl = session.my_rights("INBOX").unwrap();
@@ -2247,7 +2239,8 @@ mod tests {
             b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
             "Invalid myrights command"
         );
-        assert_eq!(acl, expected_acl);
+        assert_eq!(acl.mailbox(), "INBOX");
+        assert_eq!(*acl.rights(), "lrkx".into())
     }
 
     #[test]
