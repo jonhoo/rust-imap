@@ -1,8 +1,10 @@
 use crate::error::{Error, ParseError};
-use crate::types::UnsolicitedResponse;
 use crate::parse::try_handle_unilateral;
-use imap_proto::Response;
+use crate::types::UnsolicitedResponse;
 use imap_proto::types::AclRight;
+use imap_proto::Response;
+use ouroboros::self_referencing;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::sync::mpsc;
@@ -67,69 +69,153 @@ impl From<&str> for AclRightList {
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
 /// The ACL response from the getacl IMAP command
-#[derive(Debug, Eq, PartialEq)]
+#[self_referencing]
 pub struct Acl {
-    /// the mailbox these rights list are for
-    pub mailbox: String,
-    /// The list of identifier/rights pairs for the mailbox
-    pub acls: Vec<AclEntry>,
+    data: Vec<u8>,
+    #[borrows(data)]
+    #[covariant]
+    pub(crate) acl: InnerAcl<'this>,
 }
 
 impl Acl {
     /// Parse the given input into a [`ACL`] response.
     pub fn parse(
-        lines: Vec<u8>,
+        owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
-        let mut lines: &[u8] = &lines;
-        let mut acl = None;
+        AclTryBuilder {
+            data: owned,
+            acl_builder: |input| {
+                let mut lines: &[u8] = input;
 
-        while !lines.is_empty() {
-            match imap_proto::parser::parse_response(lines) {
-                Ok((rest, Response::Acl(a))) => {
-                    lines = rest;
-                    acl = Some(Self::from_proto(a));
-                },
-                Ok((rest, data)) => {
-                    lines = rest;
-                    if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                        return Err(resp.into());
+                // There should only be ONE single ACL response
+                while !lines.is_empty() {
+                    match imap_proto::parser::parse_response(lines) {
+                        Ok((_rest, Response::Acl(a))) => {
+                            // lines = rest;
+                            return Ok(InnerAcl {
+                                mailbox: a.mailbox,
+                                acls: a
+                                    .acls
+                                    .into_iter()
+                                    .map(|e| AclEntry {
+                                        identifier: e.identifier,
+                                        rights: e.rights.into(),
+                                    })
+                                    .collect(),
+                            });
+                        }
+                        Ok((rest, data)) => {
+                            lines = rest;
+                            if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                                return Err(resp.into());
+                            }
+                        }
+                        _ => {
+                            return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                        }
                     }
                 }
-                _ => {
-                    return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
-            }
-        }
 
-        acl.ok_or_else(|| Error::Parse(ParseError::Invalid(lines.to_vec())))
+                Err(Error::Parse(ParseError::Invalid(lines.to_vec())))
+            },
+        }
+        .try_build()
     }
 
-    fn from_proto(acl: imap_proto::types::Acl<'_>) -> Self {
-        Self {
-            mailbox: acl.mailbox.to_string(),
-            acls: acl.acls.into_iter().map(|e| AclEntry::from_proto(e)).collect(),
-        }
+    pub fn mailbox(&self) -> &str {
+        &*self.borrow_acl().mailbox
     }
+
+    pub fn acls(&self) -> &[AclEntry<'_>] {
+        &*self.borrow_acl().acls
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct InnerAcl<'a> {
+    pub(crate) mailbox: Cow<'a, str>,
+    /// The list of identifier/rights pairs for the mailbox
+    pub(crate) acls: Vec<AclEntry<'a>>,
 }
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
 /// The list of identifiers and rights for the ACL response
 #[derive(Debug, Eq, PartialEq)]
-pub struct AclEntry {
+pub struct AclEntry<'a> {
     /// The user identifier the rights are for
-    pub identifier: String,
+    pub identifier: Cow<'a, str>,
     /// the rights for the provided identifier
     pub rights: AclRightList,
 }
 
-impl AclEntry {
-    fn from_proto(acl_entry: imap_proto::types::AclEntry<'_>) -> Self {
-        Self {
-            identifier: acl_entry.identifier.to_string(),
-            rights: acl_entry.rights.into(),
+/// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
+///
+/// The LISTRIGHTS response from the listrights IMAP command
+#[self_referencing]
+pub struct ListRights {
+    data: Vec<u8>,
+    #[borrows(data)]
+    #[covariant]
+    pub(crate) rights: InnerListRights<'this>,
+}
+
+impl ListRights {
+    /// Parse the given input into a [`LISTRIGHTS`] response.
+    pub fn parse(
+        owned: Vec<u8>,
+        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    ) -> Result<Self, Error> {
+        ListRightsTryBuilder {
+            data: owned,
+            rights_builder: |input| {
+                let mut lines: &[u8] = input;
+
+                // There should only be ONE single LISTRIGHTS response
+                while !lines.is_empty() {
+                    match imap_proto::parser::parse_response(lines) {
+                        Ok((_rest, Response::ListRights(a))) => {
+                            // lines = rest;
+                            return Ok(InnerListRights {
+                                mailbox: a.mailbox,
+                                identifier: a.identifier,
+                                required: a.required.into(),
+                                optional: a.optional.into(),
+                            });
+                        }
+                        Ok((rest, data)) => {
+                            lines = rest;
+                            if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                                return Err(resp.into());
+                            }
+                        }
+                        _ => {
+                            return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                        }
+                    }
+                }
+
+                Err(Error::Parse(ParseError::Invalid(lines.to_vec())))
+            },
         }
+        .try_build()
+    }
+
+    pub fn mailbox(&self) -> &str {
+        &*self.borrow_rights().mailbox
+    }
+
+    pub fn identifier(&self) -> &str {
+        &*self.borrow_rights().identifier
+    }
+
+    pub fn required(&self) -> &AclRightList {
+        &self.borrow_rights().required
+    }
+
+    pub fn optional(&self) -> &AclRightList {
+        &self.borrow_rights().optional
     }
 }
 
@@ -137,105 +223,82 @@ impl AclEntry {
 ///
 /// The LISTRIGHTS response from the listrights IMAP command
 #[derive(Debug, Eq, PartialEq)]
-pub struct ListRights {
+pub struct InnerListRights<'a> {
     /// The mailbox for the rights
-    pub mailbox: String,
+    pub(crate) mailbox: Cow<'a, str>,
     /// The user identifier for the rights
-    pub identifier: String,
+    pub(crate) identifier: Cow<'a, str>,
     /// The set of rights that are always provided for this identifier
-    pub required: AclRightList,
+    pub(crate) required: AclRightList,
     /// The set of rights that can be granted to the identifier
-    pub optional: AclRightList,
+    pub(crate) optional: AclRightList,
 }
-
-impl ListRights {
-    /// Parse the given input into a [`LISTRIGHTS`] response.
-    pub fn parse(
-        lines: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-    ) -> Result<Self, Error> {
-        let mut lines: &[u8] = &lines;
-        let mut acl = None;
-
-        while !lines.is_empty() {
-            match imap_proto::parser::parse_response(lines) {
-                Ok((rest, Response::ListRights(a))) => {
-                    lines = rest;
-                    acl = Some(Self::from_proto(a));
-                },
-                Ok((rest, data)) => {
-                    lines = rest;
-                    if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                        return Err(resp.into());
-                    }
-                }
-                _ => {
-                    return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
-            }
-        }
-
-        acl.ok_or_else(|| Error::Parse(ParseError::Invalid(lines.to_vec())))
-    }
-
-    fn from_proto(list: imap_proto::types::ListRights<'_>) -> Self {
-        Self {
-            mailbox: list.mailbox.to_string(),
-            identifier: list.identifier.to_string(),
-            required: list.required.into(),
-            optional: list.optional.into(),
-        }
-}
-}
-
 
 /// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
 ///
 /// The MYRIGHTS response from the myrights IMAP command
-#[derive(Debug, Eq, PartialEq)]
+#[self_referencing]
 pub struct MyRights {
-    /// The mailbox for the rights
-    pub mailbox: String,
-    /// The rights for the mailbox
-    pub rights: AclRightList,
+    data: Vec<u8>,
+    #[borrows(data)]
+    #[covariant]
+    pub(crate) rights: InnerMyRights<'this>,
 }
 
 impl MyRights {
     /// Parse the given input into a [`MRIGHTS`] response.
     pub fn parse(
-        lines: Vec<u8>,
+        owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
-        let mut lines: &[u8] = &lines;
-        let mut acl = None;
+        MyRightsTryBuilder {
+            data: owned,
+            rights_builder: |input| {
+                let mut lines: &[u8] = input;
 
-        while !lines.is_empty() {
-            match imap_proto::parser::parse_response(lines) {
-                Ok((rest, Response::MyRights(a))) => {
-                    lines = rest;
-                    acl = Some(Self::from_proto(a));
-                },
-                Ok((rest, data)) => {
-                    lines = rest;
-                    if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                        return Err(resp.into());
+                // There should only be ONE single MYRIGHTS response
+                while !lines.is_empty() {
+                    match imap_proto::parser::parse_response(lines) {
+                        Ok((_rest, Response::MyRights(a))) => {
+                            // lines = rest;
+                            return Ok(InnerMyRights {
+                                mailbox: a.mailbox,
+                                rights: a.rights.into(),
+                            });
+                        }
+                        Ok((rest, data)) => {
+                            lines = rest;
+                            if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                                return Err(resp.into());
+                            }
+                        }
+                        _ => {
+                            return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                        }
                     }
                 }
-                _ => {
-                    return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
-            }
-        }
 
-        acl.ok_or_else(|| Error::Parse(ParseError::Invalid(lines.to_vec())))
+                Err(Error::Parse(ParseError::Invalid(lines.to_vec())))
+            },
+        }
+        .try_build()
     }
 
-    fn from_proto(rights: imap_proto::types::MyRights<'_>) -> Self {
-        Self {
-            mailbox: rights.mailbox.to_string(),
-            rights: rights.rights.into(),
-        }
+    pub fn mailbox(&self) -> &str {
+        &*self.borrow_rights().mailbox
     }
+
+    pub fn rights(&self) -> &AclRightList {
+        &self.borrow_rights().rights
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct InnerMyRights<'a> {
+    /// The mailbox for the rights
+    pub(crate) mailbox: Cow<'a, str>,
+    /// The rights for the mailbox
+    pub(crate) rights: AclRightList,
 }
 
 #[cfg(test)]
@@ -244,7 +307,13 @@ mod tests {
 
     #[test]
     fn test_acl_right_list_to_string() {
-        let rights: AclRightList = vec![AclRight::Lookup, AclRight::Read, AclRight::Seen, AclRight::Custom('0')].into();
+        let rights: AclRightList = vec![
+            AclRight::Lookup,
+            AclRight::Read,
+            AclRight::Seen,
+            AclRight::Custom('0'),
+        ]
+        .into();
         let expected = "0lrs";
 
         assert_eq!(rights.to_string(), expected);
@@ -266,7 +335,7 @@ mod tests {
                 AclRight::DeleteMailbox,
                 AclRight::Custom('0'),
             ]
-                .into()
+            .into()
         );
     }
 
