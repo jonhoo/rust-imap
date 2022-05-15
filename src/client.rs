@@ -2109,7 +2109,12 @@ mod tests {
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         session
-            .set_acl("INBOX", "myuser", &"x".into(), AclModifyMode::Replace)
+            .set_acl(
+                "INBOX",
+                "myuser",
+                &"x".try_into().unwrap(),
+                AclModifyMode::Replace,
+            )
             .unwrap();
         assert_eq!(
             session.stream.get_ref().written_buf,
@@ -2124,7 +2129,12 @@ mod tests {
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         session
-            .set_acl("INBOX", "myuser", &"x".into(), AclModifyMode::Add)
+            .set_acl(
+                "INBOX",
+                "myuser",
+                &"x".try_into().unwrap(),
+                AclModifyMode::Add,
+            )
             .unwrap();
         assert_eq!(
             session.stream.get_ref().written_buf,
@@ -2139,7 +2149,12 @@ mod tests {
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         session
-            .set_acl("INBOX", "myuser", &"x".into(), AclModifyMode::Remove)
+            .set_acl(
+                "INBOX",
+                "myuser",
+                &"x".try_into().unwrap(),
+                AclModifyMode::Remove,
+            )
             .unwrap();
         assert_eq!(
             session.stream.get_ref().written_buf,
@@ -2179,7 +2194,7 @@ mod tests {
             acl.acls(),
             vec![AclEntry {
                 identifier: "myuser".into(),
-                rights: "lr".into(),
+                rights: "lr".try_into().unwrap(),
             }]
         );
     }
@@ -2200,10 +2215,16 @@ mod tests {
         assert_eq!(acl.mailbox(), "INBOX");
         assert_eq!(
             acl.acls(),
-            vec![AclEntry {
-                identifier: "myuser".into(),
-                rights: "lr".into(),
-            }]
+            vec![
+                AclEntry {
+                    identifier: "myuser".into(),
+                    rights: "lr".try_into().unwrap(),
+                },
+                AclEntry {
+                    identifier: "other_user".into(),
+                    rights: "lr".try_into().unwrap(),
+                },
+            ]
         );
     }
 
@@ -2222,8 +2243,8 @@ mod tests {
         );
         assert_eq!(acl.mailbox(), "INBOX");
         assert_eq!(acl.identifier(), "myuser");
-        assert_eq!(*acl.required(), "lr".into());
-        assert_eq!(*acl.optional(), "kx".into());
+        assert_eq!(*acl.required(), "lr".try_into().unwrap());
+        assert_eq!(*acl.optional(), "kx".try_into().unwrap());
     }
 
     #[test]
@@ -2240,7 +2261,7 @@ mod tests {
             "Invalid myrights command"
         );
         assert_eq!(acl.mailbox(), "INBOX");
-        assert_eq!(*acl.rights(), "lrkx".into())
+        assert_eq!(*acl.rights(), "lrkx".try_into().unwrap())
     }
 
     #[test]

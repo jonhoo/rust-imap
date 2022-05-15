@@ -56,14 +56,30 @@ impl From<Vec<AclRight>> for AclRightList {
     }
 }
 
-impl From<&str> for AclRightList {
-    fn from(i: &str) -> Self {
-        i.chars()
-            .into_iter()
+impl TryFrom<&str> for AclRightList {
+    type Error = AclRightError;
+
+    fn try_from(input: &str) -> Result<Self, Self::Error> {
+        if !input
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        {
+            return Err(AclRightError::InvalidRight);
+        }
+
+        Ok(input
+            .chars()
             .map(|c| c.into())
             .collect::<HashSet<AclRight>>()
-            .into()
+            .into())
     }
+}
+
+/// Error from parsing AclRight strings
+#[derive(Debug, Eq, PartialEq)]
+pub enum AclRightError {
+    /// Returned when a non-lower-case alpha numeric is provided in the rights list string.
+    InvalidRight,
 }
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
@@ -323,11 +339,11 @@ mod tests {
     fn test_str_to_acl_right_list() {
         let right_string = "lrskx0";
 
-        let rights: AclRightList = right_string.into();
+        let rights: Result<AclRightList, _> = right_string.try_into();
 
         assert_eq!(
             rights,
-            vec![
+            Ok(vec![
                 AclRight::Lookup,
                 AclRight::Read,
                 AclRight::Seen,
@@ -335,13 +351,22 @@ mod tests {
                 AclRight::DeleteMailbox,
                 AclRight::Custom('0'),
             ]
-            .into()
+            .into())
         );
     }
 
     #[test]
+    fn test_str_to_acl_rights_invalid_right_character() {
+        let right_string = "l_";
+
+        let rights: Result<AclRightList, _> = right_string.try_into();
+
+        assert_eq!(rights, Err(AclRightError::InvalidRight));
+    }
+
+    #[test]
     fn test_acl_right_list_has_right() {
-        let rights: AclRightList = "lrskx".into();
+        let rights: AclRightList = "lrskx".try_into().unwrap();
 
         assert!(rights.has_right('l'));
         assert!(rights.has_right(AclRight::Lookup));
