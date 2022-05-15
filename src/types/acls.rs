@@ -139,10 +139,12 @@ impl Acl {
         .try_build()
     }
 
+    /// Return the mailbox the ACL entries belong to
     pub fn mailbox(&self) -> &str {
         &*self.borrow_acl().mailbox
     }
 
+    /// Returns a list of identifier/rights pairs for the mailbox
     pub fn acls(&self) -> &[AclEntry<'_>] {
         &*self.borrow_acl().acls
     }
@@ -150,6 +152,7 @@ impl Acl {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct InnerAcl<'a> {
+    /// The mailbox the ACL Entries belong to
     pub(crate) mailbox: Cow<'a, str>,
     /// The list of identifier/rights pairs for the mailbox
     pub(crate) acls: Vec<AclEntry<'a>>,
@@ -218,18 +221,22 @@ impl ListRights {
         .try_build()
     }
 
+    /// Returns the mailbox for the rights
     pub fn mailbox(&self) -> &str {
         &*self.borrow_rights().mailbox
     }
 
+    /// Returns the user identifier for the rights
     pub fn identifier(&self) -> &str {
         &*self.borrow_rights().identifier
     }
 
+    /// Returns the set of rights that are always provided for this identifier
     pub fn required(&self) -> &AclRightList {
         &self.borrow_rights().required
     }
 
+    /// Returns the set of rights that can be granted to the identifier
     pub fn optional(&self) -> &AclRightList {
         &self.borrow_rights().optional
     }
@@ -300,10 +307,12 @@ impl MyRights {
         .try_build()
     }
 
+    /// Returns the mailbox for the rights
     pub fn mailbox(&self) -> &str {
         &*self.borrow_rights().mailbox
     }
 
+    /// Returns the rights for the mailbox
     pub fn rights(&self) -> &AclRightList {
         &self.borrow_rights().rights
     }
