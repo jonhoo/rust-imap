@@ -1341,7 +1341,11 @@ impl<T: Read + Write> Connection<T> {
 
     fn run_command(&mut self, untagged_command: &str) -> Result<()> {
         let command = self.create_command(untagged_command);
-        self.write_line(command.into_bytes().as_slice())
+        let result = self.write_line(command.into_bytes().as_slice());
+        if result.is_err() {
+            self.tag -= 1; // rollback tag increase in create_command()
+        }
+        result
     }
 
     fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
