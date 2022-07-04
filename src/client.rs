@@ -8,7 +8,7 @@ use std::str;
 use std::sync::mpsc;
 
 use super::authenticator::Authenticator;
-use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
+use super::error::{Bad, Bye, Error, FatalError, No, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
@@ -167,6 +167,9 @@ pub struct Connection<T: Read + Write> {
 
     /// Tracks if we have read a greeting.
     pub greeting_read: bool,
+
+    /// Indicates if session failed to invalid state
+    pub fatal_error: Option<FatalError>,
 }
 
 /// A builder for the append command
@@ -335,6 +338,7 @@ impl<T: Read + Write> Client<T> {
                 tag: INITIAL_TAG,
                 debug: false,
                 greeting_read: false,
+                fatal_error: None,
             },
         }
     }
@@ -1340,6 +1344,8 @@ impl<T: Read + Write> Connection<T> {
     }
 
     fn run_command(&mut self, untagged_command: &str) -> Result<()> {
+        self.fatal_check()?;
+
         let command = self.create_command(untagged_command);
         let result = self.write_line(command.into_bytes().as_slice());
         if result.is_err() {
@@ -1397,7 +1403,19 @@ impl<T: Read + Write> Connection<T> {
                             ..
                         },
                     )) => {
-                        assert_eq!(tag.as_bytes(), match_tag.as_bytes());
+                        // check if tag matches
+                        if tag.as_bytes() != match_tag.as_bytes() {
+                            self.fatal_error =
+                                match tag.0.trim_start_matches(TAG_PREFIX).parse::<u32>() {
+                                    Ok(actual) => Some(FatalError::TagCorrupted {
+                                        expect: self.tag,
+                                        actual,
+                                    }),
+                                    Err(_) => Some(FatalError::Other),
+                                };
+                            break Err(Error::Fatal(self.fatal_error.unwrap()));
+                        }
+
                         Some(match status {
                             Status::Bad | Status::No | Status::Bye => Err((
                                 status,
@@ -1483,6 +1501,13 @@ impl<T: Read + Write> Connection<T> {
             eprintln!("C: {}", String::from_utf8(buf.to_vec()).unwrap());
         }
         Ok(())
+    }
+
+    fn fatal_check(&self) -> Result<()> {
+        match self.fatal_error {
+            None => Ok(()),
+            Some(err) => Err(Error::Fatal(err)),
+        }
     }
 }
 

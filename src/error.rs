@@ -104,6 +104,8 @@ pub enum Error {
     /// In response to a STATUS command, the server sent OK without actually sending any STATUS
     /// responses first.
     MissingStatusResponse,
+    /// Fatal error indicates the session is invalid, new session must be created
+    Fatal(FatalError),
 }
 
 impl From<IoError> for Error {
@@ -170,6 +172,7 @@ impl fmt::Display for Error {
             Error::Append => f.write_str("Could not append mail to mailbox"),
             Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
             Error::MissingStatusResponse => write!(f, "Missing STATUS Response"),
+            Error::Fatal(ref data) => write!(f, "Fatal: {:?}", data),
         }
     }
 }
@@ -194,6 +197,7 @@ impl StdError for Error {
             Error::Append => "Could not append mail to mailbox",
             Error::Unexpected(_) => "Unexpected Response",
             Error::MissingStatusResponse => "Missing STATUS Response",
+            Error::Fatal(ref e) => e.description(),
         }
     }
 
@@ -278,6 +282,49 @@ impl fmt::Display for ValidateError {
 impl StdError for ValidateError {
     fn description(&self) -> &str {
         "Invalid character in command argument"
+    }
+
+    fn cause(&self) -> Option<&dyn StdError> {
+        None
+    }
+}
+
+/// An fatal error occurred during session.
+#[derive(Copy, Clone, Debug)]
+#[non_exhaustive]
+pub enum FatalError {
+    /// Inconsistent state of tag
+    TagCorrupted {
+        /// Expected tag number
+        expect: u32,
+        /// Actual tag number
+        actual: u32,
+    },
+    /// Other fatal error
+    Other,
+}
+
+impl fmt::Display for FatalError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            FatalError::TagCorrupted { expect, actual } => {
+                write!(f, "Expected tag number is {}, actual {}", expect, actual)
+            }
+            FatalError::Other => {
+                write!(f, "Other fatal error")
+            }
+        }
+    }
+}
+
+impl StdError for FatalError {
+    fn description(&self) -> &str {
+        match *self {
+            FatalError::TagCorrupted { .. } => {
+                "Tag is corrupted, session is in an inconsistent state"
+            }
+            FatalError::Other => "Other fatal error",
+        }
     }
 
     fn cause(&self) -> Option<&dyn StdError> {
