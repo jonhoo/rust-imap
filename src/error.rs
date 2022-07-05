@@ -104,8 +104,8 @@ pub enum Error {
     /// In response to a STATUS command, the server sent OK without actually sending any STATUS
     /// responses first.
     MissingStatusResponse,
-    /// Fatal error indicates the session is invalid, new session must be created
-    Fatal(FatalError),
+    /// Tag mismatch between client and server. New session must be created
+    TagCorrupted(TagCorrupted),
 }
 
 impl From<IoError> for Error {
@@ -172,7 +172,7 @@ impl fmt::Display for Error {
             Error::Append => f.write_str("Could not append mail to mailbox"),
             Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
             Error::MissingStatusResponse => write!(f, "Missing STATUS Response"),
-            Error::Fatal(ref data) => write!(f, "Fatal: {:?}", data),
+            Error::TagCorrupted(ref data) => write!(f, "Mismatched Tag: {:?}", data),
         }
     }
 }
@@ -197,7 +197,7 @@ impl StdError for Error {
             Error::Append => "Could not append mail to mailbox",
             Error::Unexpected(_) => "Unexpected Response",
             Error::MissingStatusResponse => "Missing STATUS Response",
-            Error::Fatal(ref e) => e.description(),
+            Error::TagCorrupted(ref e) => e.description(),
         }
     }
 
@@ -211,6 +211,7 @@ impl StdError for Error {
             #[cfg(feature = "native-tls")]
             Error::TlsHandshake(ref e) => Some(e),
             Error::Parse(ParseError::DataNotUtf8(_, ref e)) => Some(e),
+            Error::TagCorrupted(ref e) => Some(e),
             _ => None,
         }
     }
@@ -289,42 +290,29 @@ impl StdError for ValidateError {
     }
 }
 
-/// An fatal error occurred during session.
-#[derive(Copy, Clone, Debug)]
+/// Tag was corrupted during session.
+#[derive(Debug)]
 #[non_exhaustive]
-pub enum FatalError {
-    /// Inconsistent state of tag
-    TagCorrupted {
-        /// Expected tag number
-        expect: u32,
-        /// Actual tag number
-        actual: u32,
-    },
-    /// Other fatal error
-    Other,
+pub struct TagCorrupted {
+    /// Expected tag number
+    pub(crate) expect: u32,
+    /// Actual tag number, 0 if parse failed
+    pub(crate) actual: u32,
 }
 
-impl fmt::Display for FatalError {
+impl fmt::Display for TagCorrupted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            FatalError::TagCorrupted { expect, actual } => {
-                write!(f, "Expected tag number is {}, actual {}", expect, actual)
-            }
-            FatalError::Other => {
-                write!(f, "Other fatal error")
-            }
-        }
+        write!(
+            f,
+            "Expected tag number is {}, actual {}",
+            self.expect, self.actual
+        )
     }
 }
 
-impl StdError for FatalError {
+impl StdError for TagCorrupted {
     fn description(&self) -> &str {
-        match *self {
-            FatalError::TagCorrupted { .. } => {
-                "Tag is corrupted, session is in an inconsistent state"
-            }
-            FatalError::Other => "Other fatal error",
-        }
+        "Tag is corrupted, session is in an inconsistent state"
     }
 
     fn cause(&self) -> Option<&dyn StdError> {
