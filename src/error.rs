@@ -104,7 +104,7 @@ pub enum Error {
     /// In response to a STATUS command, the server sent OK without actually sending any STATUS
     /// responses first.
     MissingStatusResponse,
-    /// Tag mismatch between client and server. New session must be created
+    /// Tag mismatch between client and server. New session must be created.
     TagCorrupted(TagCorrupted),
 }
 
