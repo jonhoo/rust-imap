@@ -215,7 +215,7 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
     ///
     /// Note: be sure to set flags and optional date before you
     /// finish the command.
-    pub fn finish(&mut self) -> Result<()> {
+    pub fn finish(&mut self) -> Result<Appended> {
         let flagstr = self
             .flags
             .clone()
@@ -246,7 +246,9 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
         self.session.stream.write_all(self.content)?;
         self.session.stream.write_all(b"\r\n")?;
         self.session.stream.flush()?;
-        self.session.read_response().map(|_| ())
+        self.session
+            .read_response()
+            .and_then(|(lines, _)| parse_append(&lines, &mut self.session.unsolicited_responses_tx))
     }
 }
 
