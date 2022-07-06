@@ -124,6 +124,40 @@ pub fn parse_expunge(
     }
 }
 
+pub fn parse_append(
+    mut lines: &[u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Appended> {
+    let mut appended = Appended::default();
+
+    loop {
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Done { status, code, .. })) => {
+                lines = rest;
+                assert_eq!(status, imap_proto::Status::Ok);
+
+                if let Some(ResponseCode::AppendUid(validity, uids)) = code {
+                    appended.uid_validity = Some(validity);
+                    appended.uids = Some(uids);
+                }
+            }
+            Ok((rest, data)) => {
+                lines = rest;
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                    break Err(resp.into());
+                }
+            }
+            _ => {
+                return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+
+        if lines.is_empty() {
+            break Ok(appended);
+        }
+    }
+}
+
 pub fn parse_noop(
     lines: Vec<u8>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
