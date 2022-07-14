@@ -1,5 +1,4 @@
 use imap_proto::UidSetMember;
-use std::fmt;
 
 /// Meta-information about a message, as returned by
 /// [`APPEND`](https://tools.ietf.org/html/rfc3501#section-6.3.11).
@@ -26,15 +25,5 @@ impl Default for Appended {
             uid_validity: None,
             uids: None,
         }
-    }
-}
-
-impl fmt::Display for Appended {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "uid_validity: {:?}, uids: {:?}",
-            self.uid_validity, self.uids,
-        )
     }
 }
