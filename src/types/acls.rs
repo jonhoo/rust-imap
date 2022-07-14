@@ -6,7 +6,7 @@ use imap_proto::Response;
 use ouroboros::self_referencing;
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::fmt::{Display, Formatter};
+use std::fmt::{write, Display, Formatter};
 use std::sync::mpsc;
 
 /// enum used for set_acl to specify how the ACL is to be modified.
@@ -77,10 +77,23 @@ impl TryFrom<&str> for AclRightList {
 
 /// Error from parsing AclRight strings
 #[derive(Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum AclRightError {
     /// Returned when a non-lower-case alpha numeric is provided in the rights list string.
     InvalidRight,
 }
+
+impl Display for AclRightError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            AclRightError::InvalidRight => {
+                write!(f, "Rights may only be lowercase alpha numeric characters")
+            }
+        }
+    }
+}
+
+impl std::error::Error for AclRightError {}
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
