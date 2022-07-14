@@ -90,7 +90,7 @@ pub struct Acl {
     data: Vec<u8>,
     #[borrows(data)]
     #[covariant]
-    pub(crate) inner: (Cow<'this, str>, Vec<AclEntry<'this>>),
+    pub(crate) acl: InnerAcl<'this>,
 }
 
 impl Acl {
@@ -101,7 +101,7 @@ impl Acl {
     ) -> Result<Self, Error> {
         AclTryBuilder {
             data: owned,
-            inner_builder: |input| {
+            acl_builder: |input| {
                 let mut lines: &[u8] = input;
 
                 // There should only be ONE single ACL response
@@ -109,16 +109,17 @@ impl Acl {
                     match imap_proto::parser::parse_response(lines) {
                         Ok((_rest, Response::Acl(a))) => {
                             // lines = rest;
-                            return Ok((
-                                a.mailbox,
-                                a.acls
+                            return Ok(InnerAcl {
+                                mailbox: a.mailbox,
+                                acls: a
+                                    .acls
                                     .into_iter()
                                     .map(|e| AclEntry {
                                         identifier: e.identifier,
                                         rights: e.rights.into(),
                                     })
                                     .collect(),
-                            ));
+                            });
                         }
                         Ok((rest, data)) => {
                             lines = rest;
@@ -140,13 +141,21 @@ impl Acl {
 
     /// Return the mailbox the ACL entries belong to
     pub fn mailbox(&self) -> &str {
-        &*self.borrow_inner().0
+        &*self.borrow_acl().mailbox
     }
 
     /// Returns a list of identifier/rights pairs for the mailbox
     pub fn acls(&self) -> &[AclEntry<'_>] {
-        &*self.borrow_inner().1
+        &*self.borrow_acl().acls
     }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct InnerAcl<'a> {
+    /// The mailbox the ACL Entries belong to
+    pub(crate) mailbox: Cow<'a, str>,
+    /// The list of identifier/rights pairs for the mailbox
+    pub(crate) acls: Vec<AclEntry<'a>>,
 }
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
@@ -168,12 +177,7 @@ pub struct ListRights {
     data: Vec<u8>,
     #[borrows(data)]
     #[covariant]
-    pub(crate) inner: (
-        Cow<'this, str>, // mailbox
-        Cow<'this, str>, // identifier
-        AclRightList,    // required
-        AclRightList,    // optional
-    ),
+    pub(crate) rights: InnerListRights<'this>,
 }
 
 impl ListRights {
@@ -184,7 +188,7 @@ impl ListRights {
     ) -> Result<Self, Error> {
         ListRightsTryBuilder {
             data: owned,
-            inner_builder: |input| {
+            rights_builder: |input| {
                 let mut lines: &[u8] = input;
 
                 // There should only be ONE single LISTRIGHTS response
@@ -192,12 +196,12 @@ impl ListRights {
                     match imap_proto::parser::parse_response(lines) {
                         Ok((_rest, Response::ListRights(a))) => {
                             // lines = rest;
-                            return Ok((
-                                a.mailbox,
-                                a.identifier,
-                                a.required.into(),
-                                a.optional.into(),
-                            ));
+                            return Ok(InnerListRights {
+                                mailbox: a.mailbox,
+                                identifier: a.identifier,
+                                required: a.required.into(),
+                                optional: a.optional.into(),
+                            });
                         }
                         Ok((rest, data)) => {
                             lines = rest;
@@ -219,23 +223,38 @@ impl ListRights {
 
     /// Returns the mailbox for the rights
     pub fn mailbox(&self) -> &str {
-        &*self.borrow_inner().0
+        &*self.borrow_rights().mailbox
     }
 
     /// Returns the user identifier for the rights
     pub fn identifier(&self) -> &str {
-        &*self.borrow_inner().1
+        &*self.borrow_rights().identifier
     }
 
     /// Returns the set of rights that are always provided for this identifier
     pub fn required(&self) -> &AclRightList {
-        &self.borrow_inner().2
+        &self.borrow_rights().required
     }
 
     /// Returns the set of rights that can be granted to the identifier
     pub fn optional(&self) -> &AclRightList {
-        &self.borrow_inner().3
+        &self.borrow_rights().optional
     }
+}
+
+/// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
+///
+/// The LISTRIGHTS response from the listrights IMAP command
+#[derive(Debug, Eq, PartialEq)]
+pub struct InnerListRights<'a> {
+    /// The mailbox for the rights
+    pub(crate) mailbox: Cow<'a, str>,
+    /// The user identifier for the rights
+    pub(crate) identifier: Cow<'a, str>,
+    /// The set of rights that are always provided for this identifier
+    pub(crate) required: AclRightList,
+    /// The set of rights that can be granted to the identifier
+    pub(crate) optional: AclRightList,
 }
 
 /// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
@@ -246,7 +265,7 @@ pub struct MyRights {
     data: Vec<u8>,
     #[borrows(data)]
     #[covariant]
-    pub(crate) inner: (Cow<'this, str>, AclRightList),
+    pub(crate) rights: InnerMyRights<'this>,
 }
 
 impl MyRights {
@@ -257,7 +276,7 @@ impl MyRights {
     ) -> Result<Self, Error> {
         MyRightsTryBuilder {
             data: owned,
-            inner_builder: |input| {
+            rights_builder: |input| {
                 let mut lines: &[u8] = input;
 
                 // There should only be ONE single MYRIGHTS response
@@ -265,7 +284,10 @@ impl MyRights {
                     match imap_proto::parser::parse_response(lines) {
                         Ok((_rest, Response::MyRights(a))) => {
                             // lines = rest;
-                            return Ok((a.mailbox, a.rights.into()));
+                            return Ok(InnerMyRights {
+                                mailbox: a.mailbox,
+                                rights: a.rights.into(),
+                            });
                         }
                         Ok((rest, data)) => {
                             lines = rest;
@@ -287,13 +309,21 @@ impl MyRights {
 
     /// Returns the mailbox for the rights
     pub fn mailbox(&self) -> &str {
-        &*self.borrow_inner().0
+        &*self.borrow_rights().mailbox
     }
 
     /// Returns the rights for the mailbox
     pub fn rights(&self) -> &AclRightList {
-        &self.borrow_inner().1
+        &self.borrow_rights().rights
     }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct InnerMyRights<'a> {
+    /// The mailbox for the rights
+    pub(crate) mailbox: Cow<'a, str>,
+    /// The rights for the mailbox
+    pub(crate) rights: AclRightList,
 }
 
 #[cfg(test)]
