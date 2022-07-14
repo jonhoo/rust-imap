@@ -672,4 +672,30 @@ mod tests {
         assert_eq!(first.body(), None);
         assert_eq!(first.header(), None);
     }
+
+    #[test]
+    fn parse_expunged_mod_seq_test() {
+        // VANISHED can appear if the user has enabled QRESYNC (RFC 7162), in response to
+        // SELECT/EXAMINE (QRESYNC); UID FETCH (VANISHED); or EXPUNGE commands. In the latter
+        // case, the VANISHED responses will be parsed with the response and the list of
+        // expunged message is included in the returned struct.
+        let (mut send, recv) = mpsc::channel();
+
+        // Test VANISHED mixed with FETCH
+        let lines = b"* VANISHED 3:5,12\r\n\
+                      B202 OK [HIGHESTMODSEQ 20010715194045319] expunged\r\n";
+
+        let deleted = parse_expunge(lines.to_vec(), &mut send).unwrap();
+
+        // No unsolicited responses, they are aggregated in the returned type
+        assert!(recv.try_recv().is_err());
+
+        assert_eq!(deleted.mod_seq, Some(20010715194045319));
+        let mut del = deleted.uids();
+        assert_eq!(del.next(), Some(3));
+        assert_eq!(del.next(), Some(4));
+        assert_eq!(del.next(), Some(5));
+        assert_eq!(del.next(), Some(12));
+        assert_eq!(del.next(), None);
+    }
 }
