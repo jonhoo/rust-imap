@@ -41,6 +41,7 @@ use std::ops::RangeInclusive;
 /// # }
 /// ```
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Deleted {
     /// The list of messages that were expunged
     pub messages: DeletedMessages,
