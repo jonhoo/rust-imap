@@ -78,6 +78,7 @@ pub fn parse_expunge(
     let mut lines: &[u8] = &lines;
     let mut expunged = Vec::new();
     let mut vanished = Vec::new();
+    let mut mod_seq: Option<u64> = None;
 
     loop {
         if lines.is_empty() {
@@ -85,6 +86,13 @@ pub fn parse_expunge(
         }
 
         match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Done { status, code, .. })) => {
+                assert_eq!(status, imap_proto::Status::Ok);
+                lines = rest;
+                if let Some(ResponseCode::HighestModSeq(ms)) = code {
+                    mod_seq = Some(ms);
+                };
+            }
             Ok((rest, Response::Expunge(seq))) => {
                 lines = rest;
                 expunged.push(seq);
@@ -110,9 +118,9 @@ pub fn parse_expunge(
     // always one or the other.
     // https://tools.ietf.org/html/rfc7162#section-3.2.10
     if !vanished.is_empty() {
-        Ok(Deleted::from_vanished(vanished))
+        Ok(Deleted::from_vanished(vanished, mod_seq))
     } else {
-        Ok(Deleted::from_expunged(expunged))
+        Ok(Deleted::from_expunged(expunged, mod_seq))
     }
 }
 

@@ -784,8 +784,9 @@ impl<T: Read + Write> Session<T> {
     /// removes all messages that have [`Flag::Deleted`] set from the currently selected mailbox.
     /// The message sequence number of each message that is removed is returned.
     pub fn expunge(&mut self) -> Result<Deleted> {
-        self.run_command_and_read_response("EXPUNGE")
-            .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
+        self.run_command("EXPUNGE")?;
+        self.read_response()
+            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`UID EXPUNGE` command](https://tools.ietf.org/html/rfc4315#section-2.1) permanently
@@ -811,8 +812,9 @@ impl<T: Read + Write> Session<T> {
     /// Alternatively, the client may fall back to using just [`Session::expunge`], risking the
     /// unintended removal of some messages.
     pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Deleted> {
-        self.run_command_and_read_response(&format!("UID EXPUNGE {}", uid_set.as_ref()))
-            .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
+        self.run_command(&format!("UID EXPUNGE {}", uid_set.as_ref()))?;
+        self.read_response()
+            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`CHECK` command](https://tools.ietf.org/html/rfc3501#section-6.4.1) requests a
