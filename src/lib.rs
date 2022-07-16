@@ -78,6 +78,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod parse;
+mod utils;
 
 pub mod types;
 

@@ -124,6 +124,9 @@ pub use self::deleted::Deleted;
 mod acls;
 pub use self::acls::*;
 
+mod quota;
+pub use self::quota::*;
+
 mod unsolicited_response;
 pub use self::unsolicited_response::{AttributeValue, UnsolicitedResponse};
 
