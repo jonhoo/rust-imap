@@ -1288,7 +1288,7 @@ impl<T: Read + Write> Session<T> {
         &mut self,
         mailbox_name: impl AsRef<str>,
         identifier: impl AsRef<str>,
-        rights: &AclRightList,
+        rights: &AclRights,
         modification: AclModifyMode,
     ) -> Result<()> {
         let mod_str = match modification {

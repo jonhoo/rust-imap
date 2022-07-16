@@ -6,7 +6,7 @@ use imap_proto::Response;
 use ouroboros::self_referencing;
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::fmt::{write, Display, Formatter};
+use std::fmt::{Display, Formatter};
 use std::sync::mpsc;
 
 /// enum used for [Session::set_acl] to specify how the ACL is to be modified.
@@ -22,18 +22,18 @@ pub enum AclModifyMode {
 /// Helpful wrapper around the ACL rights vector
 /// Used as input for [Session::set_acl] as output in [ListRights], [MyRights], and [AclEntry]
 #[derive(Debug, Eq, PartialEq)]
-pub struct AclRightList {
+pub struct AclRights {
     pub(crate) data: HashSet<AclRight>,
 }
 
-impl AclRightList {
-    /// Returns if the AclRightList has the provided ACL (either as a char or an AclRight enum)
+impl AclRights {
+    /// Returns true if the AclRights has the provided ACL (either as a char or an AclRight enum)
     pub fn has_right<T: Into<AclRight>>(&self, right: T) -> bool {
         self.data.contains(&right.into())
     }
 }
 
-impl Display for AclRightList {
+impl Display for AclRights {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut v: Vec<char> = self.data.iter().map(|c| char::from(*c)).collect();
 
@@ -43,21 +43,21 @@ impl Display for AclRightList {
     }
 }
 
-impl From<HashSet<AclRight>> for AclRightList {
+impl From<HashSet<AclRight>> for AclRights {
     fn from(hash: HashSet<AclRight>) -> Self {
         Self { data: hash }
     }
 }
 
-impl From<Vec<AclRight>> for AclRightList {
+impl From<Vec<AclRight>> for AclRights {
     fn from(vec: Vec<AclRight>) -> Self {
-        AclRightList {
+        AclRights {
             data: vec.into_iter().collect(),
         }
     }
 }
 
-impl TryFrom<&str> for AclRightList {
+impl TryFrom<&str> for AclRights {
     type Error = AclRightError;
 
     fn try_from(input: &str) -> Result<Self, Self::Error> {
@@ -180,7 +180,7 @@ pub struct AclEntry<'a> {
     /// The user identifier the rights are for
     pub identifier: Cow<'a, str>,
     /// the rights for the provided identifier
-    pub rights: AclRightList,
+    pub rights: AclRights,
 }
 
 /// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
@@ -246,12 +246,12 @@ impl ListRights {
     }
 
     /// Returns the set of rights that are always provided for this identifier
-    pub fn required(&self) -> &AclRightList {
+    pub fn required(&self) -> &AclRights {
         &self.borrow_rights().required
     }
 
     /// Returns the set of rights that can be granted to the identifier
-    pub fn optional(&self) -> &AclRightList {
+    pub fn optional(&self) -> &AclRights {
         &self.borrow_rights().optional
     }
 }
@@ -266,9 +266,9 @@ pub struct InnerListRights<'a> {
     /// The user identifier for the rights
     pub(crate) identifier: Cow<'a, str>,
     /// The set of rights that are always provided for this identifier
-    pub(crate) required: AclRightList,
+    pub(crate) required: AclRights,
     /// The set of rights that can be granted to the identifier
-    pub(crate) optional: AclRightList,
+    pub(crate) optional: AclRights,
 }
 
 /// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
@@ -327,7 +327,7 @@ impl MyRights {
     }
 
     /// Returns the rights for the mailbox
-    pub fn rights(&self) -> &AclRightList {
+    pub fn rights(&self) -> &AclRights {
         &self.borrow_rights().rights
     }
 }
@@ -337,7 +337,7 @@ pub struct InnerMyRights<'a> {
     /// The mailbox for the rights
     pub(crate) mailbox: Cow<'a, str>,
     /// The rights for the mailbox
-    pub(crate) rights: AclRightList,
+    pub(crate) rights: AclRights,
 }
 
 #[cfg(test)]
@@ -345,8 +345,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_acl_right_list_to_string() {
-        let rights: AclRightList = vec![
+    fn test_acl_rights_to_string() {
+        let rights: AclRights = vec![
             AclRight::Lookup,
             AclRight::Read,
             AclRight::Seen,
@@ -359,10 +359,10 @@ mod tests {
     }
 
     #[test]
-    fn test_str_to_acl_right_list() {
+    fn test_str_to_acl_rights() {
         let right_string = "lrskx0";
 
-        let rights: Result<AclRightList, _> = right_string.try_into();
+        let rights: Result<AclRights, _> = right_string.try_into();
 
         assert_eq!(
             rights,
@@ -382,14 +382,14 @@ mod tests {
     fn test_str_to_acl_rights_invalid_right_character() {
         let right_string = "l_";
 
-        let rights: Result<AclRightList, _> = right_string.try_into();
+        let rights: Result<AclRights, _> = right_string.try_into();
 
         assert_eq!(rights, Err(AclRightError::InvalidRight));
     }
 
     #[test]
-    fn test_acl_right_list_has_right() {
-        let rights: AclRightList = "lrskx".try_into().unwrap();
+    fn test_acl_rights_has_right() {
+        let rights: AclRights = "lrskx".try_into().unwrap();
 
         assert!(rights.has_right('l'));
         assert!(rights.has_right(AclRight::Lookup));
