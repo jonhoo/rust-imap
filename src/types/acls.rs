@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::fmt::{write, Display, Formatter};
 use std::sync::mpsc;
 
-/// enum used for set_acl to specify how the ACL is to be modified.
+/// enum used for [Session::set_acl] to specify how the ACL is to be modified.
 pub enum AclModifyMode {
     /// Replace all ACLs on the identifier for the mailbox
     Replace,
@@ -20,6 +20,7 @@ pub enum AclModifyMode {
 }
 
 /// Helpful wrapper around the ACL rights vector
+/// Used as input for [Session::set_acl] as output in [ListRights], [MyRights], and [AclEntry]
 #[derive(Debug, Eq, PartialEq)]
 pub struct AclRightList {
     pub(crate) data: HashSet<AclRight>,
@@ -97,7 +98,7 @@ impl std::error::Error for AclRightError {}
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
-/// The ACL response from the getacl IMAP command
+/// The ACL response from the [Session::get_acl] IMAP command
 #[self_referencing]
 pub struct Acl {
     data: Vec<u8>,
@@ -173,7 +174,7 @@ pub struct InnerAcl<'a> {
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
-/// The list of identifiers and rights for the ACL response
+/// The list of identifiers and rights for the [Acl] response
 #[derive(Debug, Eq, PartialEq)]
 pub struct AclEntry<'a> {
     /// The user identifier the rights are for
@@ -184,7 +185,7 @@ pub struct AclEntry<'a> {
 
 /// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
 ///
-/// The LISTRIGHTS response from the listrights IMAP command
+/// The LISTRIGHTS response from the [Session::list_rights] IMAP command
 #[self_referencing]
 pub struct ListRights {
     data: Vec<u8>,
@@ -272,7 +273,7 @@ pub struct InnerListRights<'a> {
 
 /// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
 ///
-/// The MYRIGHTS response from the myrights IMAP command
+/// The MYRIGHTS response from the [Session::my_rights] IMAP command
 #[self_referencing]
 pub struct MyRights {
     data: Vec<u8>,
