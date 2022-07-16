@@ -78,6 +78,7 @@ pub fn parse_expunge(
     let mut lines: &[u8] = &lines;
     let mut expunged = Vec::new();
     let mut vanished = Vec::new();
+    let mut mod_seq: Option<u64> = None;
 
     loop {
         if lines.is_empty() {
@@ -85,6 +86,13 @@ pub fn parse_expunge(
         }
 
         match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Done { status, code, .. })) => {
+                assert_eq!(status, imap_proto::Status::Ok);
+                lines = rest;
+                if let Some(ResponseCode::HighestModSeq(ms)) = code {
+                    mod_seq = Some(ms);
+                };
+            }
             Ok((rest, Response::Expunge(seq))) => {
                 lines = rest;
                 expunged.push(seq);
@@ -110,9 +118,9 @@ pub fn parse_expunge(
     // always one or the other.
     // https://tools.ietf.org/html/rfc7162#section-3.2.10
     if !vanished.is_empty() {
-        Ok(Deleted::from_vanished(vanished))
+        Ok(Deleted::from_vanished(vanished, mod_seq))
     } else {
-        Ok(Deleted::from_expunged(expunged))
+        Ok(Deleted::from_expunged(expunged, mod_seq))
     }
 }
 
@@ -663,5 +671,31 @@ mod tests {
         assert_eq!(first.uid, Some(117));
         assert_eq!(first.body(), None);
         assert_eq!(first.header(), None);
+    }
+
+    #[test]
+    fn parse_expunged_mod_seq_test() {
+        // VANISHED can appear if the user has enabled QRESYNC (RFC 7162), in response to
+        // SELECT/EXAMINE (QRESYNC); UID FETCH (VANISHED); or EXPUNGE commands. In the latter
+        // case, the VANISHED responses will be parsed with the response and the list of
+        // expunged message is included in the returned struct.
+        let (mut send, recv) = mpsc::channel();
+
+        // Test VANISHED mixed with FETCH
+        let lines = b"* VANISHED 3:5,12\r\n\
+                      B202 OK [HIGHESTMODSEQ 20010715194045319] expunged\r\n";
+
+        let deleted = parse_expunge(lines.to_vec(), &mut send).unwrap();
+
+        // No unsolicited responses, they are aggregated in the returned type
+        assert!(recv.try_recv().is_err());
+
+        assert_eq!(deleted.mod_seq, Some(20010715194045319));
+        let mut del = deleted.uids();
+        assert_eq!(del.next(), Some(3));
+        assert_eq!(del.next(), Some(4));
+        assert_eq!(del.next(), Some(5));
+        assert_eq!(del.next(), Some(12));
+        assert_eq!(del.next(), None);
     }
 }
