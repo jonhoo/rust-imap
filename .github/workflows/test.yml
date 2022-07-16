@@ -6,7 +6,7 @@ name: cargo test
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: ${{ matrix.toolchain }}
+    name: Run tests with greenmail ${{ matrix.toolchain }}
     strategy:
       matrix:
         toolchain: [stable, beta, nightly]
@@ -32,3 +32,27 @@ jobs:
           - 3995:3995
         env:
           GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
+  test_cyrus:
+    runs-on: ubuntu-latest
+    name: Run tests with cyrus ${{ matrix.toolchain }}
+    strategy:
+      matrix:
+        toolchain: [stable, beta, nightly]
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+      - uses: actions/checkout@v2
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
