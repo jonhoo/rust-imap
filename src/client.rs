@@ -1284,10 +1284,10 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Modifies the ACLs on the given mailbox for the specified identifier.
     /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
-    pub fn set_acl<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn set_acl(
         &mut self,
-        mailbox_name: S1,
-        identifier: S2,
+        mailbox_name: impl AsRef<str>,
+        identifier: impl AsRef<str>,
         rights: &AclRightList,
         modification: AclModifyMode,
     ) -> Result<()> {
@@ -1310,10 +1310,10 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Removes the ACL for the given identifier from the given mailbox.
     /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
-    pub fn delete_acl<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn delete_acl(
         &mut self,
-        mailbox_name: S1,
-        identifier: S2,
+        mailbox_name: impl AsRef<str>,
+        identifier: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "DELETEACL {} {}",
@@ -1326,7 +1326,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Returns the ACLs on the given mailbox. A set ot `ACL` responses are returned if the
     /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
-    pub fn get_acl<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Acl> {
+    pub fn get_acl(&mut self, mailbox_name: impl AsRef<str>) -> Result<Acl> {
         self.run_command_and_read_response(&format!(
             "GETACL {}",
             validate_str("GETACL", "mailbox", mailbox_name.as_ref())?
@@ -1339,10 +1339,10 @@ impl<T: Read + Write> Session<T> {
     /// Returns the always granted and optionally granted rights on the given mailbox for the
     /// specified identifier (login). A set ot `LISTRIGHTS` responses are returned if the
     /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
-    pub fn list_rights<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn list_rights(
         &mut self,
-        mailbox_name: S1,
-        identifier: S2,
+        mailbox_name: impl AsRef<str>,
+        identifier: impl AsRef<str>,
     ) -> Result<ListRights> {
         self.run_command_and_read_response(&format!(
             "LISTRIGHTS {} {}",
@@ -1355,7 +1355,7 @@ impl<T: Read + Write> Session<T> {
     /// The [`MYRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.5)
     ///
     /// Returns the list of rights the logged in user has on the given mailbox.
-    pub fn my_rights<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<MyRights> {
+    pub fn my_rights(&mut self, mailbox_name: impl AsRef<str>) -> Result<MyRights> {
         self.run_command_and_read_response(&format!(
             "MYRIGHTS {}",
             validate_str("MYRIGHTS", "mailbox", mailbox_name.as_ref())?,
