@@ -108,7 +108,7 @@ pub struct Acl {
 }
 
 impl Acl {
-    /// Parse the given input into a [`ACL`] response.
+    /// Parse the given input into a [Acl] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -164,8 +164,9 @@ impl Acl {
     }
 }
 
+/// Inner struct to manage storing the references for ouroboros
 #[derive(Debug, Eq, PartialEq)]
-pub struct InnerAcl<'a> {
+pub(crate) struct InnerAcl<'a> {
     /// The mailbox the ACL Entries belong to
     pub(crate) mailbox: Cow<'a, str>,
     /// The list of identifier/rights pairs for the mailbox
@@ -195,7 +196,7 @@ pub struct ListRights {
 }
 
 impl ListRights {
-    /// Parse the given input into a [`LISTRIGHTS`] response.
+    /// Parse the given input into a [ListRights] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -256,11 +257,9 @@ impl ListRights {
     }
 }
 
-/// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
-///
-/// The LISTRIGHTS response from the listrights IMAP command
+/// Inner struct to manage storing the references for ouroboros
 #[derive(Debug, Eq, PartialEq)]
-pub struct InnerListRights<'a> {
+pub(crate) struct InnerListRights<'a> {
     /// The mailbox for the rights
     pub(crate) mailbox: Cow<'a, str>,
     /// The user identifier for the rights
@@ -283,7 +282,7 @@ pub struct MyRights {
 }
 
 impl MyRights {
-    /// Parse the given input into a [`MRIGHTS`] response.
+    /// Parse the given input into a [MyRights] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -332,8 +331,9 @@ impl MyRights {
     }
 }
 
+/// Inner struct to manage storing the references for ouroboros
 #[derive(Debug, Eq, PartialEq)]
-pub struct InnerMyRights<'a> {
+pub(crate) struct InnerMyRights<'a> {
     /// The mailbox for the rights
     pub(crate) mailbox: Cow<'a, str>,
     /// The rights for the mailbox
