@@ -6,7 +6,7 @@ name: cargo test
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: Run tests with greenmail ${{ matrix.toolchain }}
+    name: greenmail/${{ matrix.toolchain }}
     strategy:
       matrix:
         toolchain: [stable, beta, nightly]
@@ -34,7 +34,7 @@ jobs:
           GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
   test_cyrus:
     runs-on: ubuntu-latest
-    name: Run tests with cyrus ${{ matrix.toolchain }}
+    name: cyrus/${{ matrix.toolchain }}
     strategy:
       matrix:
         toolchain: [stable, beta, nightly]
