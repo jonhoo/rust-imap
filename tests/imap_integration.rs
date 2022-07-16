@@ -25,7 +25,7 @@ fn test_host() -> String {
 
 fn test_smtp_host() -> String {
     std::env::var("TEST_SMTP_HOST")
-        .unwrap_or_else(|| std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string()))
+        .unwrap_or_else(|_| std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string()))
 }
 
 fn test_imap_port() -> u16 {
