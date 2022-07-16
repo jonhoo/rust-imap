@@ -1282,6 +1282,48 @@ impl<T: Read + Write> Session<T> {
         .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
     }
 
+    /// The [`SETQUOTA` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.1)
+    ///
+    /// Updates the resource limits for a mailbox. Any previous limits for the named quota
+    /// are discarded.
+    /// Returns the updated quota
+    pub fn set_quota<S: AsRef<str>>(
+        &mut self,
+        quota_root: S,
+        limits: Vec<QuotaLimit>,
+    ) -> Result<Quota> {
+        self.run_command_and_read_response(&format!(
+            "SETQUOTA {} ({})",
+            validate_str("SETQUOTA", "quota_root", quota_root.as_ref())?,
+            limits
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+        ))
+        .and_then(|lines| Quota::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
+    /// The [`GETQUOTA` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.2)
+    ///
+    pub fn get_quota<S: AsRef<str>>(&mut self, quota_root: S) -> Result<Quota> {
+        self.run_command_and_read_response(&format!(
+            "GETQUOTA {}",
+            validate_str("GETQUOTA", "quota_root", quota_root.as_ref())?
+        ))
+        .and_then(|lines| Quota::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
+    /// The [`GETQUOTAROOT` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.3)
+    ///
+    pub fn get_quota_root<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<QuotaRoot> {
+        self.run_command_and_read_response(&format!(
+            "GETQUOTAROOT {}",
+            validate_str("GETQUOTAROOT", "mailbox", mailbox_name.as_ref())?
+        ))
+        .and_then(|lines| QuotaRoot::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
     // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok<S: AsRef<str>>(&mut self, command: S) -> Result<()> {
@@ -2020,6 +2062,125 @@ mod tests {
             "Invalid sort command"
         );
         assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn set_quota() {
+        let response = b"* QUOTA my_root (STORAGE 10 500)\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session
+            .set_quota(
+                "my_root",
+                vec![QuotaLimit {
+                    name: QuotaLimitName::Storage,
+                    amount: 500,
+                }],
+            )
+            .unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETQUOTA \"my_root\" (STORAGE 500)\r\n".to_vec(),
+            "Invalid setquota command"
+        );
+        assert_eq!(quota.root_name(), "my_root");
+        assert_eq!(
+            quota.resources(),
+            vec![QuotaResource {
+                name: QuotaResourceName::Storage,
+                usage: 10,
+                limit: 500,
+            }]
+        );
+    }
+
+    #[test]
+    fn get_quota() {
+        let response = b"* QUOTA my_root ()\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.get_quota("my_root").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTA \"my_root\"\r\n".to_vec(),
+            "Invalid getquota command"
+        );
+        assert_eq!(quota.root_name(), "my_root");
+        assert_eq!(quota.resources(), vec![]);
+    }
+
+    #[test]
+    fn get_quota_with_limits() {
+        let response = b"* QUOTA my_root (STORAGE 10 500)\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.get_quota("my_root").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTA \"my_root\"\r\n".to_vec(),
+            "Invalid getquota command"
+        );
+        assert_eq!(quota.root_name(), "my_root");
+        assert_eq!(
+            quota.resources(),
+            vec![QuotaResource {
+                name: QuotaResourceName::Storage,
+                usage: 10,
+                limit: 500,
+            }]
+        );
+    }
+
+    #[test]
+    fn get_quota_root_with_no_root() {
+        let response = b"* QUOTAROOT INBOX\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota_root = session.get_quota_root("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTAROOT \"INBOX\"\r\n".to_vec(),
+            "Invalid getquotaroot command"
+        );
+        assert_eq!(quota_root.mailbox_name(), "INBOX");
+        assert_eq!(quota_root.quota_root_names(), Vec::<&str>::new());
+        assert_eq!(quota_root.quotas(), vec![]);
+    }
+
+    #[test]
+    fn get_quota_root_with_root() {
+        let response = b"* QUOTAROOT INBOX my_root\r\n\
+                * QUOTA my_root (STORAGE 10 500)\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota_root = session.get_quota_root("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTAROOT \"INBOX\"\r\n".to_vec(),
+            "Invalid getquotaroot command"
+        );
+        assert_eq!(quota_root.mailbox_name(), "INBOX");
+        assert_eq!(quota_root.quota_root_names(), vec!["my_root"]);
+        assert_eq!(quota_root.quotas().len(), 1);
+        assert_eq!(quota_root.quotas().first().unwrap().root_name, "my_root");
+        assert_eq!(
+            quota_root.quotas().first().unwrap().resources,
+            vec![QuotaResource {
+                name: QuotaResourceName::Storage,
+                usage: 10,
+                limit: 500,
+            }]
+        );
     }
 
     #[test]
