@@ -121,5 +121,8 @@ pub use self::capabilities::Capabilities;
 mod deleted;
 pub use self::deleted::Deleted;
 
+mod quota;
+pub use self::quota::*;
+
 mod unsolicited_response;
 pub use self::unsolicited_response::{AttributeValue, UnsolicitedResponse};
