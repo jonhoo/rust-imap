@@ -47,7 +47,7 @@ jobs:
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
-          command: test
+          command: test -- --ignored
     services:
       cyrus_imapd:
         image: outoforder/cyrus-imapd-tester:latest
