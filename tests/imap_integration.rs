@@ -101,6 +101,7 @@ fn smtp(user: &str) -> lettre::SmtpTransport {
 }
 
 #[test]
+#[ignore]
 fn connect_insecure_then_secure() {
     let host = test_host();
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
@@ -342,7 +343,7 @@ fn list() {
     let mut s = session("readonly-test@localhost");
     s.select("INBOX").unwrap();
     let subdirs = s.list(None, Some("%")).unwrap();
-    assert_eq!(subdirs.len(), 0);
+    assert_eq!(subdirs.len(), 1);
 
     // TODO: make a subdir
 }
