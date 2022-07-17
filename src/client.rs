@@ -372,10 +372,10 @@ impl<T: Read + Write> Client<T> {
     /// }
     /// # }
     /// ```
-    pub fn login<U: AsRef<str>, P: AsRef<str>>(
+    pub fn login(
         mut self,
-        username: U,
-        password: P,
+        username: impl AsRef<str>,
+        password: impl AsRef<str>,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         let synopsis = "LOGIN";
         let u =
@@ -430,10 +430,10 @@ impl<T: Read + Write> Client<T> {
     ///     };
     /// }
     /// ```
-    pub fn authenticate<A: Authenticator, S: AsRef<str>>(
+    pub fn authenticate(
         mut self,
-        auth_type: S,
-        authenticator: &A,
+        auth_type: impl AsRef<str>,
+        authenticator: &impl Authenticator,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         ok_or_unauth_client_err!(
             self.run_command(&format!("AUTHENTICATE {}", auth_type.as_ref())),
@@ -443,9 +443,9 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// This func does the handshake process once the authenticate command is made.
-    fn do_auth_handshake<A: Authenticator>(
+    fn do_auth_handshake(
         mut self,
-        authenticator: &A,
+        authenticator: &impl Authenticator,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         // TODO Clean up this code
         loop {
@@ -526,7 +526,7 @@ impl<T: Read + Write> Session<T> {
     /// [`Connection::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
     /// `EXISTS`, `FETCH`, and `EXPUNGE` responses. You can get them from the
     /// `unsolicited_responses` channel of the [`Session`](struct.Session.html).
-    pub fn select<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
+    pub fn select(&mut self, mailbox_name: impl AsRef<str>) -> Result<Mailbox> {
         self.run(&format!(
             "SELECT {}",
             validate_str("SELECT", "mailbox", mailbox_name.as_ref())?
@@ -538,7 +538,7 @@ impl<T: Read + Write> Session<T> {
     /// however, the selected mailbox is identified as read-only. No changes to the permanent state
     /// of the mailbox, including per-user state, will happen in a mailbox opened with `examine`;
     /// in particular, messagess cannot lose [`Flag::Recent`] in an examined mailbox.
-    pub fn examine<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
+    pub fn examine(&mut self, mailbox_name: impl AsRef<str>) -> Result<Mailbox> {
         self.run(&format!(
             "EXAMINE {}",
             validate_str("EXAMINE", "mailbox", mailbox_name.as_ref())?
@@ -604,11 +604,11 @@ impl<T: Read + Write> Session<T> {
     ///  - `RFC822.HEADER`: Functionally equivalent to `BODY.PEEK[HEADER]`.
     ///  - `RFC822.SIZE`: The [RFC-2822](https://tools.ietf.org/html/rfc2822) size of the message.
     ///  - `UID`: The unique identifier for the message.
-    pub fn fetch<S1, S2>(&mut self, sequence_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn fetch(
+        &mut self,
+        sequence_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         if sequence_set.as_ref().is_empty() {
             Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
@@ -624,11 +624,11 @@ impl<T: Read + Write> Session<T> {
 
     /// Equivalent to [`Session::fetch`], except that all identifiers in `uid_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_fetch<S1, S2>(&mut self, uid_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn uid_fetch(
+        &mut self,
+        uid_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         if uid_set.as_ref().is_empty() {
             Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
@@ -686,7 +686,7 @@ impl<T: Read + Write> Session<T> {
     /// the mailbox UNLESS the new incarnation has a different unique identifier validity value.
     /// See the description of the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
-    pub fn create<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<()> {
+    pub fn create(&mut self, mailbox_name: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "CREATE {}",
             validate_str("CREATE", "mailbox", mailbox_name.as_ref())?
@@ -712,7 +712,7 @@ impl<T: Read + Write> Session<T> {
     /// incarnation, UNLESS the new incarnation has a different unique identifier validity value.
     /// See the description of the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
-    pub fn delete<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<()> {
+    pub fn delete(&mut self, mailbox_name: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "DELETE {}",
             validate_str("DELETE", "mailbox", mailbox_name.as_ref())?
@@ -744,7 +744,7 @@ impl<T: Read + Write> Session<T> {
     /// to a new mailbox with the given name, leaving `INBOX` empty.  If the server implementation
     /// supports inferior hierarchical names of `INBOX`, these are unaffected by a rename of
     /// `INBOX`.
-    pub fn rename<S1: AsRef<str>, S2: AsRef<str>>(&mut self, from: S1, to: S2) -> Result<()> {
+    pub fn rename(&mut self, from: impl AsRef<str>, to: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "RENAME {} {}",
             quote!(from.as_ref()),
@@ -760,7 +760,7 @@ impl<T: Read + Write> Session<T> {
     /// The server may validate the mailbox argument to `SUBSCRIBE` to verify that it exists.
     /// However, it will not unilaterally remove an existing mailbox name from the subscription
     /// list even if a mailbox by that name no longer exists.
-    pub fn subscribe<S: AsRef<str>>(&mut self, mailbox: S) -> Result<()> {
+    pub fn subscribe(&mut self, mailbox: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!("SUBSCRIBE {}", quote!(mailbox.as_ref())))
     }
 
@@ -768,7 +768,7 @@ impl<T: Read + Write> Session<T> {
     /// specified mailbox name from the server's set of "active" or "subscribed" mailboxes as
     /// returned by [`Session::lsub`].  This command returns `Ok` only if the unsubscription is
     /// successful.
-    pub fn unsubscribe<S: AsRef<str>>(&mut self, mailbox: S) -> Result<()> {
+    pub fn unsubscribe(&mut self, mailbox: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", quote!(mailbox.as_ref())))
     }
 
@@ -811,7 +811,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Alternatively, the client may fall back to using just [`Session::expunge`], risking the
     /// unintended removal of some messages.
-    pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Deleted> {
+    pub fn uid_expunge(&mut self, uid_set: impl AsRef<str>) -> Result<Deleted> {
         self.run_command(&format!("UID EXPUNGE {}", uid_set.as_ref()))?;
         self.read_response()
             .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
@@ -894,11 +894,11 @@ impl<T: Read + Write> Session<T> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn store<S1, S2>(&mut self, sequence_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn store(
+        &mut self,
+        sequence_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         self.run_command_and_read_response(&format!(
             "STORE {} {}",
             sequence_set.as_ref(),
@@ -909,11 +909,11 @@ impl<T: Read + Write> Session<T> {
 
     /// Equivalent to [`Session::store`], except that all identifiers in `sequence_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_store<S1, S2>(&mut self, uid_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn uid_store(
+        &mut self,
+        uid_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         self.run_command_and_read_response(&format!(
             "UID STORE {} {}",
             uid_set.as_ref(),
@@ -929,10 +929,10 @@ impl<T: Read + Write> Session<T> {
     ///
     /// If the `COPY` command is unsuccessful for any reason, the server restores the destination
     /// mailbox to its state before the `COPY` attempt.
-    pub fn copy<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn copy(
         &mut self,
-        sequence_set: S1,
-        mailbox_name: S2,
+        sequence_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "COPY {} {}",
@@ -943,10 +943,10 @@ impl<T: Read + Write> Session<T> {
 
     /// Equivalent to [`Session::copy`], except that all identifiers in `sequence_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_copy<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn uid_copy(
         &mut self,
-        uid_set: S1,
-        mailbox_name: S2,
+        uid_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "UID COPY {} {}",
@@ -985,10 +985,10 @@ impl<T: Read + Write> Session<T> {
     /// orphaned).  The server will generally not leave any message in both mailboxes (it would be
     /// bad for a partial failure to result in a bunch of duplicate messages).  This is true even
     /// if the server returns with [`Error::No`].
-    pub fn mv<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn mv(
         &mut self,
-        sequence_set: S1,
-        mailbox_name: S2,
+        sequence_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "MOVE {} {}",
@@ -1001,10 +1001,10 @@ impl<T: Read + Write> Session<T> {
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8)
     /// and the [semantics of `MOVE` and `UID
     /// MOVE`](https://tools.ietf.org/html/rfc6851#section-3.3).
-    pub fn uid_mv<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn uid_mv(
         &mut self,
-        uid_set: S1,
-        mailbox_name: S2,
+        uid_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "UID MOVE {} {}",
@@ -1119,10 +1119,10 @@ impl<T: Read + Write> Session<T> {
     ///  - `UNSEEN`: The number of messages which do not have [`Flag::Seen`] set.
     ///
     /// `data_items` is a space-separated list enclosed in parentheses.
-    pub fn status<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn status(
         &mut self,
-        mailbox_name: S1,
-        data_items: S2,
+        mailbox_name: impl AsRef<str>,
+        data_items: impl AsRef<str>,
     ) -> Result<Mailbox> {
         let mailbox_name = mailbox_name.as_ref();
         self.run_command_and_read_response(&format!(
@@ -1231,7 +1231,7 @@ impl<T: Read + Write> Session<T> {
     ///
     ///  - `BEFORE <date>`: Messages whose internal date (disregarding time and timezone) is earlier than the specified date.
     ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
-    pub fn search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Seq>> {
+    pub fn search(&mut self, query: impl AsRef<str>) -> Result<HashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query.as_ref()))
             .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
     }
@@ -1239,7 +1239,7 @@ impl<T: Read + Write> Session<T> {
     /// Equivalent to [`Session::search`], except that the returned identifiers
     /// are [`Uid`] instead of [`Seq`]. See also the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Uid>> {
+    pub fn uid_search(&mut self, query: impl AsRef<str>) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query.as_ref()))
             .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
     }
@@ -1249,11 +1249,11 @@ impl<T: Read + Write> Session<T> {
     ///
     /// This command is like [`Session::search`], except that
     /// the results are also sorted according to the supplied criteria (subject to the given charset).
-    pub fn sort<S: AsRef<str>>(
+    pub fn sort(
         &mut self,
         criteria: &[extensions::sort::SortCriterion<'_>],
         charset: extensions::sort::SortCharset<'_>,
-        query: S,
+        query: impl AsRef<str>,
     ) -> Result<Vec<Seq>> {
         self.run_command_and_read_response(&format!(
             "SORT {} {} {}",
@@ -1267,11 +1267,11 @@ impl<T: Read + Write> Session<T> {
     /// Equivalent to [`Session::sort`], except that it returns [`Uid`]s.
     ///
     /// See also [`Session::uid_search`].
-    pub fn uid_sort<S: AsRef<str>>(
+    pub fn uid_sort(
         &mut self,
         criteria: &[extensions::sort::SortCriterion<'_>],
         charset: extensions::sort::SortCharset<'_>,
-        query: S,
+        query: impl AsRef<str>,
     ) -> Result<Vec<Uid>> {
         self.run_command_and_read_response(&format!(
             "UID SORT {} {} {}",
@@ -1284,12 +1284,12 @@ impl<T: Read + Write> Session<T> {
 
     // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
-    pub fn run_command_and_check_ok<S: AsRef<str>>(&mut self, command: S) -> Result<()> {
+    pub fn run_command_and_check_ok(&mut self, command: impl AsRef<str>) -> Result<()> {
         self.run_command_and_read_response(command).map(|_| ())
     }
 
     /// Runs any command passed to it.
-    pub fn run_command<S: AsRef<str>>(&mut self, untagged_command: S) -> Result<()> {
+    pub fn run_command(&mut self, untagged_command: impl AsRef<str>) -> Result<()> {
         self.conn.run_command(untagged_command.as_ref())
     }
 
@@ -1301,7 +1301,7 @@ impl<T: Read + Write> Session<T> {
     /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     ///
     /// The response includes the final [`Response::Done`], which starts at the returned index.
-    pub fn run<S: AsRef<str>>(&mut self, untagged_command: S) -> Result<(Vec<u8>, usize)> {
+    pub fn run(&mut self, untagged_command: impl AsRef<str>) -> Result<(Vec<u8>, usize)> {
         self.conn.run(untagged_command.as_ref())
     }
 
@@ -1313,9 +1313,9 @@ impl<T: Read + Write> Session<T> {
     /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     ///
     /// The response does not include the final [`Response::Done`].
-    pub fn run_command_and_read_response<S: AsRef<str>>(
+    pub fn run_command_and_read_response(
         &mut self,
-        untagged_command: S,
+        untagged_command: impl AsRef<str>,
     ) -> Result<Vec<u8>> {
         let (mut data, ok) = self.run(untagged_command)?;
         data.truncate(ok);
