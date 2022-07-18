@@ -248,14 +248,13 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
     /// Note: be sure to set flags and optional date before you
     /// finish the command.
     pub fn finish(&mut self) -> Result<()> {
-        let flagstr = self
-            .flags
-            .clone()
-            .into_iter()
-            .filter(|f| *f != Flag::Recent)
-            .map(|f| f.to_string())
-            .collect::<Vec<String>>()
-            .join(" ");
+        let flagstr = iter_join(
+            self.flags
+                .clone()
+                .into_iter()
+                .filter(|f| *f != Flag::Recent),
+            " ",
+        );
 
         let datestr = if let Some(date) = self.date {
             format!(" \"{}\"", date.format("%d-%h-%Y %T %z"))
