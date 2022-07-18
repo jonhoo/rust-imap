@@ -9,7 +9,8 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::sync::mpsc;
 
-/// enum used for [Session::set_acl] to specify how the ACL is to be modified.
+/// Specifies how [`Session::set_acl`] should modify an existing permission set.
+#[derive(Debug, Clone, Copy)]
 pub enum AclModifyMode {
     /// Replace all ACLs on the identifier for the mailbox
     Replace,
@@ -19,9 +20,10 @@ pub enum AclModifyMode {
     Remove,
 }
 
-/// Helpful wrapper around the ACL rights vector
-/// Used as input for [Session::set_acl] as output in [ListRights], [MyRights], and [AclEntry]
-#[derive(Debug, Eq, PartialEq)]
+/// A set of [`imap_proto::AclRight`]s.
+///
+/// Used as input for [`Session::set_acl`] as output in [`ListRights`], [`MyRights`], and [`AclEntry`]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct AclRights {
     pub(crate) data: HashSet<AclRight>,
 }
@@ -98,7 +100,7 @@ impl std::error::Error for AclRightError {}
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
-/// The ACL response from the [Session::get_acl] IMAP command
+/// The ACL response from the [`Session::get_acl`] IMAP command
 #[self_referencing]
 pub struct Acl {
     data: Vec<u8>,
@@ -108,7 +110,7 @@ pub struct Acl {
 }
 
 impl Acl {
-    /// Parse the given input into a [Acl] response.
+    /// Parse the given input into a [`Acl`] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -119,6 +121,7 @@ impl Acl {
                 let mut acls = Vec::new();
 
                 // There should only be ONE single ACL response
+                // We use parse_many_into so that unsolicited responses are correctly handled
                 parse_many_into(input, &mut acls, unsolicited, |response| match response {
                     Response::Acl(a) => Ok(MapOrNot::Map(InnerAcl {
                         mailbox: a.mailbox,
@@ -134,10 +137,9 @@ impl Acl {
                     resp => Ok(MapOrNot::Not(resp)),
                 })?;
 
-                if acls.is_empty() {
-                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
-                } else {
-                    Ok(acls.remove(0))
+                match acls.len() {
+                    1 => Ok(acls.remove(0)),
+                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
                 }
             },
         }
@@ -146,12 +148,12 @@ impl Acl {
 
     /// Return the mailbox the ACL entries belong to
     pub fn mailbox(&self) -> &str {
-        &*self.borrow_acls().mailbox
+        &*self.borrow_acl().mailbox
     }
 
     /// Returns a list of identifier/rights pairs for the mailbox
     pub fn acls(&self) -> &[AclEntry<'_>] {
-        &*self.borrow_acls().acls
+        &*self.borrow_acl().acls
     }
 }
 
@@ -166,8 +168,8 @@ pub(crate) struct InnerAcl<'a> {
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
-/// The list of identifiers and rights for the [Acl] response
-#[derive(Debug, Eq, PartialEq)]
+/// The list of identifiers and rights for the [`Acl`] response
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct AclEntry<'a> {
     /// The user identifier the rights are for
     pub identifier: Cow<'a, str>,
@@ -177,7 +179,7 @@ pub struct AclEntry<'a> {
 
 /// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
 ///
-/// The LISTRIGHTS response from the [Session::list_rights] IMAP command
+/// The LISTRIGHTS response from the [`Session::list_rights`] IMAP command
 #[self_referencing]
 pub struct ListRights {
     data: Vec<u8>,
@@ -187,7 +189,7 @@ pub struct ListRights {
 }
 
 impl ListRights {
-    /// Parse the given input into a [ListRights] response.
+    /// Parse the given input into a [`ListRights`] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -198,6 +200,7 @@ impl ListRights {
                 let mut rights = Vec::new();
 
                 // There should only be ONE single LISTRIGHTS response
+                // We use parse_many_into so that unsolicited responses are correctly handled
                 parse_many_into(input, &mut rights, unsolicited, |response| match response {
                     Response::ListRights(a) => Ok(MapOrNot::Map(InnerListRights {
                         mailbox: a.mailbox,
@@ -208,10 +211,9 @@ impl ListRights {
                     resp => Ok(MapOrNot::Not(resp)),
                 })?;
 
-                if rights.is_empty() {
-                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
-                } else {
-                    Ok(rights.remove(0))
+                match rights.len() {
+                    1 => Ok(rights.remove(0)),
+                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
                 }
             },
         }
@@ -254,7 +256,7 @@ pub(crate) struct InnerListRights<'a> {
 
 /// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
 ///
-/// The MYRIGHTS response from the [Session::my_rights] IMAP command
+/// The MYRIGHTS response from the [`Session::my_rights`] IMAP command
 #[self_referencing]
 pub struct MyRights {
     data: Vec<u8>,
@@ -264,7 +266,7 @@ pub struct MyRights {
 }
 
 impl MyRights {
-    /// Parse the given input into a [MyRights] response.
+    /// Parse the given input into a [`MyRights`] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -275,6 +277,7 @@ impl MyRights {
                 let mut rights = Vec::new();
 
                 // There should only be ONE single MYRIGHTS response
+                // We use parse_many_into so that unsolicited responses are correctly handled
                 parse_many_into(input, &mut rights, unsolicited, |response| match response {
                     Response::MyRights(a) => Ok(MapOrNot::Map(InnerMyRights {
                         mailbox: a.mailbox,
@@ -283,10 +286,9 @@ impl MyRights {
                     resp => Ok(MapOrNot::Not(resp)),
                 })?;
 
-                if rights.is_empty() {
-                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
-                } else {
-                    Ok(rights.remove(0))
+                match rights.len() {
+                    1 => Ok(rights.remove(0)),
+                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
                 }
             },
         }

@@ -430,10 +430,10 @@ impl<T: Read + Write> Client<T> {
     ///     };
     /// }
     /// ```
-    pub fn authenticate(
+    pub fn authenticate<A: Authenticator>(
         mut self,
         auth_type: impl AsRef<str>,
-        authenticator: &impl Authenticator,
+        authenticator: &A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         ok_or_unauth_client_err!(
             self.run_command(&format!("AUTHENTICATE {}", auth_type.as_ref())),
@@ -2200,6 +2200,37 @@ mod tests {
     }
 
     #[test]
+    fn get_acl_invalid_no_acl_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn get_acl_invalid_too_many_acl_lines() {
+        let response = b"* ACL INBOX myuser lr\r\n\
+                * ACL INBOX myuser lr\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
     fn get_acl_multiple_users() {
         let response = b"* ACL INBOX myuser lr other_user lr\r\n\
             a1 OK completed\r\n"
@@ -2248,6 +2279,37 @@ mod tests {
     }
 
     #[test]
+    fn list_rights_invalid_no_rights_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.list_rights("INBOX", "myuser");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid listrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn list_rights_invalid_too_many_rights_lines() {
+        let response = b"* LISTRIGHTS INBOX myuser lr x k\r\n\
+            * LISTRIGHTS INBOX myuser lr x k\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.list_rights("INBOX", "myuser");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid listrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
     fn my_rights() {
         let response = b"* MYRIGHTS INBOX lrxk\r\n\
             a1 OK completed\r\n"
@@ -2262,6 +2324,37 @@ mod tests {
         );
         assert_eq!(acl.mailbox(), "INBOX");
         assert_eq!(*acl.rights(), "lrkx".try_into().unwrap())
+    }
+
+    #[test]
+    fn my_rights_invalid_no_rights_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.my_rights("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
+            "Invalid myrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn my_rights_invalid_too_many_rights_lines() {
+        let response = b"* MYRIGHTS INBOX lrxk\r\n\
+            * MYRIGHTS INBOX lrxk\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.my_rights("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
+            "Invalid myrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
     }
 
     #[test]
