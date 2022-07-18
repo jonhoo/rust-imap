@@ -4,12 +4,12 @@ use crate::types::UnsolicitedResponse;
 use imap_proto::Response;
 use ouroboros::self_referencing;
 use std::borrow::Cow;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::mpsc;
 
 /// From [SETQUOTA Resource limit](https://datatracker.ietf.org/doc/html/rfc2087#section-4.1)
 ///
-/// Used by [Session::set_quota]
+/// Used by [`Session::set_quota`]
 pub struct QuotaResourceLimit<'a> {
     /// The resource type
     pub name: QuotaResourceName<'a>,
@@ -25,7 +25,7 @@ impl Display for QuotaResourceLimit<'_> {
 
 /// From [Resources](https://datatracker.ietf.org/doc/html/rfc2087#section-3)
 ///
-/// Used by [QuotaLimit], and [QuotaResource]
+/// Used by [`QuotaLimit`], and [`QuotaResource`]
 #[derive(Debug, Eq, PartialEq)]
 pub enum QuotaResourceName<'a> {
     /// Sum of messages' RFC822.SIZE, in units of 1024 octets
@@ -48,10 +48,9 @@ impl Display for QuotaResourceName<'_> {
 
 /// From [QUOTA Response](https://datatracker.ietf.org/doc/html/rfc2087#section-5.1)
 ///
-/// Due to an implementation detail this is a wrapper around [Quota] with the same contract.
-/// Access to the wrapped [Quota] can be obtained via [QuotaResponse::quota]
+/// Due to an implementation detail this is a wrapper around [`Quota`] with the same contract.
 ///
-/// Used by [Session::get_quota] and [Session::set_quota]
+/// Used by [`Session::get_quota`] and [`Session::set_quota`]
 #[self_referencing]
 pub struct QuotaResponse {
     data: Vec<u8>,
@@ -77,10 +76,9 @@ impl QuotaResponse {
                     resp => Ok(MapOrNot::Not(resp)),
                 })?;
 
-                if quotas.is_empty() {
-                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
-                } else {
-                    Ok(quotas.remove(0))
+                match quotas.len() {
+                    1 => Ok(quotas.remove(0)),
+                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
                 }
             },
         }
@@ -96,16 +94,11 @@ impl QuotaResponse {
     pub fn resources(&self) -> &[QuotaResource<'_>] {
         self.borrow_quota().resources()
     }
-
-    /// Access to the wrapped [Quota] struct
-    pub fn quota(&self) -> &Quota<'_> {
-        self.borrow_quota()
-    }
 }
 
 /// From [QUOTA Response](https://datatracker.ietf.org/doc/html/rfc2087#section-5.1)
 ///
-/// Used by [QuotaResponse] and [QuotaRoot]
+/// Used by [`QuotaResponse`] and [`QuotaRoot`]
 #[derive(Debug, Eq, PartialEq)]
 pub struct Quota<'a> {
     root_name: Cow<'a, str>,
@@ -147,7 +140,7 @@ impl<'a> Quota<'a> {
 
 /// From [QUOTA Response](https://datatracker.ietf.org/doc/html/rfc2087#section-5.1)
 ///
-/// The quota resource sub pieces int he Quota response. Used by [Quota]
+/// The quota resource sub-pieces in a [`Quota`]
 #[derive(Debug, Eq, PartialEq)]
 pub struct QuotaResource<'a> {
     /// The resource type
@@ -160,7 +153,7 @@ pub struct QuotaResource<'a> {
 
 /// From [QUOTAROOT Response](https://datatracker.ietf.org/doc/html/rfc2087#section-5.2)
 ///
-/// Used by [Session::get_quota_root]
+/// Used by [`Session::get_quota_root`]
 #[self_referencing]
 pub struct QuotaRoot {
     data: Vec<u8>,
@@ -169,7 +162,13 @@ pub struct QuotaRoot {
     pub(crate) inner: InnerQuotaRoot<'this>,
 }
 
+impl Debug for QuotaRoot {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.borrow_inner())
+    }
+}
 /// Inner struct to manage storing the references for ouroboros
+#[derive(Debug)]
 pub(crate) struct InnerQuotaRoot<'a> {
     pub(crate) quota_root: imap_proto::QuotaRoot<'a>,
     pub(crate) quotas: Vec<Quota<'a>>,
@@ -199,13 +198,12 @@ impl QuotaRoot {
                     },
                 )?;
 
-                if quota_roots.is_empty() {
-                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
-                } else {
-                    Ok(InnerQuotaRoot {
+                match quota_roots.len() {
+                    1 => Ok(InnerQuotaRoot {
                         quota_root: quota_roots.remove(0),
                         quotas,
-                    })
+                    }),
+                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
                 }
             },
         }

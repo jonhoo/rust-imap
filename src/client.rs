@@ -2091,6 +2091,69 @@ mod tests {
     }
 
     #[test]
+    fn set_quota_no_such_quota_root() {
+        let response = b"a1 NO no such quota root\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.set_quota(
+            "my_root",
+            &[QuotaResourceLimit {
+                name: QuotaResourceName::Storage,
+                amount: 500,
+            }],
+        );
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETQUOTA \"my_root\" (STORAGE 500)\r\n".to_vec(),
+            "Invalid setquota command"
+        );
+        assert!(matches!(quota, Err(Error::No(_))));
+    }
+
+    #[test]
+    fn set_quota_invalid_no_quota_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.set_quota(
+            "my_root",
+            &[QuotaResourceLimit {
+                name: QuotaResourceName::Storage,
+                amount: 500,
+            }],
+        );
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETQUOTA \"my_root\" (STORAGE 500)\r\n".to_vec(),
+            "Invalid setquota command"
+        );
+        assert!(matches!(quota, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn set_quota_invalid_too_many_quota_lines() {
+        let response = b"* QUOTA my_root (STORAGE 10 500)\r\n\
+                * QUOTA my_root2 (STORAGE 10 500)\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.set_quota(
+            "my_root",
+            &[QuotaResourceLimit {
+                name: QuotaResourceName::Storage,
+                amount: 500,
+            }],
+        );
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETQUOTA \"my_root\" (STORAGE 500)\r\n".to_vec(),
+            "Invalid setquota command"
+        );
+        assert!(matches!(quota, Err(Error::Parse(_))));
+    }
+
+    #[test]
     fn get_quota() {
         let response = b"* QUOTA my_root ()\r\n\
                 a1 OK completed\r\n"
@@ -2132,6 +2195,51 @@ mod tests {
     }
 
     #[test]
+    fn get_quota_with_invalid_no_quota_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.get_quota("my_root");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTA \"my_root\"\r\n".to_vec(),
+            "Invalid getquota command"
+        );
+        assert!(matches!(quota, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn get_quota_with_invalid_too_many_quota_lines() {
+        let response = b"* QUOTA my_root (STORAGE 10 500)\r\n\
+                * QUOTA my_root2 (STORAGE 10 500)\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.get_quota("my_root");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTA \"my_root\"\r\n".to_vec(),
+            "Invalid getquota command"
+        );
+        assert!(matches!(quota, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn get_quota_with_no_such_quota_root() {
+        let response = b"a1 NO no such quota root\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session.get_quota("my_root");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTA \"my_root\"\r\n".to_vec(),
+            "Invalid getquota command"
+        );
+        assert!(matches!(quota, Err(Error::No(_))));
+    }
+
+    #[test]
     fn get_quota_root_with_no_root() {
         let response = b"* QUOTAROOT INBOX\r\n\
                 a1 OK completed\r\n"
@@ -2150,6 +2258,52 @@ mod tests {
             Vec::<&str>::new()
         );
         assert_eq!(quota_root.quotas(), vec![]);
+    }
+
+    #[test]
+    fn get_quota_root_no_such_mailbox() {
+        let response = b"a1 NO no such mailboxd\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota_root = session.get_quota_root("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTAROOT \"INBOX\"\r\n".to_vec(),
+            "Invalid getquotaroot command"
+        );
+        assert!(matches!(quota_root, Err(Error::No(_))));
+    }
+
+    #[test]
+    fn get_quota_root_invalid_no_quota_root_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota_root = session.get_quota_root("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTAROOT \"INBOX\"\r\n".to_vec(),
+            "Invalid getquotaroot command"
+        );
+        assert!(matches!(quota_root, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn get_quota_root_invalid_too_many_quota_root_lines() {
+        let response = b"* QUOTAROOT INBOX\r\n\
+                * QUOTAROOT INBOX\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota_root = session.get_quota_root("INBOX");
+        println!("Resp: {:?}", quota_root);
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETQUOTAROOT \"INBOX\"\r\n".to_vec(),
+            "Invalid getquotaroot command"
+        );
+        assert!(matches!(quota_root, Err(Error::Parse(_))));
     }
 
     #[test]
