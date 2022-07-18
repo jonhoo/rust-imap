@@ -1302,7 +1302,7 @@ impl<T: Read + Write> Session<T> {
             validate_str("SETACL", "mailbox", mailbox_name.as_ref())?,
             validate_str("SETACL", "identifier", identifier.as_ref())?,
             mod_str,
-            rights.to_string(),
+            rights,
         ))
     }
 

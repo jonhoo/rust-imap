@@ -1,5 +1,5 @@
 use crate::error::{Error, ParseError};
-use crate::parse::try_handle_unilateral;
+use crate::parse::{parse_many_into, MapOrNot};
 use crate::types::UnsolicitedResponse;
 use imap_proto::types::AclRight;
 use imap_proto::Response;
@@ -116,38 +116,29 @@ impl Acl {
         AclTryBuilder {
             data: owned,
             acl_builder: |input| {
-                let mut lines: &[u8] = input;
+                let mut acls = Vec::new();
 
                 // There should only be ONE single ACL response
-                while !lines.is_empty() {
-                    match imap_proto::parser::parse_response(lines) {
-                        Ok((_rest, Response::Acl(a))) => {
-                            // lines = rest;
-                            return Ok(InnerAcl {
-                                mailbox: a.mailbox,
-                                acls: a
-                                    .acls
-                                    .into_iter()
-                                    .map(|e| AclEntry {
-                                        identifier: e.identifier,
-                                        rights: e.rights.into(),
-                                    })
-                                    .collect(),
-                            });
-                        }
-                        Ok((rest, data)) => {
-                            lines = rest;
-                            if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                                return Err(resp.into());
-                            }
-                        }
-                        _ => {
-                            return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                        }
-                    }
-                }
+                parse_many_into(input, &mut acls, unsolicited, |response| match response {
+                    Response::Acl(a) => Ok(MapOrNot::Map(InnerAcl {
+                        mailbox: a.mailbox,
+                        acls: a
+                            .acls
+                            .into_iter()
+                            .map(|e| AclEntry {
+                                identifier: e.identifier,
+                                rights: e.rights.into(),
+                            })
+                            .collect(),
+                    })),
+                    resp => Ok(MapOrNot::Not(resp)),
+                })?;
 
-                Err(Error::Parse(ParseError::Invalid(lines.to_vec())))
+                if acls.is_empty() {
+                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
+                } else {
+                    Ok(acls.remove(0))
+                }
             },
         }
         .try_build()
@@ -155,12 +146,12 @@ impl Acl {
 
     /// Return the mailbox the ACL entries belong to
     pub fn mailbox(&self) -> &str {
-        &*self.borrow_acl().mailbox
+        &*self.borrow_acls().mailbox
     }
 
     /// Returns a list of identifier/rights pairs for the mailbox
     pub fn acls(&self) -> &[AclEntry<'_>] {
-        &*self.borrow_acl().acls
+        &*self.borrow_acls().acls
     }
 }
 
@@ -204,33 +195,24 @@ impl ListRights {
         ListRightsTryBuilder {
             data: owned,
             rights_builder: |input| {
-                let mut lines: &[u8] = input;
+                let mut rights = Vec::new();
 
                 // There should only be ONE single LISTRIGHTS response
-                while !lines.is_empty() {
-                    match imap_proto::parser::parse_response(lines) {
-                        Ok((_rest, Response::ListRights(a))) => {
-                            // lines = rest;
-                            return Ok(InnerListRights {
-                                mailbox: a.mailbox,
-                                identifier: a.identifier,
-                                required: a.required.into(),
-                                optional: a.optional.into(),
-                            });
-                        }
-                        Ok((rest, data)) => {
-                            lines = rest;
-                            if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                                return Err(resp.into());
-                            }
-                        }
-                        _ => {
-                            return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                        }
-                    }
-                }
+                parse_many_into(input, &mut rights, unsolicited, |response| match response {
+                    Response::ListRights(a) => Ok(MapOrNot::Map(InnerListRights {
+                        mailbox: a.mailbox,
+                        identifier: a.identifier,
+                        required: a.required.into(),
+                        optional: a.optional.into(),
+                    })),
+                    resp => Ok(MapOrNot::Not(resp)),
+                })?;
 
-                Err(Error::Parse(ParseError::Invalid(lines.to_vec())))
+                if rights.is_empty() {
+                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
+                } else {
+                    Ok(rights.remove(0))
+                }
             },
         }
         .try_build()
@@ -290,31 +272,22 @@ impl MyRights {
         MyRightsTryBuilder {
             data: owned,
             rights_builder: |input| {
-                let mut lines: &[u8] = input;
+                let mut rights = Vec::new();
 
                 // There should only be ONE single MYRIGHTS response
-                while !lines.is_empty() {
-                    match imap_proto::parser::parse_response(lines) {
-                        Ok((_rest, Response::MyRights(a))) => {
-                            // lines = rest;
-                            return Ok(InnerMyRights {
-                                mailbox: a.mailbox,
-                                rights: a.rights.into(),
-                            });
-                        }
-                        Ok((rest, data)) => {
-                            lines = rest;
-                            if let Some(resp) = try_handle_unilateral(data, unsolicited) {
-                                return Err(resp.into());
-                            }
-                        }
-                        _ => {
-                            return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                        }
-                    }
-                }
+                parse_many_into(input, &mut rights, unsolicited, |response| match response {
+                    Response::MyRights(a) => Ok(MapOrNot::Map(InnerMyRights {
+                        mailbox: a.mailbox,
+                        rights: a.rights.into(),
+                    })),
+                    resp => Ok(MapOrNot::Not(resp)),
+                })?;
 
-                Err(Error::Parse(ParseError::Invalid(lines.to_vec())))
+                if rights.is_empty() {
+                    Err(Error::Parse(ParseError::Invalid(input.to_vec())))
+                } else {
+                    Ok(rights.remove(0))
+                }
             },
         }
         .try_build()
