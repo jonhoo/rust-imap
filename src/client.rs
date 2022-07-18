@@ -12,6 +12,7 @@ use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
+use super::utils::*;
 
 static TAG_PREFIX: &str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -122,38 +123,6 @@ fn validate_sequence_set(
             })
         })?;
     Ok(value)
-}
-
-/// Lovingly borrowed from the cargo crate
-///
-/// Joins an iterator of [std::fmt::Display]'ables into an output writable
-pub fn iter_join_onto<W, I, T>(mut w: W, iter: I, delim: &str) -> std::fmt::Result
-where
-    W: std::fmt::Write,
-    I: IntoIterator<Item = T>,
-    T: std::fmt::Display,
-{
-    let mut it = iter.into_iter().peekable();
-    while let Some(n) = it.next() {
-        write!(w, "{}", n)?;
-        if it.peek().is_some() {
-            write!(w, "{}", delim)?;
-        }
-    }
-    Ok(())
-}
-
-/// Lovingly borrowed from the cargo crate
-///
-/// Joins an iterator of [std::fmt::Display]'ables to a new [std::string::String].
-pub fn iter_join<I, T>(iter: I, delim: &str) -> String
-where
-    I: IntoIterator<Item = T>,
-    T: std::fmt::Display,
-{
-    let mut s = String::new();
-    let _ = iter_join_onto(&mut s, iter, delim);
-    s
 }
 
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
@@ -1311,6 +1280,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Updates the resource limits for a mailbox. Any previous limits for the named quota
     /// are discarded.
+    ///
     /// Returns the updated quota.
     pub fn set_quota(
         &mut self,

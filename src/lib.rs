@@ -77,6 +77,7 @@
 #![warn(rust_2018_idioms)]
 
 mod parse;
+mod utils;
 
 pub mod types;
 
