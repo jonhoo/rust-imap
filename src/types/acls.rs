@@ -1,5 +1,5 @@
 use crate::error::{Error, ParseError};
-use crate::parse::{parse_many_into, MapOrNot};
+use crate::parse::{parse_until_done, MapOrNot};
 use crate::types::UnsolicitedResponse;
 use imap_proto::types::AclRight;
 use imap_proto::Response;
@@ -118,11 +118,11 @@ impl Acl {
         AclTryBuilder {
             data: owned,
             acl_builder: |input| {
-                let mut acls = Vec::new();
+                let mut acl = None;
 
                 // There should only be ONE single ACL response
                 // We use parse_many_into so that unsolicited responses are correctly handled
-                parse_many_into(input, &mut acls, unsolicited, |response| match response {
+                parse_until_done(input, &mut acl, unsolicited, |response| match response {
                     Response::Acl(a) => Ok(MapOrNot::Map(InnerAcl {
                         mailbox: a.mailbox,
                         acls: a
@@ -137,10 +137,7 @@ impl Acl {
                     resp => Ok(MapOrNot::Not(resp)),
                 })?;
 
-                match acls.len() {
-                    1 => Ok(acls.remove(0)),
-                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
-                }
+                acl.ok_or_else(|| Error::Parse(ParseError::Invalid(input.to_vec())))
             },
         }
         .try_build()
@@ -197,11 +194,10 @@ impl ListRights {
         ListRightsTryBuilder {
             data: owned,
             rights_builder: |input| {
-                let mut rights = Vec::new();
+                let mut right = None;
 
                 // There should only be ONE single LISTRIGHTS response
-                // We use parse_many_into so that unsolicited responses are correctly handled
-                parse_many_into(input, &mut rights, unsolicited, |response| match response {
+                parse_until_done(input, &mut right, unsolicited, |response| match response {
                     Response::ListRights(a) => Ok(MapOrNot::Map(InnerListRights {
                         mailbox: a.mailbox,
                         identifier: a.identifier,
@@ -211,10 +207,7 @@ impl ListRights {
                     resp => Ok(MapOrNot::Not(resp)),
                 })?;
 
-                match rights.len() {
-                    1 => Ok(rights.remove(0)),
-                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
-                }
+                right.ok_or_else(|| Error::Parse(ParseError::Invalid(input.to_vec())))
             },
         }
         .try_build()
@@ -274,11 +267,10 @@ impl MyRights {
         MyRightsTryBuilder {
             data: owned,
             rights_builder: |input| {
-                let mut rights = Vec::new();
+                let mut right = None;
 
                 // There should only be ONE single MYRIGHTS response
-                // We use parse_many_into so that unsolicited responses are correctly handled
-                parse_many_into(input, &mut rights, unsolicited, |response| match response {
+                parse_until_done(input, &mut right, unsolicited, |response| match response {
                     Response::MyRights(a) => Ok(MapOrNot::Map(InnerMyRights {
                         mailbox: a.mailbox,
                         rights: a.rights.into(),
@@ -286,10 +278,7 @@ impl MyRights {
                     resp => Ok(MapOrNot::Not(resp)),
                 })?;
 
-                match rights.len() {
-                    1 => Ok(rights.remove(0)),
-                    _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
-                }
+                right.ok_or_else(|| Error::Parse(ParseError::Invalid(input.to_vec())))
             },
         }
         .try_build()

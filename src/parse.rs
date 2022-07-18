@@ -71,6 +71,31 @@ where
     }
 }
 
+/// Parse an expected single `T` Response with `F` and store it in `into`.
+/// Responses other than `T` go into the `unsolicited` channel.
+///
+/// If zero or more than one `T` is found then into will be `None`
+pub(crate) fn parse_until_done<'input, T, F>(
+    input: &'input [u8],
+    into: &mut Option<T>,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    map: F,
+) -> Result<()>
+where
+    F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
+{
+    let mut temp_output = Vec::<T>::new();
+
+    parse_many_into(input, &mut temp_output, unsolicited, map)?;
+
+    *into = match temp_output.len() {
+        1 => Some(temp_output.remove(0)),
+        _ => None,
+    };
+
+    Ok(())
+}
+
 pub fn parse_expunge(
     lines: Vec<u8>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
