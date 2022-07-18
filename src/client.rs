@@ -124,6 +124,38 @@ fn validate_sequence_set(
     Ok(value)
 }
 
+/// Lovingly borrowed from the cargo crate
+///
+/// Joins an iterator of [std::fmt::Display]'ables into an output writable
+pub fn iter_join_onto<W, I, T>(mut w: W, iter: I, delim: &str) -> std::fmt::Result
+where
+    W: std::fmt::Write,
+    I: IntoIterator<Item = T>,
+    T: std::fmt::Display,
+{
+    let mut it = iter.into_iter().peekable();
+    while let Some(n) = it.next() {
+        write!(w, "{}", n)?;
+        if it.peek().is_some() {
+            write!(w, "{}", delim)?;
+        }
+    }
+    Ok(())
+}
+
+/// Lovingly borrowed from the cargo crate
+///
+/// Joins an iterator of [std::fmt::Display]'ables to a new [std::string::String].
+pub fn iter_join<I, T>(iter: I, delim: &str) -> String
+where
+    I: IntoIterator<Item = T>,
+    T: std::fmt::Display,
+{
+    let mut s = String::new();
+    let _ = iter_join_onto(&mut s, iter, delim);
+    s
+}
+
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
 /// a succesful login attempt.
 ///
@@ -1286,37 +1318,36 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Updates the resource limits for a mailbox. Any previous limits for the named quota
     /// are discarded.
-    /// Returns the updated quota
-    pub fn set_quota<S: AsRef<str>>(
+    /// Returns the updated quota.
+    pub fn set_quota(
         &mut self,
-        quota_root: S,
-        limits: Vec<QuotaLimit>,
-    ) -> Result<Quota> {
+        quota_root: impl AsRef<str>,
+        limits: &[QuotaResourceLimit<'_>],
+    ) -> Result<QuotaResponse> {
+        let limits = iter_join(limits.iter(), " ");
         self.run_command_and_read_response(&format!(
             "SETQUOTA {} ({})",
             validate_str("SETQUOTA", "quota_root", quota_root.as_ref())?,
-            limits
-                .iter()
-                .map(|e| e.to_string())
-                .collect::<Vec<_>>()
-                .join(" "),
+            limits,
         ))
-        .and_then(|lines| Quota::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| QuotaResponse::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`GETQUOTA` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.2)
     ///
-    pub fn get_quota<S: AsRef<str>>(&mut self, quota_root: S) -> Result<Quota> {
+    /// Returns the quota information for the specified quota root
+    pub fn get_quota(&mut self, quota_root: impl AsRef<str>) -> Result<QuotaResponse> {
         self.run_command_and_read_response(&format!(
             "GETQUOTA {}",
             validate_str("GETQUOTA", "quota_root", quota_root.as_ref())?
         ))
-        .and_then(|lines| Quota::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| QuotaResponse::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`GETQUOTAROOT` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.3)
     ///
-    pub fn get_quota_root<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<QuotaRoot> {
+    /// Returns the quota roots along with their quota information for the specified mailbox
+    pub fn get_quota_root(&mut self, mailbox_name: impl AsRef<str>) -> Result<QuotaRoot> {
         self.run_command_and_read_response(&format!(
             "GETQUOTAROOT {}",
             validate_str("GETQUOTAROOT", "mailbox", mailbox_name.as_ref())?
@@ -1590,7 +1621,7 @@ mod tests {
     use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
-    use imap_proto::types::*;
+    use imap_proto::types::Capability;
     use std::borrow::Cow;
 
     use super::testutils::*;
@@ -2074,8 +2105,8 @@ mod tests {
         let quota = session
             .set_quota(
                 "my_root",
-                vec![QuotaLimit {
-                    name: QuotaLimitName::Storage,
+                &[QuotaResourceLimit {
+                    name: QuotaResourceName::Storage,
                     amount: 500,
                 }],
             )
@@ -2151,7 +2182,10 @@ mod tests {
             "Invalid getquotaroot command"
         );
         assert_eq!(quota_root.mailbox_name(), "INBOX");
-        assert_eq!(quota_root.quota_root_names(), Vec::<&str>::new());
+        assert_eq!(
+            quota_root.quota_root_names().collect::<Vec<_>>(),
+            Vec::<&str>::new()
+        );
         assert_eq!(quota_root.quotas(), vec![]);
     }
 
@@ -2170,11 +2204,14 @@ mod tests {
             "Invalid getquotaroot command"
         );
         assert_eq!(quota_root.mailbox_name(), "INBOX");
-        assert_eq!(quota_root.quota_root_names(), vec!["my_root"]);
-        assert_eq!(quota_root.quotas().len(), 1);
-        assert_eq!(quota_root.quotas().first().unwrap().root_name, "my_root");
         assert_eq!(
-            quota_root.quotas().first().unwrap().resources,
+            quota_root.quota_root_names().collect::<Vec<_>>(),
+            vec!["my_root"]
+        );
+        assert_eq!(quota_root.quotas().len(), 1);
+        assert_eq!(quota_root.quotas().first().unwrap().root_name(), "my_root");
+        assert_eq!(
+            quota_root.quotas().first().unwrap().resources(),
             vec![QuotaResource {
                 name: QuotaResourceName::Storage,
                 usage: 10,

@@ -477,3 +477,22 @@ fn status() {
     expected.exists = 0;
     assert_eq!(mb, expected);
 }
+
+#[test]
+fn quota() {
+    let to = "inbox-quota@localhost";
+
+    let mut c = session(to);
+
+    let quota_root = c.get_quota_root("INBOX").unwrap();
+
+    assert_eq!(quota_root.mailbox_name(), "INBOX");
+
+    if quota_root.quota_root_names().is_empty() {
+        // probably greenmail
+        assert_eq!(quota_root.quota_root_names(), Vec::<&str>::new());
+    } else {
+        // probably cyrus
+        assert_eq!(quota_root.quota_root_names(), vec!["INBOX"]);
+    }
+}
