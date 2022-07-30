@@ -525,9 +525,9 @@ fn acl_tests() {
     // one ACL
     // assert_eq!(acl.acls().len(), 1);
     // ACL is for me
-    assert_eq!(acl.acls()[0].identifier, user_me);
+    assert_eq!(acl.acl().acls()[0].identifier, user_me);
     // ACL has administration rights
-    assert!(acl.acls()[0].rights.contains('a'));
+    assert!(acl.acl().acls()[0].rights.contains('a'));
     // Grant read to friend
     let ret = s_me.set_acl(
         "INBOX",
@@ -538,8 +538,8 @@ fn acl_tests() {
     assert!(ret.is_ok());
     // Check rights again
     let acl = s_me.get_acl("INBOX").unwrap();
-    assert_eq!(acl.acls().len(), 2);
-    assert!(acl.acls().contains(&AclEntry {
+    assert_eq!(acl.acl().acls().len(), 2);
+    assert!(acl.acl().acls().contains(&AclEntry {
         identifier: user_friend.into(),
         rights: "lr".try_into().unwrap()
     }));
@@ -553,8 +553,8 @@ fn acl_tests() {
     assert!(ret.is_ok());
     // Check rights again
     let acl = s_me.get_acl("INBOX").unwrap();
-    assert_eq!(acl.acls().len(), 2);
-    assert!(acl.acls().contains(&AclEntry {
+    assert_eq!(acl.acl().acls().len(), 2);
+    assert!(acl.acl().acls().contains(&AclEntry {
         identifier: user_friend.into(),
         rights: "lrp".try_into().unwrap()
     }));
@@ -568,8 +568,8 @@ fn acl_tests() {
     assert!(ret.is_ok());
     // Check rights again
     let acl = s_me.get_acl("INBOX").unwrap();
-    assert_eq!(acl.acls().len(), 2);
-    assert!(acl.acls().contains(&AclEntry {
+    assert_eq!(acl.acl().acls().len(), 2);
+    assert!(acl.acl().acls().contains(&AclEntry {
         identifier: user_friend.into(),
         rights: "lr".try_into().unwrap()
     }));
@@ -578,14 +578,14 @@ fn acl_tests() {
     assert!(ret.is_ok());
     // Check rights again
     let acl = s_me.get_acl("INBOX").unwrap();
-    assert_eq!(acl.acls().len(), 1);
-    assert_eq!(acl.acls()[0].identifier, user_me);
+    assert_eq!(acl.acl().acls().len(), 1);
+    assert_eq!(acl.acl().acls()[0].identifier, user_me);
     // List rights
     let acl = s_me.list_rights("INBOX", user_friend).unwrap();
-    assert_eq!(acl.mailbox(), "INBOX");
-    assert_eq!(acl.identifier(), user_friend);
-    assert!(acl.optional().contains('0'));
-    assert!(!acl.required().contains('0'));
+    assert_eq!(acl.list_rights().mailbox(), "INBOX");
+    assert_eq!(acl.list_rights().identifier(), user_friend);
+    assert!(acl.list_rights().optional().contains('0'));
+    assert!(!acl.list_rights().required().contains('0'));
 }
 
 #[test]
