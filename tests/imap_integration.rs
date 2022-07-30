@@ -1,7 +1,6 @@
 extern crate chrono;
 extern crate imap;
 extern crate lettre;
-extern crate lettre_email;
 extern crate native_tls;
 
 use chrono::{FixedOffset, TimeZone};
@@ -87,17 +86,26 @@ fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
 }
 
 fn smtp(user: &str) -> lettre::SmtpTransport {
-    let creds = lettre::smtp::authentication::Credentials::new(user.to_string(), user.to_string());
-    lettre::SmtpClient::new(
-        &format!("{}:{}", test_smtp_host(), test_smtps_port()),
-        lettre::ClientSecurity::Wrapper(lettre::ClientTlsParameters {
-            connector: tls(),
-            domain: "smtp.example.com".to_string(),
-        }),
-    )
-    .unwrap()
-    .credentials(creds)
-    .transport()
+    use lettre::{
+        transport::smtp::{
+            authentication::Credentials,
+            client::{Tls, TlsParameters},
+        },
+        SmtpTransport,
+    };
+
+    let creds = Credentials::new(user.to_string(), user.to_string());
+    let hostname = test_smtp_host();
+    let tls = TlsParameters::builder(hostname.clone())
+        .dangerous_accept_invalid_certs(true)
+        .dangerous_accept_invalid_hostnames(true)
+        .build()
+        .unwrap();
+    SmtpTransport::builder_dangerous(hostname)
+        .port(test_smtps_port())
+        .tls(Tls::Wrapper(tls))
+        .credentials(creds)
+        .build()
 }
 
 #[test]
@@ -154,25 +162,23 @@ fn inbox() {
     c.select("INBOX").unwrap();
 
     // then send the e-mail
-    let mut s = smtp(to);
-    let e = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let s = smtp(to);
+    let e = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My first e-mail")
-        .text("Hello world from SMTP")
-        .build()
+        .body("Hello world from SMTP".to_string())
         .unwrap();
-    s.send(e.into()).unwrap();
+    s.send(&e.into()).unwrap();
 
     // send a second e-mail
-    let e = lettre_email::Email::builder()
-        .from("sender2@localhost")
-        .to(to)
+    let e = lettre::message::Message::builder()
+        .from("sender2@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My second e-mail")
-        .text("Hello world from SMTP")
-        .build()
+        .body("Hello world from SMTP".to_string())
         .unwrap();
-    s.send(e.into()).unwrap();
+    s.send(&e.into()).unwrap();
 
     wait_for_delivery();
 
@@ -281,15 +287,14 @@ fn inbox_uid() {
     c.select("INBOX").unwrap();
 
     // then send the e-mail
-    let mut s = smtp(to);
-    let e = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let s = smtp(to);
+    let e = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My first e-mail")
-        .text("Hello world from SMTP")
-        .build()
+        .body("Hello world from SMTP".to_string())
         .unwrap();
-    s.send(e.into()).unwrap();
+    s.send(&e.into()).unwrap();
 
     wait_for_delivery();
 
@@ -353,12 +358,11 @@ fn append() {
     let to = "inbox-append1@localhost";
 
     // make a message to append
-    let e: lettre::SendableEmail = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My second e-mail")
-        .text("Hello world")
-        .build()
+        .body("Hello world".to_string())
         .unwrap()
         .into();
 
@@ -367,9 +371,7 @@ fn append() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     //append
-    c.append(mbox, e.message_to_string().unwrap().as_bytes())
-        .finish()
-        .unwrap();
+    c.append(mbox, &e.formatted()).finish().unwrap();
 
     // now we should see the e-mail!
     let inbox = c.uid_search("ALL").unwrap();
@@ -402,12 +404,11 @@ fn append_with_flags() {
     let to = "inbox-append2@localhost";
 
     // make a message to append
-    let e: lettre::SendableEmail = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My third e-mail")
-        .text("Hello world")
-        .build()
+        .body("Hello world".to_string())
         .unwrap()
         .into();
 
@@ -417,7 +418,7 @@ fn append_with_flags() {
     c.select(mbox).unwrap();
     //append
     let flags = vec![Flag::Seen, Flag::Flagged];
-    c.append(mbox, e.message_to_string().unwrap().as_bytes())
+    c.append(mbox, &e.formatted())
         .flags(flags)
         .finish()
         .unwrap();
@@ -460,12 +461,11 @@ fn append_with_flags_and_date() {
     let to = "inbox-append3@localhost";
 
     // make a message to append
-    let e: lettre::SendableEmail = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My third e-mail")
-        .text("Hello world")
-        .build()
+        .body("Hello world".to_string())
         .unwrap()
         .into();
 
@@ -477,7 +477,7 @@ fn append_with_flags_and_date() {
     let date = FixedOffset::east(8 * 3600)
         .ymd(2020, 12, 13)
         .and_hms(13, 36, 36);
-    c.append(mbox, e.message_to_string().unwrap().as_bytes())
+    c.append(mbox, &e.formatted())
         .flag(Flag::Seen)
         .flag(Flag::Flagged)
         .internal_date(date)
