@@ -101,27 +101,29 @@ impl std::error::Error for AclRightError {}
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
 ///
+/// This is a wrapper around a single [`Acl`].
+///
 /// The ACL response from the [`Session::get_acl`] IMAP command
 #[self_referencing]
-pub struct Acl {
+pub struct AclResponse {
     data: Vec<u8>,
     #[borrows(data)]
     #[covariant]
-    pub(crate) acl: InnerAcl<'this>,
+    pub(crate) acl: Acl<'this>,
 }
 
-impl Acl {
+impl AclResponse {
     /// Parse the given input into a [`Acl`] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
-        AclTryBuilder {
+        AclResponseTryBuilder {
             data: owned,
             acl_builder: |input| {
                 // There should only be ONE single ACL response
                 parse_until_done(input, unsolicited, |response| match response {
-                    Response::Acl(a) => Ok(MapOrNot::Map(InnerAcl {
+                    Response::Acl(a) => Ok(MapOrNot::Map(Acl {
                         mailbox: a.mailbox,
                         acls: a
                             .acls
@@ -139,24 +141,34 @@ impl Acl {
         .try_build()
     }
 
-    /// Return the mailbox the ACL entries belong to
-    pub fn mailbox(&self) -> &str {
-        &*self.borrow_acl().mailbox
-    }
-
-    /// Returns a list of identifier/rights pairs for the mailbox
-    pub fn acls(&self) -> &[AclEntry<'_>] {
-        &*self.borrow_acl().acls
+    /// Access to the wrapped [`ListRights`] struct
+    pub fn acl(&self) -> &Acl<'_> {
+        self.borrow_acl()
     }
 }
 
-/// Inner struct to manage storing the references for ouroboros
+/// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
+///
+/// Used by [`AclResponse`].
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct InnerAcl<'a> {
+#[non_exhaustive]
+pub struct Acl<'a> {
     /// The mailbox the ACL Entries belong to
     pub(crate) mailbox: Cow<'a, str>,
     /// The list of identifier/rights pairs for the mailbox
     pub(crate) acls: Vec<AclEntry<'a>>,
+}
+
+impl<'a> Acl<'a> {
+    /// Return the mailbox the ACL entries belong to
+    pub fn mailbox(&self) -> &str {
+        &*self.mailbox
+    }
+
+    /// Returns a list of identifier/rights pairs for the mailbox
+    pub fn acls(&self) -> &[AclEntry<'_>] {
+        &*self.acls
+    }
 }
 
 /// From [section 3.6 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.6).
@@ -172,27 +184,29 @@ pub struct AclEntry<'a> {
 
 /// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
 ///
+/// This is a wrapper around a single [`ListRights`].
+///
 /// The LISTRIGHTS response from the [`Session::list_rights`] IMAP command
 #[self_referencing]
-pub struct ListRights {
+pub struct ListRightsResponse {
     data: Vec<u8>,
     #[borrows(data)]
     #[covariant]
-    pub(crate) rights: InnerListRights<'this>,
+    pub(crate) rights: ListRights<'this>,
 }
 
-impl ListRights {
+impl ListRightsResponse {
     /// Parse the given input into a [`ListRights`] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
-        ListRightsTryBuilder {
+        ListRightsResponseTryBuilder {
             data: owned,
             rights_builder: |input| {
                 // There should only be ONE single LISTRIGHTS response
                 parse_until_done(input, unsolicited, |response| match response {
-                    Response::ListRights(a) => Ok(MapOrNot::Map(InnerListRights {
+                    Response::ListRights(a) => Ok(MapOrNot::Map(ListRights {
                         mailbox: a.mailbox,
                         identifier: a.identifier,
                         required: a.required.into(),
@@ -205,30 +219,18 @@ impl ListRights {
         .try_build()
     }
 
-    /// Returns the mailbox for the rights
-    pub fn mailbox(&self) -> &str {
-        &*self.borrow_rights().mailbox
-    }
-
-    /// Returns the user identifier for the rights
-    pub fn identifier(&self) -> &str {
-        &*self.borrow_rights().identifier
-    }
-
-    /// Returns the set of rights that are always provided for this identifier
-    pub fn required(&self) -> &AclRights {
-        &self.borrow_rights().required
-    }
-
-    /// Returns the set of rights that can be granted to the identifier
-    pub fn optional(&self) -> &AclRights {
-        &self.borrow_rights().optional
+    /// Access to the wrapped [`ListRights`] struct
+    pub fn list_rights(&self) -> &ListRights<'_> {
+        self.borrow_rights()
     }
 }
 
-/// Inner struct to manage storing the references for ouroboros
+/// From [section 3.7 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.7).
+///
+/// Used by [`ListRightsResponse`].
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct InnerListRights<'a> {
+#[non_exhaustive]
+pub struct ListRights<'a> {
     /// The mailbox for the rights
     pub(crate) mailbox: Cow<'a, str>,
     /// The user identifier for the rights
@@ -239,29 +241,53 @@ pub(crate) struct InnerListRights<'a> {
     pub(crate) optional: AclRights,
 }
 
+impl ListRights<'_> {
+    /// Returns the mailbox for the rights
+    pub fn mailbox(&self) -> &str {
+        &*self.mailbox
+    }
+
+    /// Returns the user identifier for the rights
+    pub fn identifier(&self) -> &str {
+        &*self.identifier
+    }
+
+    /// Returns the set of rights that are always provided for this identifier
+    pub fn required(&self) -> &AclRights {
+        &self.required
+    }
+
+    /// Returns the set of rights that can be granted to the identifier
+    pub fn optional(&self) -> &AclRights {
+        &self.optional
+    }
+}
+
 /// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
+///
+/// This is a wrapper around a single [`MyRights`].
 ///
 /// The MYRIGHTS response from the [`Session::my_rights`] IMAP command
 #[self_referencing]
-pub struct MyRights {
+pub struct MyRightsResponse {
     data: Vec<u8>,
     #[borrows(data)]
     #[covariant]
-    pub(crate) rights: InnerMyRights<'this>,
+    pub(crate) rights: MyRights<'this>,
 }
 
-impl MyRights {
+impl MyRightsResponse {
     /// Parse the given input into a [`MyRights`] response.
     pub fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
-        MyRightsTryBuilder {
+        MyRightsResponseTryBuilder {
             data: owned,
             rights_builder: |input| {
                 // There should only be ONE single MYRIGHTS response
                 parse_until_done(input, unsolicited, |response| match response {
-                    Response::MyRights(a) => Ok(MapOrNot::Map(InnerMyRights {
+                    Response::MyRights(a) => Ok(MapOrNot::Map(MyRights {
                         mailbox: a.mailbox,
                         rights: a.rights.into(),
                     })),
@@ -272,24 +298,34 @@ impl MyRights {
         .try_build()
     }
 
-    /// Returns the mailbox for the rights
-    pub fn mailbox(&self) -> &str {
-        &*self.borrow_rights().mailbox
-    }
-
-    /// Returns the rights for the mailbox
-    pub fn rights(&self) -> &AclRights {
-        &self.borrow_rights().rights
+    /// Access to the wrapped [`MyRights`] struct
+    pub fn my_rights(&self) -> &MyRights<'_> {
+        self.borrow_rights()
     }
 }
 
-/// Inner struct to manage storing the references for ouroboros
+/// From [section 3.8 of RFC 4313](https://datatracker.ietf.org/doc/html/rfc4314#section-3.8).
+///
+/// Used by [`MyRightsResponse`].
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct InnerMyRights<'a> {
+#[non_exhaustive]
+pub struct MyRights<'a> {
     /// The mailbox for the rights
     pub(crate) mailbox: Cow<'a, str>,
     /// The rights for the mailbox
     pub(crate) rights: AclRights,
+}
+
+impl MyRights<'_> {
+    /// Returns the mailbox for the rights
+    pub fn mailbox(&self) -> &str {
+        &*self.mailbox
+    }
+
+    /// Returns the rights for the mailbox
+    pub fn rights(&self) -> &AclRights {
+        &self.rights
+    }
 }
 
 #[cfg(test)]

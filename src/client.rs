@@ -1337,12 +1337,12 @@ impl<T: Read + Write> Session<T> {
     ///
     /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
     /// will be returned
-    pub fn get_acl(&mut self, mailbox_name: impl AsRef<str>) -> Result<Acl> {
+    pub fn get_acl(&mut self, mailbox_name: impl AsRef<str>) -> Result<AclResponse> {
         self.run_command_and_read_response(&format!(
             "GETACL {}",
             validate_str("GETACL", "mailbox", mailbox_name.as_ref())?
         ))
-        .and_then(|lines| Acl::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| AclResponse::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`LISTRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.4)
@@ -1357,13 +1357,13 @@ impl<T: Read + Write> Session<T> {
         &mut self,
         mailbox_name: impl AsRef<str>,
         identifier: impl AsRef<str>,
-    ) -> Result<ListRights> {
+    ) -> Result<ListRightsResponse> {
         self.run_command_and_read_response(&format!(
             "LISTRIGHTS {} {}",
             validate_str("LISTRIGHTS", "mailbox", mailbox_name.as_ref())?,
             validate_str("LISTRIGHTS", "identifier", identifier.as_ref())?
         ))
-        .and_then(|lines| ListRights::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| ListRightsResponse::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`MYRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.5)
@@ -1372,12 +1372,12 @@ impl<T: Read + Write> Session<T> {
     ///
     /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
     /// will be returned
-    pub fn my_rights(&mut self, mailbox_name: impl AsRef<str>) -> Result<MyRights> {
+    pub fn my_rights(&mut self, mailbox_name: impl AsRef<str>) -> Result<MyRightsResponse> {
         self.run_command_and_read_response(&format!(
             "MYRIGHTS {}",
             validate_str("MYRIGHTS", "mailbox", mailbox_name.as_ref())?,
         ))
-        .and_then(|lines| MyRights::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| MyRightsResponse::parse(lines, &mut self.unsolicited_responses_tx))
     }
 
     // these are only here because they are public interface, the rest is in `Connection`
@@ -2206,9 +2206,9 @@ mod tests {
             b"a1 GETACL \"INBOX\"\r\n".to_vec(),
             "Invalid getacl command"
         );
-        assert_eq!(acl.mailbox(), "INBOX");
+        assert_eq!(acl.acl().mailbox(), "INBOX");
         assert_eq!(
-            acl.acls(),
+            acl.acl().acls(),
             vec![AclEntry {
                 identifier: "myuser".into(),
                 rights: "lr".try_into().unwrap(),
@@ -2260,9 +2260,9 @@ mod tests {
             b"a1 GETACL \"INBOX\"\r\n".to_vec(),
             "Invalid getacl command"
         );
-        assert_eq!(acl.mailbox(), "INBOX");
+        assert_eq!(acl.acl().mailbox(), "INBOX");
         assert_eq!(
-            acl.acls(),
+            acl.acl().acls(),
             vec![
                 AclEntry {
                     identifier: "myuser".into(),
@@ -2289,10 +2289,10 @@ mod tests {
             b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
             "Invalid listrights command"
         );
-        assert_eq!(acl.mailbox(), "INBOX");
-        assert_eq!(acl.identifier(), "myuser");
-        assert_eq!(*acl.required(), "lr".try_into().unwrap());
-        assert_eq!(*acl.optional(), "kx".try_into().unwrap());
+        assert_eq!(acl.list_rights().mailbox(), "INBOX");
+        assert_eq!(acl.list_rights().identifier(), "myuser");
+        assert_eq!(*acl.list_rights().required(), "lr".try_into().unwrap());
+        assert_eq!(*acl.list_rights().optional(), "kx".try_into().unwrap());
     }
 
     #[test]
@@ -2339,8 +2339,8 @@ mod tests {
             b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
             "Invalid myrights command"
         );
-        assert_eq!(acl.mailbox(), "INBOX");
-        assert_eq!(*acl.rights(), "lrkx".try_into().unwrap())
+        assert_eq!(acl.my_rights().mailbox(), "INBOX");
+        assert_eq!(*acl.my_rights().rights(), "lrkx".try_into().unwrap())
     }
 
     #[test]
