@@ -109,10 +109,10 @@ fn smtp(user: &str) -> lettre::SmtpTransport {
 }
 
 #[test]
-#[ignore]
+#[cfg(feature = "test-full-imap")]
 fn connect_insecure_then_secure() {
     let host = test_host();
-    // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
+    // Not supported on greenmail because of https://github.com/greenmail-mail-test/greenmail/issues/135
     imap::ClientBuilder::new(&host, test_imap_port())
         .starttls()
         .connect(|domain, tcp| {

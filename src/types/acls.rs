@@ -24,6 +24,7 @@ pub enum AclModifyMode {
 ///
 /// Used as input for [`Session::set_acl`] as output in [`ListRights`], [`MyRights`], and [`AclEntry`]
 #[derive(Debug, Eq, PartialEq, Clone)]
+#[non_exhaustive]
 pub struct AclRights {
     pub(crate) data: HashSet<AclRight>,
 }

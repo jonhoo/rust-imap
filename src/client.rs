@@ -1286,6 +1286,9 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Modifies the ACLs on the given mailbox for the specified identifier.
     /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
     pub fn set_acl(
         &mut self,
         mailbox_name: impl AsRef<str>,
@@ -1312,6 +1315,9 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Removes the ACL for the given identifier from the given mailbox.
     /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
     pub fn delete_acl(
         &mut self,
         mailbox_name: impl AsRef<str>,
@@ -1328,6 +1334,9 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Returns the ACLs on the given mailbox. A set ot `ACL` responses are returned if the
     /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
     pub fn get_acl(&mut self, mailbox_name: impl AsRef<str>) -> Result<Acl> {
         self.run_command_and_read_response(&format!(
             "GETACL {}",
@@ -1341,6 +1350,9 @@ impl<T: Read + Write> Session<T> {
     /// Returns the always granted and optionally granted rights on the given mailbox for the
     /// specified identifier (login). A set ot `LISTRIGHTS` responses are returned if the
     /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
     pub fn list_rights(
         &mut self,
         mailbox_name: impl AsRef<str>,
@@ -1357,6 +1369,9 @@ impl<T: Read + Write> Session<T> {
     /// The [`MYRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.5)
     ///
     /// Returns the list of rights the logged in user has on the given mailbox.
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
     pub fn my_rights(&mut self, mailbox_name: impl AsRef<str>) -> Result<MyRights> {
         self.run_command_and_read_response(&format!(
             "MYRIGHTS {}",
