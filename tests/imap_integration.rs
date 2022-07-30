@@ -586,6 +586,11 @@ fn acl_tests() {
     assert_eq!(acl.list_rights().identifier(), user_friend);
     assert!(acl.list_rights().optional().contains('0'));
     assert!(!acl.list_rights().required().contains('0'));
+
+    // My Rights
+    let acl = s_me.my_rights("INBOX").unwrap();
+    assert_eq!(acl.my_rights().mailbox(), "INBOX");
+    assert!(acl.my_rights().rights().contains('a'));
 }
 
 #[test]
