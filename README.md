@@ -92,7 +92,7 @@ easiest way to do that is with Docker:
 
 ```console
 $ docker pull greenmail/standalone:1.6.8
-$ docker run -it --rm -e GREENMAIL_OPTS='-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose' -p 3025:3025 -p 3110:3110 -p 3143:3143 -p 3465:3465 -p 3993:3993 -p 3995:3995 greenmail/standalone:1.6.3
+$ docker run -it --rm -e GREENMAIL_OPTS='-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose' -p 3025:3025 -p 3110:3110 -p 3143:3143 -p 3465:3465 -p 3993:3993 -p 3995:3995 greenmail/standalone:1.6.8
 ```
 
 Another alternative is to test against cyrus imapd which is a more complete IMAP implementation that greenmail (supporting quotas and ACLs).
