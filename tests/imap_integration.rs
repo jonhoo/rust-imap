@@ -536,3 +536,45 @@ fn status() {
     expected.exists = 0;
     assert_eq!(mb, expected);
 }
+
+#[test]
+#[ignore]
+fn qresync() {
+    // Ignored because Greenmail does not support QRESYNC. Does work with Cyrus, though.
+    let to = "inbox-qresync@localhost";
+
+    // make a message to append
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
+        .subject("QRESYNC test mail")
+        .body("Hello world".to_string())
+        .unwrap()
+        .into();
+
+    let mut s = session(to);
+
+    // Enable extension
+    s.run_command_and_read_response("ENABLE QRESYNC").unwrap();
+
+    // Add an email and get its UID
+    let mbox = "INBOX";
+    s.select(mbox).unwrap();
+    s.append(mbox, &e.formatted()).finish().unwrap();
+    let inbox = s.uid_search("ALL").unwrap();
+    assert_eq!(inbox.len(), 1);
+    let uid = inbox.into_iter().next().unwrap();
+
+    // Mark it as deleted
+    let fetches = s
+        .uid_store(format!("{}", uid), "+FLAGS.SILENT (\\Deleted)")
+        .unwrap();
+    // Assert that MODSEQ attribute is returned
+    for f in fetches.iter() {
+        assert_ne!(f.mod_seq(), None);
+    }
+    // Expunge it
+    let r = s.uid_expunge(format!("{}", uid)).unwrap();
+    // Assert that the new highest mod sequence is being returned
+    assert_ne!(r.mod_seq, None);
+}
