@@ -124,6 +124,40 @@ pub fn parse_expunge(
     }
 }
 
+pub fn parse_append(
+    mut lines: &[u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Appended> {
+    let mut appended = Appended::default();
+
+    loop {
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Done { status, code, .. })) => {
+                lines = rest;
+                assert_eq!(status, imap_proto::Status::Ok);
+
+                if let Some(ResponseCode::AppendUid(validity, uids)) = code {
+                    appended.uid_validity = Some(validity);
+                    appended.uids = Some(uids);
+                }
+            }
+            Ok((rest, data)) => {
+                lines = rest;
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                    break Err(resp.into());
+                }
+            }
+            _ => {
+                return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+
+        if lines.is_empty() {
+            break Ok(appended);
+        }
+    }
+}
+
 pub fn parse_noop(
     lines: Vec<u8>,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
@@ -697,5 +731,49 @@ mod tests {
         assert_eq!(del.next(), Some(5));
         assert_eq!(del.next(), Some(12));
         assert_eq!(del.next(), None);
+    }
+
+    #[test]
+    fn parse_append_uid() {
+        // If the user has enabled UIDPLUS (RFC 4315), the response contains an APPENDUID
+        // response code followed by the UIDVALIDITY of the destination mailbox and the
+        // UID assigned to the appended message in the destination mailbox.
+        // If the MULTIAPPEND extension is also used, there can be multiple UIDs.
+        let lines = b"A003 OK [APPENDUID 38505 3955] APPEND completed\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let resp = parse_append(lines, &mut send).unwrap();
+
+        assert!(recv.try_recv().is_err());
+        assert_eq!(resp.uid_validity, Some(38505));
+        match resp.uids {
+            Some(uid_list) => {
+                let mut it = uid_list.iter();
+                assert_eq!(it.next(), Some(&UidSetMember::Uid(3955)));
+                assert_eq!(it.next(), None);
+            }
+            None => panic!("Missing UIDs in APPEND response"),
+        };
+    }
+
+    #[test]
+    fn parse_multiappend_uid() {
+        // If the user has enabled UIDPLUS (RFC 4315), the response contains an APPENDUID
+        // response code followed by the UIDVALIDITY of the destination mailbox and the
+        // UID assigned to the appended message in the destination mailbox.
+        // If the MULTIAPPEND extension is also used, there can be multiple UIDs.
+        let lines = b"A003 OK [APPENDUID 38505 3955:3957] APPEND completed\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let resp = parse_append(lines, &mut send).unwrap();
+
+        assert!(recv.try_recv().is_err());
+        assert_eq!(resp.uid_validity, Some(38505));
+        match resp.uids {
+            Some(uid_list) => {
+                let mut it = uid_list.iter();
+                assert_eq!(it.next(), Some(&UidSetMember::UidRange(3955..=3957)));
+                assert_eq!(it.next(), None);
+            }
+            None => panic!("Missing UIDs in APPEND response"),
+        };
     }
 }

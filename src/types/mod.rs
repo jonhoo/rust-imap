@@ -123,3 +123,6 @@ pub use self::deleted::Deleted;
 
 mod unsolicited_response;
 pub use self::unsolicited_response::{AttributeValue, UnsolicitedResponse};
+
+mod appended;
+pub use self::appended::Appended;
