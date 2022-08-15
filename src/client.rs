@@ -215,7 +215,7 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
     ///
     /// Note: be sure to set flags and optional date before you
     /// finish the command.
-    pub fn finish(&mut self) -> Result<()> {
+    pub fn finish(&mut self) -> Result<Appended> {
         let flagstr = self
             .flags
             .clone()
@@ -246,7 +246,9 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
         self.session.stream.write_all(self.content)?;
         self.session.stream.write_all(b"\r\n")?;
         self.session.stream.flush()?;
-        self.session.read_response().map(|_| ())
+        self.session
+            .read_response()
+            .and_then(|(lines, _)| parse_append(&lines, &mut self.session.unsolicited_responses_tx))
     }
 }
 
@@ -784,8 +786,9 @@ impl<T: Read + Write> Session<T> {
     /// removes all messages that have [`Flag::Deleted`] set from the currently selected mailbox.
     /// The message sequence number of each message that is removed is returned.
     pub fn expunge(&mut self) -> Result<Deleted> {
-        self.run_command_and_read_response("EXPUNGE")
-            .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
+        self.run_command("EXPUNGE")?;
+        self.read_response()
+            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`UID EXPUNGE` command](https://tools.ietf.org/html/rfc4315#section-2.1) permanently
@@ -811,8 +814,9 @@ impl<T: Read + Write> Session<T> {
     /// Alternatively, the client may fall back to using just [`Session::expunge`], risking the
     /// unintended removal of some messages.
     pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Deleted> {
-        self.run_command_and_read_response(&format!("UID EXPUNGE {}", uid_set.as_ref()))
-            .and_then(|lines| parse_expunge(lines, &mut self.unsolicited_responses_tx))
+        self.run_command(&format!("UID EXPUNGE {}", uid_set.as_ref()))?;
+        self.read_response()
+            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
     }
 
     /// The [`CHECK` command](https://tools.ietf.org/html/rfc3501#section-6.4.1) requests a
@@ -995,7 +999,7 @@ impl<T: Read + Write> Session<T> {
         ))
     }
 
-    /// Equivalent to [`Session::copy`], except that all identifiers in `sequence_set` are
+    /// Equivalent to [`Session::mv`], except that all identifiers in `sequence_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8)
     /// and the [semantics of `MOVE` and `UID
     /// MOVE`](https://tools.ietf.org/html/rfc6851#section-3.3).

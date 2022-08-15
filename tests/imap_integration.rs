@@ -1,7 +1,6 @@
 extern crate chrono;
 extern crate imap;
 extern crate lettre;
-extern crate lettre_email;
 extern crate native_tls;
 
 use chrono::{FixedOffset, TimeZone};
@@ -19,9 +18,61 @@ fn tls() -> native_tls::TlsConnector {
         .unwrap()
 }
 
+fn test_host() -> String {
+    std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
+}
+
+fn test_smtp_host() -> String {
+    std::env::var("TEST_SMTP_HOST")
+        .unwrap_or_else(|_| std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string()))
+}
+
+fn test_imap_port() -> u16 {
+    std::env::var("TEST_IMAP_PORT")
+        .unwrap_or("3143".to_string())
+        .parse()
+        .unwrap_or(3143)
+}
+
+fn test_imaps_port() -> u16 {
+    std::env::var("TEST_IMAPS_PORT")
+        .unwrap_or("3993".to_string())
+        .parse()
+        .unwrap_or(3993)
+}
+
+fn test_smtps_port() -> u16 {
+    std::env::var("TEST_SMTPS_PORT")
+        .unwrap_or("3465".to_string())
+        .parse()
+        .unwrap_or(3465)
+}
+
+fn clean_mailbox(session: &mut imap::Session<native_tls::TlsStream<TcpStream>>) {
+    session.select("INBOX").unwrap();
+    let inbox = session.search("ALL").unwrap();
+    if !inbox.is_empty() {
+        session
+            .store(
+                inbox
+                    .iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<String>>()
+                    .join(","),
+                "+FLAGS (\\Deleted)",
+            )
+            .unwrap();
+    }
+    session.expunge().unwrap();
+}
+
+fn wait_for_delivery() {
+    std::thread::sleep(std::time::Duration::from_millis(500));
+}
+
 fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
-    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
-    let mut s = imap::ClientBuilder::new(&host, 3993)
+    let host = test_host();
+    let mut s = imap::ClientBuilder::new(&host, test_imaps_port())
         .connect(|domain, tcp| {
             let ssl_conn = tls();
             Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
@@ -30,32 +81,39 @@ fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
         .login(user, user)
         .unwrap();
     s.debug = true;
+    clean_mailbox(&mut s);
     s
 }
 
 fn smtp(user: &str) -> lettre::SmtpTransport {
-    let creds = lettre::smtp::authentication::Credentials::new(user.to_string(), user.to_string());
-    lettre::SmtpClient::new(
-        &format!(
-            "{}:3465",
-            std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
-        ),
-        lettre::ClientSecurity::Wrapper(lettre::ClientTlsParameters {
-            connector: tls(),
-            domain: "smpt.example.com".to_string(),
-        }),
-    )
-    .unwrap()
-    .credentials(creds)
-    .transport()
+    use lettre::{
+        transport::smtp::{
+            authentication::Credentials,
+            client::{Tls, TlsParameters},
+        },
+        SmtpTransport,
+    };
+
+    let creds = Credentials::new(user.to_string(), user.to_string());
+    let hostname = test_smtp_host();
+    let tls = TlsParameters::builder(hostname.clone())
+        .dangerous_accept_invalid_certs(true)
+        .dangerous_accept_invalid_hostnames(true)
+        .build()
+        .unwrap();
+    SmtpTransport::builder_dangerous(hostname)
+        .port(test_smtps_port())
+        .tls(Tls::Wrapper(tls))
+        .credentials(creds)
+        .build()
 }
 
 #[test]
 #[ignore]
 fn connect_insecure_then_secure() {
-    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
+    let host = test_host();
     // ignored because of https://github.com/greenmail-mail-test/greenmail/issues/135
-    imap::ClientBuilder::new(&host, 3143)
+    imap::ClientBuilder::new(&host, test_imap_port())
         .starttls()
         .connect(|domain, tcp| {
             let ssl_conn = tls();
@@ -66,8 +124,8 @@ fn connect_insecure_then_secure() {
 
 #[test]
 fn connect_secure() {
-    let host = std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string());
-    imap::ClientBuilder::new(&host, 3993)
+    let host = test_host();
+    imap::ClientBuilder::new(&host, test_imaps_port())
         .connect(|domain, tcp| {
             let ssl_conn = tls();
             Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
@@ -104,25 +162,25 @@ fn inbox() {
     c.select("INBOX").unwrap();
 
     // then send the e-mail
-    let mut s = smtp(to);
-    let e = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let s = smtp(to);
+    let e = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My first e-mail")
-        .text("Hello world from SMTP")
-        .build()
+        .body("Hello world from SMTP".to_string())
         .unwrap();
-    s.send(e.into()).unwrap();
+    s.send(&e.into()).unwrap();
 
     // send a second e-mail
-    let e = lettre_email::Email::builder()
-        .from("sender2@localhost")
-        .to(to)
+    let e = lettre::message::Message::builder()
+        .from("sender2@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My second e-mail")
-        .text("Hello world from SMTP")
-        .build()
+        .body("Hello world from SMTP".to_string())
         .unwrap();
-    s.send(e.into()).unwrap();
+    s.send(&e.into()).unwrap();
+
+    wait_for_delivery();
 
     // now we should see the e-mails!
     let inbox = c.search("ALL").unwrap();
@@ -145,12 +203,11 @@ fn inbox() {
         .any(|m| m == &imap::types::UnsolicitedResponse::Recent(2)));
 
     // let's see that we can also fetch the e-mails
-    let fetch = c.fetch("1", "(ALL UID)").unwrap();
+    let fetch = c.fetch("1", "(ENVELOPE INTERNALDATE UID)").unwrap();
     assert_eq!(fetch.len(), 1);
     let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.message, 1);
     assert_ne!(fetch.uid, None);
-    assert_eq!(fetch.size, Some(138));
     let e = fetch.envelope().unwrap();
     assert_eq!(e.subject, Some(b"My first e-mail"[..].into()));
     assert_ne!(e.from, None);
@@ -230,15 +287,16 @@ fn inbox_uid() {
     c.select("INBOX").unwrap();
 
     // then send the e-mail
-    let mut s = smtp(to);
-    let e = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let s = smtp(to);
+    let e = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My first e-mail")
-        .text("Hello world from SMTP")
-        .build()
+        .body("Hello world from SMTP".to_string())
         .unwrap();
-    s.send(e.into()).unwrap();
+    s.send(&e.into()).unwrap();
+
+    wait_for_delivery();
 
     // now we should see the e-mail!
     let inbox = c
@@ -263,7 +321,9 @@ fn inbox_uid() {
         .any(|m| m == &imap::types::UnsolicitedResponse::Recent(1)));
 
     // let's see that we can also fetch the e-mail
-    let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
+    let fetch = c
+        .uid_fetch(format!("{}", uid), "(ENVELOPE INTERNALDATE FLAGS UID)")
+        .unwrap();
     assert_eq!(fetch.len(), 1);
     let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
@@ -288,7 +348,7 @@ fn list() {
     let mut s = session("readonly-test@localhost");
     s.select("INBOX").unwrap();
     let subdirs = s.list(None, Some("%")).unwrap();
-    assert_eq!(subdirs.len(), 0);
+    assert_eq!(subdirs.len(), 1);
 
     // TODO: make a subdir
 }
@@ -298,12 +358,11 @@ fn append() {
     let to = "inbox-append1@localhost";
 
     // make a message to append
-    let e: lettre::SendableEmail = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My second e-mail")
-        .text("Hello world")
-        .build()
+        .body("Hello world".to_string())
         .unwrap()
         .into();
 
@@ -312,9 +371,7 @@ fn append() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     //append
-    c.append(mbox, e.message_to_string().unwrap().as_bytes())
-        .finish()
-        .unwrap();
+    c.append(mbox, &e.formatted()).finish().unwrap();
 
     // now we should see the e-mail!
     let inbox = c.uid_search("ALL").unwrap();
@@ -323,7 +380,7 @@ fn append() {
     let uid = inbox.into_iter().next().unwrap();
 
     // fetch the e-mail
-    let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
+    let fetch = c.uid_fetch(format!("{}", uid), "(ENVELOPE UID)").unwrap();
     assert_eq!(fetch.len(), 1);
     let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
@@ -347,12 +404,11 @@ fn append_with_flags() {
     let to = "inbox-append2@localhost";
 
     // make a message to append
-    let e: lettre::SendableEmail = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My third e-mail")
-        .text("Hello world")
-        .build()
+        .body("Hello world".to_string())
         .unwrap()
         .into();
 
@@ -362,7 +418,7 @@ fn append_with_flags() {
     c.select(mbox).unwrap();
     //append
     let flags = vec![Flag::Seen, Flag::Flagged];
-    c.append(mbox, e.message_to_string().unwrap().as_bytes())
+    c.append(mbox, &e.formatted())
         .flags(flags)
         .finish()
         .unwrap();
@@ -374,7 +430,9 @@ fn append_with_flags() {
     let uid = inbox.into_iter().next().unwrap();
 
     // fetch the e-mail
-    let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
+    let fetch = c
+        .uid_fetch(format!("{}", uid), "(ENVELOPE FLAGS UID)")
+        .unwrap();
     assert_eq!(fetch.len(), 1);
     let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
@@ -403,12 +461,11 @@ fn append_with_flags_and_date() {
     let to = "inbox-append3@localhost";
 
     // make a message to append
-    let e: lettre::SendableEmail = lettre_email::Email::builder()
-        .from("sender@localhost")
-        .to(to)
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
         .subject("My third e-mail")
-        .text("Hello world")
-        .build()
+        .body("Hello world".to_string())
         .unwrap()
         .into();
 
@@ -420,7 +477,7 @@ fn append_with_flags_and_date() {
     let date = FixedOffset::east(8 * 3600)
         .ymd(2020, 12, 13)
         .and_hms(13, 36, 36);
-    c.append(mbox, e.message_to_string().unwrap().as_bytes())
+    c.append(mbox, &e.formatted())
         .flag(Flag::Seen)
         .flag(Flag::Flagged)
         .internal_date(date)
@@ -434,7 +491,9 @@ fn append_with_flags_and_date() {
     let uid = inbox.into_iter().next().unwrap();
 
     // fetch the e-mail
-    let fetch = c.uid_fetch(format!("{}", uid), "(ALL UID)").unwrap();
+    let fetch = c
+        .uid_fetch(format!("{}", uid), "(INTERNALDATE UID)")
+        .unwrap();
     assert_eq!(fetch.len(), 1);
     let fetch = fetch.iter().next().unwrap();
     assert_eq!(fetch.uid, Some(uid));
@@ -476,4 +535,46 @@ fn status() {
     let mut expected = Mailbox::default();
     expected.exists = 0;
     assert_eq!(mb, expected);
+}
+
+#[test]
+#[ignore]
+fn qresync() {
+    // Ignored because Greenmail does not support QRESYNC. Does work with Cyrus, though.
+    let to = "inbox-qresync@localhost";
+
+    // make a message to append
+    let e: lettre::Message = lettre::message::Message::builder()
+        .from("sender@localhost".parse().unwrap())
+        .to(to.parse().unwrap())
+        .subject("QRESYNC test mail")
+        .body("Hello world".to_string())
+        .unwrap()
+        .into();
+
+    let mut s = session(to);
+
+    // Enable extension
+    s.run_command_and_read_response("ENABLE QRESYNC").unwrap();
+
+    // Add an email and get its UID
+    let mbox = "INBOX";
+    s.select(mbox).unwrap();
+    s.append(mbox, &e.formatted()).finish().unwrap();
+    let inbox = s.uid_search("ALL").unwrap();
+    assert_eq!(inbox.len(), 1);
+    let uid = inbox.into_iter().next().unwrap();
+
+    // Mark it as deleted
+    let fetches = s
+        .uid_store(format!("{}", uid), "+FLAGS.SILENT (\\Deleted)")
+        .unwrap();
+    // Assert that MODSEQ attribute is returned
+    for f in fetches.iter() {
+        assert_ne!(f.mod_seq(), None);
+    }
+    // Expunge it
+    let r = s.uid_expunge(format!("{}", uid)).unwrap();
+    // Assert that the new highest mod sequence is being returned
+    assert_ne!(r.mod_seq, None);
 }

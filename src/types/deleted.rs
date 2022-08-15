@@ -1,13 +1,15 @@
 use super::{Seq, Uid};
 use std::ops::RangeInclusive;
 
-/// An enum representing message sequence numbers or UID sequence sets returned
-/// in response to a `EXPUNGE` command.
+/// A struct containing message sequence numbers or UID sequence sets and a mod
+/// sequence returned in response to a `EXPUNGE` command.
 ///
 /// The `EXPUNGE` command may return several `EXPUNGE` responses referencing
 /// message sequence numbers, or it may return a `VANISHED` response referencing
 /// multiple UID values in a sequence set if the client has enabled
-/// [QRESYNC](https://tools.ietf.org/html/rfc7162#section-3.2.7).
+/// [QRESYNC](https://tools.ietf.org/html/rfc7162#section-3.2.7). If `QRESYNC` is
+/// enabled, the server will also return the mod sequence of the completed
+/// operation.
 ///
 /// `Deleted` implements some iterators to make it easy to use. If the caller
 /// knows that they should be receiving an `EXPUNGE` or `VANISHED` response,
@@ -39,7 +41,17 @@ use std::ops::RangeInclusive;
 /// # }
 /// ```
 #[derive(Debug, Clone)]
-pub enum Deleted {
+#[non_exhaustive]
+pub struct Deleted {
+    /// The list of messages that were expunged
+    pub messages: DeletedMessages,
+    /// The mod sequence of the performed operation, if the `QRESYNC` extension
+    /// is enabled.
+    pub mod_seq: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub enum DeletedMessages {
     /// Message sequence numbers given in an `EXPUNGE` response.
     Expunged(Vec<Seq>),
     /// Message UIDs given in a `VANISHED` response.
@@ -49,14 +61,20 @@ pub enum Deleted {
 impl Deleted {
     /// Construct a new `Deleted` value from a vector of message sequence
     /// numbers returned in one or more `EXPUNGE` responses.
-    pub fn from_expunged(v: Vec<u32>) -> Self {
-        Deleted::Expunged(v)
+    pub fn from_expunged(v: Vec<u32>, mod_seq: Option<u64>) -> Self {
+        Self {
+            messages: DeletedMessages::Expunged(v),
+            mod_seq: mod_seq,
+        }
     }
 
     /// Construct a new `Deleted` value from a sequence-set of UIDs
     /// returned in a `VANISHED` response
-    pub fn from_vanished(v: Vec<RangeInclusive<u32>>) -> Self {
-        Deleted::Vanished(v)
+    pub fn from_vanished(v: Vec<RangeInclusive<u32>>, mod_seq: Option<u64>) -> Self {
+        Self {
+            messages: DeletedMessages::Vanished(v),
+            mod_seq: mod_seq,
+        }
     }
 
     /// Return an iterator over message sequence numbers from an `EXPUNGE`
@@ -64,9 +82,9 @@ impl Deleted {
     /// can be used to ensure only sequence numbers returned in an `EXPUNGE`
     /// response are processed.
     pub fn seqs(&self) -> impl Iterator<Item = Seq> + '_ {
-        match self {
-            Deleted::Expunged(s) => s.iter(),
-            Deleted::Vanished(_) => [].iter(),
+        match &self.messages {
+            DeletedMessages::Expunged(s) => s.iter(),
+            DeletedMessages::Vanished(_) => [].iter(),
         }
         .copied()
     }
@@ -75,18 +93,18 @@ impl Deleted {
     /// If the client is expecting UIDs this function can be used to ensure
     /// only UIDs are processed.
     pub fn uids(&self) -> impl Iterator<Item = Uid> + '_ {
-        match self {
-            Deleted::Expunged(_) => [].iter(),
-            Deleted::Vanished(s) => s.iter(),
+        match &self.messages {
+            DeletedMessages::Expunged(_) => [].iter(),
+            DeletedMessages::Vanished(s) => s.iter(),
         }
         .flat_map(|range| range.clone())
     }
 
     /// Return if the set is empty
     pub fn is_empty(&self) -> bool {
-        match self {
-            Deleted::Expunged(v) => v.is_empty(),
-            Deleted::Vanished(v) => v.is_empty(),
+        match &self.messages {
+            DeletedMessages::Expunged(v) => v.is_empty(),
+            DeletedMessages::Vanished(v) => v.is_empty(),
         }
     }
 }
@@ -96,9 +114,9 @@ impl<'a> IntoIterator for &'a Deleted {
     type IntoIter = Box<dyn Iterator<Item = u32> + 'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Deleted::Expunged(_) => Box::new(self.seqs()),
-            Deleted::Vanished(_) => Box::new(self.uids()),
+        match &self.messages {
+            DeletedMessages::Expunged(_) => Box::new(self.seqs()),
+            DeletedMessages::Vanished(_) => Box::new(self.uids()),
         }
     }
 }
@@ -109,7 +127,7 @@ mod test {
 
     #[test]
     fn seq() {
-        let seqs = Deleted::from_expunged(vec![3, 6, 9, 12]);
+        let seqs = Deleted::from_expunged(vec![3, 6, 9, 12], None);
         let mut i = seqs.into_iter();
         assert_eq!(Some(3), i.next());
         assert_eq!(Some(6), i.next());
@@ -117,14 +135,14 @@ mod test {
         assert_eq!(Some(12), i.next());
         assert_eq!(None, i.next());
 
-        let seqs = Deleted::from_expunged(vec![]);
+        let seqs = Deleted::from_expunged(vec![], None);
         let mut i = seqs.into_iter();
         assert_eq!(None, i.next());
     }
 
     #[test]
     fn seq_set() {
-        let uids = Deleted::from_vanished(vec![1..=1, 3..=5, 8..=9, 12..=12]);
+        let uids = Deleted::from_vanished(vec![1..=1, 3..=5, 8..=9, 12..=12], None);
         let mut i = uids.into_iter();
         assert_eq!(Some(1), i.next());
         assert_eq!(Some(3), i.next());
@@ -135,13 +153,13 @@ mod test {
         assert_eq!(Some(12), i.next());
         assert_eq!(None, i.next());
 
-        let uids = Deleted::from_vanished(vec![]);
+        let uids = Deleted::from_vanished(vec![], None);
         assert_eq!(None, uids.into_iter().next());
     }
 
     #[test]
     fn seqs() {
-        let seqs: Deleted = Deleted::from_expunged(vec![3, 6, 9, 12]);
+        let seqs: Deleted = Deleted::from_expunged(vec![3, 6, 9, 12], None);
         let mut count: u32 = 0;
         for seq in seqs.seqs() {
             count += 3;
@@ -152,7 +170,7 @@ mod test {
 
     #[test]
     fn uids() {
-        let uids: Deleted = Deleted::from_vanished(vec![1..=6]);
+        let uids: Deleted = Deleted::from_vanished(vec![1..=6], None);
         let mut count: u32 = 0;
         for uid in uids.uids() {
             count += 1;
@@ -163,7 +181,7 @@ mod test {
 
     #[test]
     fn generic_iteration() {
-        let seqs: Deleted = Deleted::from_expunged(vec![3, 6, 9, 12]);
+        let seqs: Deleted = Deleted::from_expunged(vec![3, 6, 9, 12], None);
         let mut count: u32 = 0;
         for seq in &seqs {
             count += 3;
@@ -171,7 +189,7 @@ mod test {
         }
         assert_eq!(count, 12);
 
-        let uids: Deleted = Deleted::from_vanished(vec![1..=6]);
+        let uids: Deleted = Deleted::from_vanished(vec![1..=6], None);
         let mut count: u32 = 0;
         for uid in &uids {
             count += 1;

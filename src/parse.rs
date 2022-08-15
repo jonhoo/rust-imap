@@ -78,6 +78,7 @@ pub fn parse_expunge(
     let mut lines: &[u8] = &lines;
     let mut expunged = Vec::new();
     let mut vanished = Vec::new();
+    let mut mod_seq: Option<u64> = None;
 
     loop {
         if lines.is_empty() {
@@ -85,6 +86,13 @@ pub fn parse_expunge(
         }
 
         match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Done { status, code, .. })) => {
+                assert_eq!(status, imap_proto::Status::Ok);
+                lines = rest;
+                if let Some(ResponseCode::HighestModSeq(ms)) = code {
+                    mod_seq = Some(ms);
+                };
+            }
             Ok((rest, Response::Expunge(seq))) => {
                 lines = rest;
                 expunged.push(seq);
@@ -110,9 +118,43 @@ pub fn parse_expunge(
     // always one or the other.
     // https://tools.ietf.org/html/rfc7162#section-3.2.10
     if !vanished.is_empty() {
-        Ok(Deleted::from_vanished(vanished))
+        Ok(Deleted::from_vanished(vanished, mod_seq))
     } else {
-        Ok(Deleted::from_expunged(expunged))
+        Ok(Deleted::from_expunged(expunged, mod_seq))
+    }
+}
+
+pub fn parse_append(
+    mut lines: &[u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+) -> Result<Appended> {
+    let mut appended = Appended::default();
+
+    loop {
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, Response::Done { status, code, .. })) => {
+                lines = rest;
+                assert_eq!(status, imap_proto::Status::Ok);
+
+                if let Some(ResponseCode::AppendUid(validity, uids)) = code {
+                    appended.uid_validity = Some(validity);
+                    appended.uids = Some(uids);
+                }
+            }
+            Ok((rest, data)) => {
+                lines = rest;
+                if let Some(resp) = try_handle_unilateral(data, unsolicited) {
+                    break Err(resp.into());
+                }
+            }
+            _ => {
+                return Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+
+        if lines.is_empty() {
+            break Ok(appended);
+        }
     }
 }
 
@@ -663,5 +705,75 @@ mod tests {
         assert_eq!(first.uid, Some(117));
         assert_eq!(first.body(), None);
         assert_eq!(first.header(), None);
+    }
+
+    #[test]
+    fn parse_expunged_mod_seq_test() {
+        // VANISHED can appear if the user has enabled QRESYNC (RFC 7162), in response to
+        // SELECT/EXAMINE (QRESYNC); UID FETCH (VANISHED); or EXPUNGE commands. In the latter
+        // case, the VANISHED responses will be parsed with the response and the list of
+        // expunged message is included in the returned struct.
+        let (mut send, recv) = mpsc::channel();
+
+        // Test VANISHED mixed with FETCH
+        let lines = b"* VANISHED 3:5,12\r\n\
+                      B202 OK [HIGHESTMODSEQ 20010715194045319] expunged\r\n";
+
+        let deleted = parse_expunge(lines.to_vec(), &mut send).unwrap();
+
+        // No unsolicited responses, they are aggregated in the returned type
+        assert!(recv.try_recv().is_err());
+
+        assert_eq!(deleted.mod_seq, Some(20010715194045319));
+        let mut del = deleted.uids();
+        assert_eq!(del.next(), Some(3));
+        assert_eq!(del.next(), Some(4));
+        assert_eq!(del.next(), Some(5));
+        assert_eq!(del.next(), Some(12));
+        assert_eq!(del.next(), None);
+    }
+
+    #[test]
+    fn parse_append_uid() {
+        // If the user has enabled UIDPLUS (RFC 4315), the response contains an APPENDUID
+        // response code followed by the UIDVALIDITY of the destination mailbox and the
+        // UID assigned to the appended message in the destination mailbox.
+        // If the MULTIAPPEND extension is also used, there can be multiple UIDs.
+        let lines = b"A003 OK [APPENDUID 38505 3955] APPEND completed\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let resp = parse_append(lines, &mut send).unwrap();
+
+        assert!(recv.try_recv().is_err());
+        assert_eq!(resp.uid_validity, Some(38505));
+        match resp.uids {
+            Some(uid_list) => {
+                let mut it = uid_list.iter();
+                assert_eq!(it.next(), Some(&UidSetMember::Uid(3955)));
+                assert_eq!(it.next(), None);
+            }
+            None => panic!("Missing UIDs in APPEND response"),
+        };
+    }
+
+    #[test]
+    fn parse_multiappend_uid() {
+        // If the user has enabled UIDPLUS (RFC 4315), the response contains an APPENDUID
+        // response code followed by the UIDVALIDITY of the destination mailbox and the
+        // UID assigned to the appended message in the destination mailbox.
+        // If the MULTIAPPEND extension is also used, there can be multiple UIDs.
+        let lines = b"A003 OK [APPENDUID 38505 3955:3957] APPEND completed\r\n";
+        let (mut send, recv) = mpsc::channel();
+        let resp = parse_append(lines, &mut send).unwrap();
+
+        assert!(recv.try_recv().is_err());
+        assert_eq!(resp.uid_validity, Some(38505));
+        match resp.uids {
+            Some(uid_list) => {
+                let mut it = uid_list.iter();
+                assert_eq!(it.next(), Some(&UidSetMember::UidRange(3955..=3957)));
+                assert_eq!(it.next(), None);
+            }
+            None => panic!("Missing UIDs in APPEND response"),
+        };
     }
 }

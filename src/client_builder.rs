@@ -139,6 +139,12 @@ where
         };
 
         let tls = handshake(self.domain.as_ref(), tcp)?;
-        Ok(Client::new(tls))
+
+        let mut client = Client::new(tls);
+        if !self.starttls {
+            client.read_greeting()?;
+        }
+
+        Ok(client)
     }
 }
