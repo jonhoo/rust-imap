@@ -374,10 +374,10 @@ impl<T: Read + Write> Client<T> {
     /// }
     /// # }
     /// ```
-    pub fn login<U: AsRef<str>, P: AsRef<str>>(
+    pub fn login(
         mut self,
-        username: U,
-        password: P,
+        username: impl AsRef<str>,
+        password: impl AsRef<str>,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         let synopsis = "LOGIN";
         let u =
@@ -432,9 +432,9 @@ impl<T: Read + Write> Client<T> {
     ///     };
     /// }
     /// ```
-    pub fn authenticate<A: Authenticator, S: AsRef<str>>(
+    pub fn authenticate<A: Authenticator>(
         mut self,
-        auth_type: S,
+        auth_type: impl AsRef<str>,
         authenticator: &A,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         ok_or_unauth_client_err!(
@@ -528,7 +528,7 @@ impl<T: Read + Write> Session<T> {
     /// [`Connection::run_command_and_read_response`], you *may* see additional untagged `RECENT`,
     /// `EXISTS`, `FETCH`, and `EXPUNGE` responses. You can get them from the
     /// `unsolicited_responses` channel of the [`Session`](struct.Session.html).
-    pub fn select<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
+    pub fn select(&mut self, mailbox_name: impl AsRef<str>) -> Result<Mailbox> {
         self.run(&format!(
             "SELECT {}",
             validate_str("SELECT", "mailbox", mailbox_name.as_ref())?
@@ -540,7 +540,7 @@ impl<T: Read + Write> Session<T> {
     /// however, the selected mailbox is identified as read-only. No changes to the permanent state
     /// of the mailbox, including per-user state, will happen in a mailbox opened with `examine`;
     /// in particular, messagess cannot lose [`Flag::Recent`] in an examined mailbox.
-    pub fn examine<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<Mailbox> {
+    pub fn examine(&mut self, mailbox_name: impl AsRef<str>) -> Result<Mailbox> {
         self.run(&format!(
             "EXAMINE {}",
             validate_str("EXAMINE", "mailbox", mailbox_name.as_ref())?
@@ -606,11 +606,11 @@ impl<T: Read + Write> Session<T> {
     ///  - `RFC822.HEADER`: Functionally equivalent to `BODY.PEEK[HEADER]`.
     ///  - `RFC822.SIZE`: The [RFC-2822](https://tools.ietf.org/html/rfc2822) size of the message.
     ///  - `UID`: The unique identifier for the message.
-    pub fn fetch<S1, S2>(&mut self, sequence_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn fetch(
+        &mut self,
+        sequence_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         if sequence_set.as_ref().is_empty() {
             Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
@@ -626,11 +626,11 @@ impl<T: Read + Write> Session<T> {
 
     /// Equivalent to [`Session::fetch`], except that all identifiers in `uid_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_fetch<S1, S2>(&mut self, uid_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn uid_fetch(
+        &mut self,
+        uid_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         if uid_set.as_ref().is_empty() {
             Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
         } else {
@@ -688,7 +688,7 @@ impl<T: Read + Write> Session<T> {
     /// the mailbox UNLESS the new incarnation has a different unique identifier validity value.
     /// See the description of the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
-    pub fn create<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<()> {
+    pub fn create(&mut self, mailbox_name: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "CREATE {}",
             validate_str("CREATE", "mailbox", mailbox_name.as_ref())?
@@ -714,7 +714,7 @@ impl<T: Read + Write> Session<T> {
     /// incarnation, UNLESS the new incarnation has a different unique identifier validity value.
     /// See the description of the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8) for more detail.
-    pub fn delete<S: AsRef<str>>(&mut self, mailbox_name: S) -> Result<()> {
+    pub fn delete(&mut self, mailbox_name: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "DELETE {}",
             validate_str("DELETE", "mailbox", mailbox_name.as_ref())?
@@ -746,7 +746,7 @@ impl<T: Read + Write> Session<T> {
     /// to a new mailbox with the given name, leaving `INBOX` empty.  If the server implementation
     /// supports inferior hierarchical names of `INBOX`, these are unaffected by a rename of
     /// `INBOX`.
-    pub fn rename<S1: AsRef<str>, S2: AsRef<str>>(&mut self, from: S1, to: S2) -> Result<()> {
+    pub fn rename(&mut self, from: impl AsRef<str>, to: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "RENAME {} {}",
             quote!(from.as_ref()),
@@ -762,7 +762,7 @@ impl<T: Read + Write> Session<T> {
     /// The server may validate the mailbox argument to `SUBSCRIBE` to verify that it exists.
     /// However, it will not unilaterally remove an existing mailbox name from the subscription
     /// list even if a mailbox by that name no longer exists.
-    pub fn subscribe<S: AsRef<str>>(&mut self, mailbox: S) -> Result<()> {
+    pub fn subscribe(&mut self, mailbox: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!("SUBSCRIBE {}", quote!(mailbox.as_ref())))
     }
 
@@ -770,7 +770,7 @@ impl<T: Read + Write> Session<T> {
     /// specified mailbox name from the server's set of "active" or "subscribed" mailboxes as
     /// returned by [`Session::lsub`].  This command returns `Ok` only if the unsubscription is
     /// successful.
-    pub fn unsubscribe<S: AsRef<str>>(&mut self, mailbox: S) -> Result<()> {
+    pub fn unsubscribe(&mut self, mailbox: impl AsRef<str>) -> Result<()> {
         self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", quote!(mailbox.as_ref())))
     }
 
@@ -813,7 +813,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// Alternatively, the client may fall back to using just [`Session::expunge`], risking the
     /// unintended removal of some messages.
-    pub fn uid_expunge<S: AsRef<str>>(&mut self, uid_set: S) -> Result<Deleted> {
+    pub fn uid_expunge(&mut self, uid_set: impl AsRef<str>) -> Result<Deleted> {
         self.run_command(&format!("UID EXPUNGE {}", uid_set.as_ref()))?;
         self.read_response()
             .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
@@ -896,11 +896,11 @@ impl<T: Read + Write> Session<T> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn store<S1, S2>(&mut self, sequence_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn store(
+        &mut self,
+        sequence_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         self.run_command_and_read_response(&format!(
             "STORE {} {}",
             sequence_set.as_ref(),
@@ -911,11 +911,11 @@ impl<T: Read + Write> Session<T> {
 
     /// Equivalent to [`Session::store`], except that all identifiers in `sequence_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_store<S1, S2>(&mut self, uid_set: S1, query: S2) -> Result<Fetches>
-    where
-        S1: AsRef<str>,
-        S2: AsRef<str>,
-    {
+    pub fn uid_store(
+        &mut self,
+        uid_set: impl AsRef<str>,
+        query: impl AsRef<str>,
+    ) -> Result<Fetches> {
         self.run_command_and_read_response(&format!(
             "UID STORE {} {}",
             uid_set.as_ref(),
@@ -931,10 +931,10 @@ impl<T: Read + Write> Session<T> {
     ///
     /// If the `COPY` command is unsuccessful for any reason, the server restores the destination
     /// mailbox to its state before the `COPY` attempt.
-    pub fn copy<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn copy(
         &mut self,
-        sequence_set: S1,
-        mailbox_name: S2,
+        sequence_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "COPY {} {}",
@@ -945,10 +945,10 @@ impl<T: Read + Write> Session<T> {
 
     /// Equivalent to [`Session::copy`], except that all identifiers in `sequence_set` are
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_copy<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn uid_copy(
         &mut self,
-        uid_set: S1,
-        mailbox_name: S2,
+        uid_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "UID COPY {} {}",
@@ -987,10 +987,10 @@ impl<T: Read + Write> Session<T> {
     /// orphaned).  The server will generally not leave any message in both mailboxes (it would be
     /// bad for a partial failure to result in a bunch of duplicate messages).  This is true even
     /// if the server returns with [`Error::No`].
-    pub fn mv<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn mv(
         &mut self,
-        sequence_set: S1,
-        mailbox_name: S2,
+        sequence_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "MOVE {} {}",
@@ -1003,10 +1003,10 @@ impl<T: Read + Write> Session<T> {
     /// [`Uid`]s. See also the [`UID` command](https://tools.ietf.org/html/rfc3501#section-6.4.8)
     /// and the [semantics of `MOVE` and `UID
     /// MOVE`](https://tools.ietf.org/html/rfc6851#section-3.3).
-    pub fn uid_mv<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn uid_mv(
         &mut self,
-        uid_set: S1,
-        mailbox_name: S2,
+        uid_set: impl AsRef<str>,
+        mailbox_name: impl AsRef<str>,
     ) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "UID MOVE {} {}",
@@ -1121,10 +1121,10 @@ impl<T: Read + Write> Session<T> {
     ///  - `UNSEEN`: The number of messages which do not have [`Flag::Seen`] set.
     ///
     /// `data_items` is a space-separated list enclosed in parentheses.
-    pub fn status<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn status(
         &mut self,
-        mailbox_name: S1,
-        data_items: S2,
+        mailbox_name: impl AsRef<str>,
+        data_items: impl AsRef<str>,
     ) -> Result<Mailbox> {
         let mailbox_name = mailbox_name.as_ref();
         self.run_command_and_read_response(&format!(
@@ -1233,7 +1233,7 @@ impl<T: Read + Write> Session<T> {
     ///
     ///  - `BEFORE <date>`: Messages whose internal date (disregarding time and timezone) is earlier than the specified date.
     ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
-    pub fn search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Seq>> {
+    pub fn search(&mut self, query: impl AsRef<str>) -> Result<HashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query.as_ref()))
             .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
     }
@@ -1241,7 +1241,7 @@ impl<T: Read + Write> Session<T> {
     /// Equivalent to [`Session::search`], except that the returned identifiers
     /// are [`Uid`] instead of [`Seq`]. See also the [`UID`
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
-    pub fn uid_search<S: AsRef<str>>(&mut self, query: S) -> Result<HashSet<Uid>> {
+    pub fn uid_search(&mut self, query: impl AsRef<str>) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query.as_ref()))
             .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
     }
@@ -1251,11 +1251,11 @@ impl<T: Read + Write> Session<T> {
     ///
     /// This command is like [`Session::search`], except that
     /// the results are also sorted according to the supplied criteria (subject to the given charset).
-    pub fn sort<S: AsRef<str>>(
+    pub fn sort(
         &mut self,
         criteria: &[extensions::sort::SortCriterion<'_>],
         charset: extensions::sort::SortCharset<'_>,
-        query: S,
+        query: impl AsRef<str>,
     ) -> Result<Vec<Seq>> {
         self.run_command_and_read_response(&format!(
             "SORT {} {} {}",
@@ -1269,11 +1269,11 @@ impl<T: Read + Write> Session<T> {
     /// Equivalent to [`Session::sort`], except that it returns [`Uid`]s.
     ///
     /// See also [`Session::uid_search`].
-    pub fn uid_sort<S: AsRef<str>>(
+    pub fn uid_sort(
         &mut self,
         criteria: &[extensions::sort::SortCriterion<'_>],
         charset: extensions::sort::SortCharset<'_>,
-        query: S,
+        query: impl AsRef<str>,
     ) -> Result<Vec<Uid>> {
         self.run_command_and_read_response(&format!(
             "UID SORT {} {} {}",
@@ -1284,14 +1284,112 @@ impl<T: Read + Write> Session<T> {
         .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
     }
 
+    /// The [`SETACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.1)
+    ///
+    /// Modifies the ACLs on the given mailbox for the specified identifier.
+    /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
+    pub fn set_acl(
+        &mut self,
+        mailbox_name: impl AsRef<str>,
+        identifier: impl AsRef<str>,
+        rights: &AclRights,
+        modification: AclModifyMode,
+    ) -> Result<()> {
+        let mod_str = match modification {
+            AclModifyMode::Replace => "",
+            AclModifyMode::Add => "+",
+            AclModifyMode::Remove => "-",
+        };
+
+        self.run_command_and_check_ok(&format!(
+            "SETACL {} {} {}{}",
+            validate_str("SETACL", "mailbox", mailbox_name.as_ref())?,
+            validate_str("SETACL", "identifier", identifier.as_ref())?,
+            mod_str,
+            rights,
+        ))
+    }
+
+    /// The [`DELETEACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.2)
+    ///
+    /// Removes the ACL for the given identifier from the given mailbox.
+    /// Return [`Error::No`] if the logged in user does not have `a` rights on the mailbox.
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
+    pub fn delete_acl(
+        &mut self,
+        mailbox_name: impl AsRef<str>,
+        identifier: impl AsRef<str>,
+    ) -> Result<()> {
+        self.run_command_and_check_ok(&format!(
+            "DELETEACL {} {}",
+            validate_str("DELETEACL", "mailbox", mailbox_name.as_ref())?,
+            validate_str("DELETEACL", "identifier", identifier.as_ref())?,
+        ))
+    }
+
+    /// The [`GETACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.3)
+    ///
+    /// Returns the ACLs on the given mailbox. A set ot `ACL` responses are returned if the
+    /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
+    pub fn get_acl(&mut self, mailbox_name: impl AsRef<str>) -> Result<AclResponse> {
+        self.run_command_and_read_response(&format!(
+            "GETACL {}",
+            validate_str("GETACL", "mailbox", mailbox_name.as_ref())?
+        ))
+        .and_then(|lines| AclResponse::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
+    /// The [`LISTRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.4)
+    ///
+    /// Returns the always granted and optionally granted rights on the given mailbox for the
+    /// specified identifier (login). A set ot `LISTRIGHTS` responses are returned if the
+    /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
+    pub fn list_rights(
+        &mut self,
+        mailbox_name: impl AsRef<str>,
+        identifier: impl AsRef<str>,
+    ) -> Result<ListRightsResponse> {
+        self.run_command_and_read_response(&format!(
+            "LISTRIGHTS {} {}",
+            validate_str("LISTRIGHTS", "mailbox", mailbox_name.as_ref())?,
+            validate_str("LISTRIGHTS", "identifier", identifier.as_ref())?
+        ))
+        .and_then(|lines| ListRightsResponse::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
+    /// The [`MYRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.5)
+    ///
+    /// Returns the list of rights the logged in user has on the given mailbox.
+    ///
+    /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
+    /// will be returned
+    pub fn my_rights(&mut self, mailbox_name: impl AsRef<str>) -> Result<MyRightsResponse> {
+        self.run_command_and_read_response(&format!(
+            "MYRIGHTS {}",
+            validate_str("MYRIGHTS", "mailbox", mailbox_name.as_ref())?,
+        ))
+        .and_then(|lines| MyRightsResponse::parse(lines, &mut self.unsolicited_responses_tx))
+    }
+
     // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
-    pub fn run_command_and_check_ok<S: AsRef<str>>(&mut self, command: S) -> Result<()> {
+    pub fn run_command_and_check_ok(&mut self, command: impl AsRef<str>) -> Result<()> {
         self.run_command_and_read_response(command).map(|_| ())
     }
 
     /// Runs any command passed to it.
-    pub fn run_command<S: AsRef<str>>(&mut self, untagged_command: S) -> Result<()> {
+    pub fn run_command(&mut self, untagged_command: impl AsRef<str>) -> Result<()> {
         self.conn.run_command(untagged_command.as_ref())
     }
 
@@ -1303,7 +1401,7 @@ impl<T: Read + Write> Session<T> {
     /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     ///
     /// The response includes the final [`Response::Done`], which starts at the returned index.
-    pub fn run<S: AsRef<str>>(&mut self, untagged_command: S) -> Result<(Vec<u8>, usize)> {
+    pub fn run(&mut self, untagged_command: impl AsRef<str>) -> Result<(Vec<u8>, usize)> {
         self.conn.run(untagged_command.as_ref())
     }
 
@@ -1315,9 +1413,9 @@ impl<T: Read + Write> Session<T> {
     /// additional untagged `RECENT`, `EXISTS`, `FETCH`, and `EXPUNGE` responses!
     ///
     /// The response does not include the final [`Response::Done`].
-    pub fn run_command_and_read_response<S: AsRef<str>>(
+    pub fn run_command_and_read_response(
         &mut self,
-        untagged_command: S,
+        untagged_command: impl AsRef<str>,
     ) -> Result<Vec<u8>> {
         let (mut data, ok) = self.run(untagged_command)?;
         data.truncate(ok);
@@ -1550,7 +1648,7 @@ mod tests {
     use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
-    use imap_proto::types::*;
+    use imap_proto::types::Capability;
     use std::borrow::Cow;
 
     use super::testutils::*;
@@ -2022,6 +2120,260 @@ mod tests {
             "Invalid sort command"
         );
         assert_eq!(ids, [1, 2, 3, 4, 5].iter().cloned().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn set_acl_replace() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session
+            .set_acl(
+                "INBOX",
+                "myuser",
+                &"x".try_into().unwrap(),
+                AclModifyMode::Replace,
+            )
+            .unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETACL \"INBOX\" \"myuser\" x\r\n".to_vec(),
+            "Invalid setacl command"
+        );
+    }
+
+    #[test]
+    fn set_acl_add() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session
+            .set_acl(
+                "INBOX",
+                "myuser",
+                &"x".try_into().unwrap(),
+                AclModifyMode::Add,
+            )
+            .unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETACL \"INBOX\" \"myuser\" +x\r\n".to_vec(),
+            "Invalid setacl command"
+        );
+    }
+
+    #[test]
+    fn set_acl_remove() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session
+            .set_acl(
+                "INBOX",
+                "myuser",
+                &"x".try_into().unwrap(),
+                AclModifyMode::Remove,
+            )
+            .unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETACL \"INBOX\" \"myuser\" -x\r\n".to_vec(),
+            "Invalid setacl command"
+        );
+    }
+
+    #[test]
+    fn delete_acl() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        session.delete_acl("INBOX", "myuser").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 DELETEACL \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid deleteacl command"
+        );
+    }
+
+    #[test]
+    fn get_acl() {
+        let response = b"* ACL INBOX myuser lr\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert_eq!(acl.parsed().mailbox(), "INBOX");
+        assert_eq!(
+            acl.parsed().acls(),
+            vec![AclEntry {
+                identifier: "myuser".into(),
+                rights: "lr".try_into().unwrap(),
+            }]
+        );
+    }
+
+    #[test]
+    fn get_acl_invalid_no_acl_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn get_acl_invalid_too_many_acl_lines() {
+        let response = b"* ACL INBOX myuser lr\r\n\
+                * ACL INBOX myuser lr\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn get_acl_multiple_users() {
+        let response = b"* ACL INBOX myuser lr other_user lr\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.get_acl("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 GETACL \"INBOX\"\r\n".to_vec(),
+            "Invalid getacl command"
+        );
+        assert_eq!(acl.parsed().mailbox(), "INBOX");
+        assert_eq!(
+            acl.parsed().acls(),
+            vec![
+                AclEntry {
+                    identifier: "myuser".into(),
+                    rights: "lr".try_into().unwrap(),
+                },
+                AclEntry {
+                    identifier: "other_user".into(),
+                    rights: "lr".try_into().unwrap(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn list_rights() {
+        let response = b"* LISTRIGHTS INBOX myuser lr x k\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.list_rights("INBOX", "myuser").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid listrights command"
+        );
+        assert_eq!(acl.parsed().mailbox(), "INBOX");
+        assert_eq!(acl.parsed().identifier(), "myuser");
+        assert_eq!(*acl.parsed().required(), "lr".try_into().unwrap());
+        assert_eq!(*acl.parsed().optional(), "kx".try_into().unwrap());
+    }
+
+    #[test]
+    fn list_rights_invalid_no_rights_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.list_rights("INBOX", "myuser");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid listrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn list_rights_invalid_too_many_rights_lines() {
+        let response = b"* LISTRIGHTS INBOX myuser lr x k\r\n\
+            * LISTRIGHTS INBOX myuser lr x k\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.list_rights("INBOX", "myuser");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 LISTRIGHTS \"INBOX\" \"myuser\"\r\n".to_vec(),
+            "Invalid listrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn my_rights() {
+        let response = b"* MYRIGHTS INBOX lrxk\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.my_rights("INBOX").unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
+            "Invalid myrights command"
+        );
+        assert_eq!(acl.parsed().mailbox(), "INBOX");
+        assert_eq!(*acl.parsed().rights(), "lrkx".try_into().unwrap())
+    }
+
+    #[test]
+    fn my_rights_invalid_no_rights_lines() {
+        let response = b"a1 OK completed\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.my_rights("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
+            "Invalid myrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn my_rights_invalid_too_many_rights_lines() {
+        let response = b"* MYRIGHTS INBOX lrxk\r\n\
+            * MYRIGHTS INBOX lrxk\r\n\
+            a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let acl = session.my_rights("INBOX");
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 MYRIGHTS \"INBOX\"\r\n".to_vec(),
+            "Invalid myrights command"
+        );
+        assert!(matches!(acl, Err(Error::Parse(_))));
     }
 
     #[test]
