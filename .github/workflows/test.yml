@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
 name: cargo test
 jobs:
@@ -15,11 +15,14 @@ jobs:
         with:
           profile: minimal
           toolchain: ${{ matrix.toolchain }}
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --all-targets
     services:
       greenmail:
         image: greenmail/standalone:1.6.8
@@ -43,12 +46,14 @@ jobs:
         with:
           profile: minimal
           toolchain: ${{ matrix.toolchain }}
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features test-full-imap
+          args: --features test-full-imap --all-targets
     services:
       cyrus_imapd:
         image: outoforder/cyrus-imapd-tester:latest

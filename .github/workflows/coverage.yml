@@ -1,34 +1,34 @@
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
 name: coverage
 jobs:
   test:
     runs-on: ubuntu-latest
-    container:
-      image: xd009642/tarpaulin
-      options: --security-opt seccomp=unconfined
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: llvm-tools-preview
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
-        run: |
-          cargo tarpaulin --verbose --timeout 120 --out Xml
-        env:
-          TEST_HOST: greenmail
+        run: cargo llvm-cov --features test-full-imap --lcov --output-path lcov.info
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v2
         with:
           fail_ci_if_error: true
     services:
-      greenmail:
-        image: greenmail/standalone:1.6.8
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
         ports:
-          - 3025:3025
-          - 3110:3110
-          - 3143:3143
-          - 3465:3465
-          - 3993:3993
-          - 3995:3995
-        env:
-          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
