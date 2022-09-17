@@ -27,14 +27,10 @@ jobs:
         with:
           fail_ci_if_error: true
     services:
-      greenmail:
-        image: greenmail/standalone:1.6.8
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
         ports:
-          - 3025:3025
-          - 3110:3110
-          - 3143:3143
-          - 3465:3465
-          - 3993:3993
-          - 3995:3995
-        env:
-          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
