@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - VANISHED support in EXPUNGE responses and unsolicited responses (#172).
  - SORT command extension (#178).
  - Support for grabbing Gmail labels (#225).
+ - Support for the ACL extension (#227).
+ - Expose APPENDUID data (#232).
 
 ### Changed
  - MSRV increased to 1.43 for nom6 and bitvec
