@@ -2,27 +2,35 @@ on:
   push:
     branches: [main]
   pull_request:
-name: cargo test
+name: test
 jobs:
-  test:
+  greenmail:
     runs-on: ubuntu-latest
-    name: greenmail/${{ matrix.toolchain }}
+    name: ubuntu / ${{ matrix.toolchain }} / greenmail
     strategy:
       matrix:
-        toolchain: [stable, beta, nightly]
+        toolchain: [stable, beta]
     steps:
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.toolchain }}
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - name: cargo test
+      - name: Install ${{ matrix.toolchain }}
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          default: true
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+      # https://twitter.com/jonhoo/status/1571290371124260865
+      - name: cargo test --locked
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all-targets
+          args: --locked --all-targets
     services:
       greenmail:
         image: greenmail/standalone:1.6.8
@@ -35,25 +43,129 @@ jobs:
           - 3995:3995
         env:
           GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
-  test_cyrus:
+  cyrus:
     runs-on: ubuntu-latest
-    name: cyrus/${{ matrix.toolchain }}
+    name: ubuntu / ${{ matrix.toolchain }} / cyrus
     strategy:
       matrix:
-        toolchain: [stable, beta, nightly]
+        toolchain: [stable, beta]
     steps:
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.toolchain }}
       - uses: actions/checkout@v3
         with:
           submodules: true
+      - name: Install ${{ matrix.toolchain }}
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          default: true
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+      # https://twitter.com/jonhoo/status/1571290371124260865
+      - name: cargo test --locked
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --locked --features test-full-imap --all-targets
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
+  minimal:
+    runs-on: ubuntu-latest
+    name: ubuntu / stable / minimal-versions
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - name: Install nightly for -Zminimal-versions
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+      - name: cargo update -Zminimal-versions
+        uses: actions-rs/cargo@v1
+        with:
+          command: update
+          toolchain: nightly
+          args: -Zminimal-versions
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features test-full-imap --all-targets
+          args: --locked --features test-full-imap --all-targets
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
+  os-check:
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / stable
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+      - name: cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --locked --all-features --all-targets
+  coverage:
+    runs-on: ubuntu-latest
+    name: ubuntu / stable / coverage
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: llvm-tools-preview
+      - name: cargo install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+      - name: cargo llvm-cov
+        run: cargo llvm-cov --features test-full-imap --lcov --output-path lcov.info
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
+        with:
+          fail_ci_if_error: true
     services:
       cyrus_imapd:
         image: outoforder/cyrus-imapd-tester:latest
