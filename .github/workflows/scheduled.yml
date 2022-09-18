@@ -29,7 +29,15 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --all-features --all-targets
+          args: --locked --features test-full-imap --all-targets
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
   # https://twitter.com/alcuadrado/status/1571291687837732873
   update:
     runs-on: ubuntu-latest
@@ -59,6 +67,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --all-features --all-targets
+          args: --locked --features test-full-imap --all-targets
         env:
           RUSTFLAGS: -D deprecated
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993

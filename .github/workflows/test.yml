@@ -4,9 +4,9 @@ on:
   pull_request:
 name: test
 jobs:
-  required:
+  greenmail:
     runs-on: ubuntu-latest
-    name: ubuntu / ${{ matrix.toolchain }}
+    name: ubuntu / ${{ matrix.toolchain }} / greenmail
     strategy:
       matrix:
         toolchain: [stable, beta]
@@ -30,7 +30,54 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --all-features --all-targets
+          args: --locked --all-targets
+    services:
+      greenmail:
+        image: greenmail/standalone:1.6.8
+        ports:
+          - 3025:3025
+          - 3110:3110
+          - 3143:3143
+          - 3465:3465
+          - 3993:3993
+          - 3995:3995
+        env:
+          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
+  cyrus:
+    runs-on: ubuntu-latest
+    name: ubuntu / ${{ matrix.toolchain }} / cyrus
+    strategy:
+      matrix:
+        toolchain: [stable, beta]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install ${{ matrix.toolchain }}
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          default: true
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+      # https://twitter.com/jonhoo/status/1571290371124260865
+      - name: cargo test --locked
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --locked --features test-full-imap --all-targets
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
   minimal:
     runs-on: ubuntu-latest
     name: ubuntu / stable / minimal-versions
@@ -58,7 +105,15 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --all-features --all-targets
+          args: --locked --features test-full-imap --all-targets
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
   os-check:
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }} / stable
@@ -80,10 +135,10 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: generate-lockfile
-      - name: cargo test
+      - name: cargo check
         uses: actions-rs/cargo@v1
         with:
-          command: test
+          command: check
           args: --locked --all-features --all-targets
   coverage:
     runs-on: ubuntu-latest
@@ -106,8 +161,16 @@ jobs:
         with:
           command: generate-lockfile
       - name: cargo llvm-cov
-        run: cargo llvm-cov --locked --all-features --lcov --output-path lcov.info
+        run: cargo llvm-cov --features test-full-imap --lcov --output-path lcov.info
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v2
         with:
           fail_ci_if_error: true
+    services:
+      cyrus_imapd:
+        image: outoforder/cyrus-imapd-tester:latest
+        ports:
+          - 3025:25
+          - 3143:143
+          - 3465:465
+          - 3993:993
