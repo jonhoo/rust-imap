@@ -7,13 +7,13 @@ use std::net::TcpStream;
 use std::result;
 use std::str::Utf8Error;
 
-use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
 use imap_proto::{types::ResponseCode, Response};
 #[cfg(feature = "native-tls")]
 use native_tls::Error as TlsError;
 #[cfg(feature = "native-tls")]
 use native_tls::HandshakeError as TlsHandshakeError;
+use rsasl::prelude::{SASLError, SessionError as SASLSessionError};
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::HandshakeError as RustlsHandshakeError;
 
@@ -92,6 +92,10 @@ pub enum Error {
     ConnectionLost,
     /// Error parsing a server response.
     Parse(ParseError),
+    /// Error occurred when tyring to set up authentication
+    AuthenticationSetup(SASLError),
+    /// Error occurred during authentication
+    Authentication(SASLSessionError),
     /// Command inputs were not valid [IMAP
     /// strings](https://tools.ietf.org/html/rfc3501#section-4.3).
     Validate(ValidateError),
@@ -115,6 +119,17 @@ impl From<IoError> for Error {
 impl From<ParseError> for Error {
     fn from(err: ParseError) -> Error {
         Error::Parse(err)
+    }
+}
+
+impl From<SASLError> for Error {
+    fn from(err: SASLError) -> Self {
+        Error::AuthenticationSetup(err)
+    }
+}
+impl From<SASLSessionError> for Error {
+    fn from(err: SASLSessionError) -> Self {
+        Error::Authentication(err)
     }
 }
 
@@ -170,6 +185,8 @@ impl fmt::Display for Error {
             Error::Append => f.write_str("Could not append mail to mailbox"),
             Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
             Error::MissingStatusResponse => write!(f, "Missing STATUS Response"),
+            Error::AuthenticationSetup(ref e) => fmt::Display::fmt(e, f),
+            Error::Authentication(ref e) => fmt::Display::fmt(e, f),
         }
     }
 }
@@ -194,6 +211,8 @@ impl StdError for Error {
             Error::Append => "Could not append mail to mailbox",
             Error::Unexpected(_) => "Unexpected Response",
             Error::MissingStatusResponse => "Missing STATUS Response",
+            Error::AuthenticationSetup(_) => "Failed to setup authentication",
+            Error::Authentication(_) => "Authentication Failed",
         }
     }
 
@@ -207,6 +226,8 @@ impl StdError for Error {
             #[cfg(feature = "native-tls")]
             Error::TlsHandshake(ref e) => Some(e),
             Error::Parse(ParseError::DataNotUtf8(_, ref e)) => Some(e),
+            Error::AuthenticationSetup(ref e) => Some(e),
+            Error::Authentication(ref e) => Some(e),
             _ => None,
         }
     }
@@ -218,7 +239,7 @@ pub enum ParseError {
     /// Indicates an error parsing the status response. Such as OK, NO, and BAD.
     Invalid(Vec<u8>),
     /// The client could not find or decode the server's authentication challenge.
-    Authentication(String, Option<DecodeError>),
+    Authentication(String),
     /// The client received data that was not UTF-8 encoded.
     DataNotUtf8(Vec<u8>, Utf8Error),
 }
@@ -227,7 +248,7 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ParseError::Invalid(_) => f.write_str("Unable to parse status response"),
-            ParseError::Authentication(_, _) => {
+            ParseError::Authentication(_) => {
                 f.write_str("Unable to parse authentication response")
             }
             ParseError::DataNotUtf8(_, _) => f.write_str("Unable to parse data as UTF-8 text"),
@@ -239,15 +260,8 @@ impl StdError for ParseError {
     fn description(&self) -> &str {
         match *self {
             ParseError::Invalid(_) => "Unable to parse status response",
-            ParseError::Authentication(_, _) => "Unable to parse authentication response",
+            ParseError::Authentication(_) => "Unable to parse authentication response",
             ParseError::DataNotUtf8(_, _) => "Unable to parse data as UTF-8 text",
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn StdError> {
-        match *self {
-            ParseError::Authentication(_, Some(ref e)) => Some(e),
-            _ => None,
         }
     }
 }

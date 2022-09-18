@@ -6,8 +6,9 @@ use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
 use std::str;
 use std::sync::mpsc;
+use std::sync::Arc;
+use rsasl::prelude::{Mechname, SASLClient, SASLConfig, Session as SASLSession, State as SASLState};
 
-use super::authenticator::Authenticator;
 use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;
@@ -432,70 +433,91 @@ impl<T: Read + Write> Client<T> {
     ///     };
     /// }
     /// ```
-    pub fn authenticate<A: Authenticator>(
+    pub fn authenticate(
         mut self,
-        auth_type: impl AsRef<str>,
-        authenticator: &A,
+        config: Arc<SASLConfig>,
+        mechanism: &Mechname,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
-        ok_or_unauth_client_err!(
-            self.run_command(&format!("AUTHENTICATE {}", auth_type.as_ref())),
+        let client = SASLClient::new(config);
+        let session = ok_or_unauth_client_err!(
+            // TODO: Allow rsasl to select the mechanism
+            client.start_suggested(&[mechanism]).map_err(Error::AuthenticationSetup),
             self
         );
-        self.do_auth_handshake(authenticator)
+        // TODO: check for `SASL-IR` capability and send initial data if it's supported.
+        ok_or_unauth_client_err!(
+            self.run_command(&format!("AUTHENTICATE {}", mechanism.as_str())),
+            self
+        );
+        self.do_auth_handshake(session)
     }
 
     /// This func does the handshake process once the authenticate command is made.
-    fn do_auth_handshake<A: Authenticator>(
+    fn do_auth_handshake(
         mut self,
-        authenticator: &A,
+        mut authenticator: SASLSession,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
-        // TODO Clean up this code
-        loop {
-            let mut line = Vec::new();
+        let mut line = Vec::new();
+        let mut output = Vec::new();
+        let mut state = SASLState::Running;
 
-            // explicit match blocks neccessary to convert error to tuple and not bind self too
-            // early (see also comment on `login`)
-            ok_or_unauth_client_err!(self.readline(&mut line), self);
+        while {
+            while {
+                // Drop all read data
+                line.clear();
+                // explicit match blocks necessary to convert error to tuple and not bind self too
+                // early (see also comment on `login`)
+                ok_or_unauth_client_err!(self.readline(&mut line), self);
 
-            // ignore server comments
-            if line.starts_with(b"* ") {
-                continue;
-            }
+                // ignore server comments — keep going until a line not starting with * is found
+                line.starts_with(b"* ")
+            } {}
 
-            // Some servers will only send `+\r\n`.
-            if line.starts_with(b"+ ") || &line == b"+\r\n" {
-                let challenge = if &line == b"+\r\n" {
-                    Vec::new()
-                } else {
-                    let line_str = ok_or_unauth_client_err!(
-                        match str::from_utf8(line.as_slice()) {
-                            Ok(line_str) => Ok(line_str),
-                            Err(e) => Err(Error::Parse(ParseError::DataNotUtf8(line, e))),
-                        },
-                        self
-                    );
-                    let data =
-                        ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
-                    ok_or_unauth_client_err!(
-                        base64::decode(data).map_err(|e| Error::Parse(ParseError::Authentication(
-                            data.to_string(),
-                            Some(e)
-                        ))),
-                        self
-                    )
-                };
-
-                let raw_response = &authenticator.process(&challenge);
-                let auth_response = base64::encode(raw_response);
-                ok_or_unauth_client_err!(
-                    self.write_line(auth_response.into_bytes().as_slice()),
+            line.starts_with(b"+ ") || &line == b"+\r\n"
+        } {
+            let challenge = if &line == b"+\r\n" {
+                None
+            } else {
+                let line_str = ok_or_unauth_client_err!(
+                    match str::from_utf8(line.as_slice()) {
+                        Ok(line_str) => Ok(line_str),
+                        Err(e) => Err(Error::Parse(ParseError::DataNotUtf8(line.clone(), e))),
+                    },
                     self
                 );
-            } else {
-                ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
-                return Ok(Session::new(self.conn));
-            }
+                let data = ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
+                if data.is_empty() {
+                    None
+                } else {
+                    Some(data.as_bytes())
+                }
+            };
+
+            // Remove all data written in a previous round
+            output.clear();
+            state = ok_or_unauth_client_err!(
+                authenticator.step64(challenge, &mut output).map_err(Error::Authentication),
+                self
+            );
+
+            ok_or_unauth_client_err!(
+                self.write_line(output.as_slice()),
+                self
+            );
         }
+
+        // It's important to call the SASL mechanism one last time when the server indicates
+        // finished authentication but the SASL session doesn't; otherwise a server could subvert
+        // mutual authentication.
+        if state.is_running() {
+            ok_or_unauth_client_err!(
+                authenticator.step64(None, &mut output).map_err(Error::Authentication),
+                self
+            );
+        }
+
+        ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
+        return Ok(Session::new(self.conn));
     }
 }
 

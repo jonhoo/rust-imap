@@ -81,9 +81,6 @@ mod parse;
 
 pub mod types;
 
-mod authenticator;
-pub use crate::authenticator::Authenticator;
-
 mod client;
 pub use crate::client::*;
 mod client_builder;
