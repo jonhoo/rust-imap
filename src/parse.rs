@@ -43,32 +43,16 @@ pub(crate) fn parse_many_into<'input, T, F>(
 where
     F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
 {
-    let mut lines = input;
-    loop {
-        if lines.is_empty() {
-            break Ok(());
-        }
+    let mut other = Vec::new();
 
-        match imap_proto::parser::parse_response(lines) {
-            Ok((rest, resp)) => {
-                lines = rest;
-
-                match map(resp)? {
-                    MapOrNot::Map(t) => into.extend(std::iter::once(t)),
-                    MapOrNot::MapVec(t) => into.extend(t),
-                    MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
-                        Some(Response::Fetch(..)) => continue,
-                        Some(resp) => break Err(resp.into()),
-                        None => {}
-                    },
-                    MapOrNot::Ignore => continue,
-                }
-            }
-            _ => {
-                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-            }
-        }
-    }
+    parse_many_into2::<_, (), _, _, _>(input, into, &mut other, unsolicited, |response| match map(
+        response,
+    )? {
+        MapOrNot::Map(t) => Ok(MapOrNot2::Map1(t)),
+        MapOrNot::MapVec(t) => Ok(MapOrNot2::MapVec1(t)),
+        MapOrNot::Not(t) => Ok(MapOrNot2::Not(t)),
+        MapOrNot::Ignore => Ok(MapOrNot2::Ignore),
+    })
 }
 
 /// Parse and return an expected single `T` Response with `F`.
@@ -90,6 +74,61 @@ where
     match temp_output.len() {
         1 => Ok(temp_output.remove(0)),
         _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
+    }
+}
+
+pub(crate) enum MapOrNot2<'a, T, U> {
+    Map1(T),
+    Map2(U),
+    MapVec1(Vec<T>),
+    #[allow(dead_code)]
+    MapVec2(Vec<U>),
+    Not(Response<'a>),
+    #[allow(dead_code)]
+    Ignore,
+}
+
+/// Parse many `T` or `U` Responses with `F` and extend `into1` or `into2` with them.
+/// Responses other than `T` or `U` go into the `unsolicited` channel.
+pub(crate) fn parse_many_into2<'input, T, U, F, IU, IT>(
+    input: &'input [u8],
+    into1: &mut IT,
+    into2: &mut IU,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    mut map: F,
+) -> Result<()>
+where
+    IT: Extend<T>,
+    IU: Extend<U>,
+    F: FnMut(Response<'input>) -> Result<MapOrNot2<'input, T, U>>,
+{
+    let mut lines = input;
+    loop {
+        if lines.is_empty() {
+            break Ok(());
+        }
+
+        match imap_proto::parser::parse_response(lines) {
+            Ok((rest, resp)) => {
+                lines = rest;
+
+                match map(resp)? {
+                    MapOrNot2::Map1(t) => into1.extend(std::iter::once(t)),
+                    MapOrNot2::Map2(t) => into2.extend(std::iter::once(t)),
+                    MapOrNot2::MapVec1(t) => into1.extend(t),
+                    MapOrNot2::MapVec2(t) => into2.extend(t),
+                    MapOrNot2::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
+                        Some(Response::Fetch(..)) => continue,
+                        Some(resp) => break Err(resp.into()),
+                        None => {}
+                    },
+                    MapOrNot2::Ignore => continue,
+                }
+            }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
     }
 }
 
