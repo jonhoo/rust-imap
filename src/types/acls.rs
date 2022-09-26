@@ -123,7 +123,7 @@ impl AclResponse {
             data: owned,
             acl_builder: |input| {
                 // There should only be ONE single ACL response
-                parse_until_done(input, unsolicited, |response| match response {
+                parse_until_done(input, false, unsolicited, |response| match response {
                     Response::Acl(a) => Ok(MapOrNot::Map(Acl {
                         mailbox: a.mailbox,
                         acls: a
@@ -137,6 +137,7 @@ impl AclResponse {
                     })),
                     resp => Ok(MapOrNot::Not(resp)),
                 })
+                .map(|o| o.unwrap())
             },
         }
         .try_build()
@@ -206,7 +207,7 @@ impl ListRightsResponse {
             data: owned,
             rights_builder: |input| {
                 // There should only be ONE single LISTRIGHTS response
-                parse_until_done(input, unsolicited, |response| match response {
+                parse_until_done(input, false, unsolicited, |response| match response {
                     Response::ListRights(a) => Ok(MapOrNot::Map(ListRights {
                         mailbox: a.mailbox,
                         identifier: a.identifier,
@@ -215,6 +216,7 @@ impl ListRightsResponse {
                     })),
                     resp => Ok(MapOrNot::Not(resp)),
                 })
+                .map(|o| o.unwrap())
             },
         }
         .try_build()
@@ -286,13 +288,14 @@ impl MyRightsResponse {
             data: owned,
             rights_builder: |input| {
                 // There should only be ONE single MYRIGHTS response
-                parse_until_done(input, unsolicited, |response| match response {
+                parse_until_done(input, false, unsolicited, |response| match response {
                     Response::MyRights(a) => Ok(MapOrNot::Map(MyRights {
                         mailbox: a.mailbox,
                         rights: a.rights.into(),
                     })),
                     resp => Ok(MapOrNot::Not(resp)),
                 })
+                .map(|o| o.unwrap())
             },
         }
         .try_build()

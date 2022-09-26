@@ -58,12 +58,14 @@ where
 /// Parse and return an expected single `T` Response with `F`.
 /// Responses other than `T` go into the `unsolicited` channel.
 ///
-/// If zero or more than one `T` is found then [`Error::Parse`] is returned
+/// If more than one `T` are found then [`Error::Parse`] is returned
+/// If zero `T` are found and optional is false then [`Error::Parse`] is returned, otherwise None is
 pub(crate) fn parse_until_done<'input, T, F>(
     input: &'input [u8],
+    optional: bool,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     map: F,
-) -> Result<T>
+) -> Result<Option<T>>
 where
     F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
 {
@@ -72,7 +74,14 @@ where
     parse_many_into(input, &mut temp_output, unsolicited, map)?;
 
     match temp_output.len() {
-        1 => Ok(temp_output.remove(0)),
+        1 => Ok(Some(temp_output.remove(0))),
+        0 => {
+            if optional {
+                Ok(None)
+            } else {
+                Err(Error::Parse(ParseError::Invalid(input.to_vec())))
+            }
+        }
         _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
     }
 }
