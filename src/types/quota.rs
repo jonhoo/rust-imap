@@ -35,7 +35,7 @@ impl Display for QuotaResourceLimit<'_> {
 /// From [Resources](https://datatracker.ietf.org/doc/html/rfc2087#section-3)
 ///
 /// Used by [`QuotaLimit`], and [`QuotaResource`]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 #[non_exhaustive]
 pub enum QuotaResourceName<'a> {
     /// Sum of messages' RFC822.SIZE, in units of 1024 octets
@@ -52,6 +52,17 @@ impl Display for QuotaResourceName<'_> {
             Self::Storage => write!(f, "STORAGE"),
             Self::Message => write!(f, "MESSAGE"),
             Self::Atom(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl<'a> QuotaResourceName<'a> {
+    /// Get an owned version of the [`QuotaResourceName`].
+    pub fn into_owned(self) -> QuotaResourceName<'static> {
+        match self {
+            QuotaResourceName::Storage => QuotaResourceName::Storage,
+            QuotaResourceName::Message => QuotaResourceName::Message,
+            QuotaResourceName::Atom(n) => QuotaResourceName::Atom(Cow::Owned(n.into_owned())),
         }
     }
 }
@@ -217,5 +228,19 @@ impl QuotaRootResponse {
     /// The set of quotas for each named quota root (could be empty)
     pub fn quotas(&self) -> &[Quota<'_>] {
         &self.borrow_inner().quotas[..]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_quota_resource_name_into_owned() {
+        let name = "TEST";
+        let borrowed = QuotaResourceName::Atom(Cow::Borrowed(name));
+
+        let new_owned = borrowed.into_owned();
+        assert!(matches!(new_owned, QuotaResourceName::Atom(Cow::Owned(_))));
     }
 }
