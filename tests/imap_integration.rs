@@ -9,14 +9,7 @@ use std::net::TcpStream;
 
 use crate::imap::extensions::sort::{SortCharset, SortCriterion};
 use crate::imap::types::Mailbox;
-
-fn tls() -> native_tls::TlsConnector {
-    native_tls::TlsConnector::builder()
-        .danger_accept_invalid_certs(true)
-        .danger_accept_invalid_hostnames(true)
-        .build()
-        .unwrap()
-}
+use crate::imap::{Connection, ConnectionMode};
 
 fn test_host() -> String {
     std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string())
@@ -48,7 +41,7 @@ fn test_smtps_port() -> u16 {
         .unwrap_or(3465)
 }
 
-fn clean_mailbox(session: &mut imap::Session<native_tls::TlsStream<TcpStream>>) {
+fn clean_mailbox(session: &mut imap::Session<Connection>) {
     session.select("INBOX").unwrap();
     let inbox = session.search("ALL").unwrap();
     if !inbox.is_empty() {
@@ -70,16 +63,12 @@ fn wait_for_delivery() {
     std::thread::sleep(std::time::Duration::from_millis(500));
 }
 
-fn session_with_options(
-    user: &str,
-    clean: bool,
-) -> imap::Session<native_tls::TlsStream<TcpStream>> {
+fn session_with_options(user: &str, clean: bool) -> imap::Session<Connection> {
     let host = test_host();
     let mut s = imap::ClientBuilder::new(&host, test_imaps_port())
-        .connect(|domain, tcp| {
-            let ssl_conn = tls();
-            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
-        })
+        .mode(ConnectionMode::Tls)
+        .danger_skip_tls_verify(true)
+        .connect()
         .unwrap()
         .login(user, user)
         .unwrap();
@@ -98,7 +87,7 @@ fn get_greeting() -> String {
     String::from_utf8(greeting).unwrap()
 }
 
-fn delete_mailbox(s: &mut imap::Session<native_tls::TlsStream<TcpStream>>, mailbox: &str) {
+fn delete_mailbox(s: &mut imap::Session<Connection>, mailbox: &str) {
     // we are silently eating any error (e.g. mailbox does not exist)
     s.set_acl(
         mailbox,
@@ -111,7 +100,7 @@ fn delete_mailbox(s: &mut imap::Session<native_tls::TlsStream<TcpStream>>, mailb
     s.delete(mailbox).unwrap_or(());
 }
 
-fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
+fn session(user: &str) -> imap::Session<Connection> {
     session_with_options(user, true)
 }
 
@@ -144,11 +133,9 @@ fn connect_insecure_then_secure() {
     let host = test_host();
     // Not supported on greenmail because of https://github.com/greenmail-mail-test/greenmail/issues/135
     imap::ClientBuilder::new(&host, test_imap_port())
-        .starttls()
-        .connect(|domain, tcp| {
-            let ssl_conn = tls();
-            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
-        })
+        .mode(ConnectionMode::StartTls)
+        .danger_skip_tls_verify(true)
+        .connect()
         .unwrap();
 }
 
@@ -156,10 +143,9 @@ fn connect_insecure_then_secure() {
 fn connect_secure() {
     let host = test_host();
     imap::ClientBuilder::new(&host, test_imaps_port())
-        .connect(|domain, tcp| {
-            let ssl_conn = tls();
-            Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
-        })
+        .mode(ConnectionMode::Tls)
+        .danger_skip_tls_verify(true)
+        .connect()
         .unwrap();
 }
 

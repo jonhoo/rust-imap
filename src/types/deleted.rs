@@ -23,7 +23,7 @@ use std::ops::RangeInclusive;
 /// # {} #[cfg(feature = "native-tls")]
 /// # fn main() {
 /// # let client = imap::ClientBuilder::new("imap.example.com", 993)
-///     .native_tls().unwrap();
+///     .connect().unwrap();
 /// # let mut session = client.login("name", "pw").unwrap();
 /// // Iterate over whatever is returned
 /// if let Ok(deleted) = session.expunge() {

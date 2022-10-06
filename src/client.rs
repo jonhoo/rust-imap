@@ -340,9 +340,21 @@ impl<T: Read + Write> Client<T> {
     ///
     /// This consumes `self` since the Client is not much use without
     /// an underlying transport.
-    pub(crate) fn into_inner(self) -> Result<T> {
+    pub fn into_inner(self) -> Result<T> {
         let res = self.conn.stream.into_inner()?;
         Ok(res)
+    }
+
+    /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
+    /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
+    /// one of the listed capabilities. See [`Capabilities`] for further details.
+    ///
+    /// This allows reading capabilities before authentication.
+    pub fn capabilities(&mut self) -> Result<Capabilities> {
+        // Create a temporary channel as we do not care about out of band responses before login
+        let (mut tx, _rx) = mpsc::channel();
+        self.run_command_and_read_response("CAPABILITY")
+            .and_then(|lines| Capabilities::parse(lines, &mut tx))
     }
 
     /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
@@ -355,7 +367,7 @@ impl<T: Read + Write> Client<T> {
     /// # {} #[cfg(feature = "native-tls")]
     /// # fn main() {
     /// let client = imap::ClientBuilder::new("imap.example.org", 993)
-    ///     .native_tls().unwrap();
+    ///     .connect().unwrap();
     ///
     /// match client.login("user", "pass") {
     ///     Ok(s) => {
@@ -412,7 +424,7 @@ impl<T: Read + Write> Client<T> {
     ///         user: String::from("me@example.com"),
     ///         access_token: String::from("<access_token>"),
     ///     };
-    ///     let client = imap::ClientBuilder::new("imap.example.com", 993).native_tls()
+    ///     let client = imap::ClientBuilder::new("imap.example.com", 993).connect()
     ///         .expect("Could not connect to server");
     ///
     ///     match client.authenticate("XOAUTH2", &auth) {
@@ -1819,6 +1831,31 @@ mod tests {
             session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
             "Invalid authenticate command"
         );
+    }
+
+    #[test]
+    fn pre_login_capability() {
+        let response = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
+            a1 OK CAPABILITY completed\r\n"
+            .to_vec();
+        let expected_capabilities = vec![
+            Capability::Imap4rev1,
+            Capability::Atom(Cow::Borrowed("STARTTLS")),
+            Capability::Auth(Cow::Borrowed("GSSAPI")),
+            Capability::Atom(Cow::Borrowed("LOGINDISABLED")),
+        ];
+        let mock_stream = MockStream::new(response);
+        let mut client = Client::new(mock_stream);
+        let capabilities = client.capabilities().unwrap();
+        assert_eq!(
+            client.stream.get_ref().written_buf,
+            b"a1 CAPABILITY\r\n".to_vec(),
+            "Invalid capability command"
+        );
+        assert_eq!(capabilities.len(), 4);
+        for e in expected_capabilities {
+            assert!(capabilities.has(&e));
+        }
     }
 
     #[test]

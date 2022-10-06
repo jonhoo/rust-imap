@@ -39,7 +39,7 @@ fn main() {
     let opt = Opt::from_args();
 
     let client = imap::ClientBuilder::new(opt.server.clone(), opt.port)
-        .native_tls()
+        .connect()
         .expect("Could not connect to imap server");
 
     let mut imap = client

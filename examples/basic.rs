@@ -8,7 +8,7 @@ fn main() {
 }
 
 fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
-    let client = imap::ClientBuilder::new("imap.example.com", 993).native_tls()?;
+    let client = imap::ClientBuilder::new("imap.example.com", 993).connect()?;
 
     // the client we have here is unauthenticated.
     // to do anything useful with the e-mails, we need to log in
