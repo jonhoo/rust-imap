@@ -18,7 +18,10 @@ pub fn parse_authenticate_response(line: &str) -> Result<&str> {
         let data = cap.get(1).map(|x| x.as_str()).unwrap_or("");
         return Ok(data);
     }
-    Err(Error::Parse(ParseError::Authentication(line.to_string())))
+    Err(Error::Parse(ParseError::Authentication(
+        line.to_string(),
+        None,
+    )))
 }
 
 pub(crate) enum MapOrNot<'a, T> {

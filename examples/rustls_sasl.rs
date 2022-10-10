@@ -32,7 +32,7 @@ fn fetch_inbox_top(
 
     // the client we have here is unauthenticated.
     // to do anything useful with the e-mails, we need to log in
-    let mut imap_session = client.authenticate(saslconfig, mechanism).map_err(|e| e.0)?;
+    let mut imap_session = client.sasl_auth(saslconfig, mechanism).map_err(|e| e.0)?;
 
     // we want to fetch the first email in the INBOX mailbox
     imap_session.select("INBOX")?;

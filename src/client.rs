@@ -9,6 +9,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use rsasl::prelude::{Mechname, SASLClient, SASLConfig, Session as SASLSession, State as SASLState};
 
+use super::authenticator::Authenticator;
 use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
 use super::extensions;
 use super::parse::*;

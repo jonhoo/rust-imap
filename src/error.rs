@@ -7,6 +7,7 @@ use std::net::TcpStream;
 use std::result;
 use std::str::Utf8Error;
 
+use base64::DecodeError;
 use bufstream::IntoInnerError as BufError;
 use imap_proto::{types::ResponseCode, Response};
 #[cfg(feature = "native-tls")]
@@ -239,7 +240,7 @@ pub enum ParseError {
     /// Indicates an error parsing the status response. Such as OK, NO, and BAD.
     Invalid(Vec<u8>),
     /// The client could not find or decode the server's authentication challenge.
-    Authentication(String),
+    Authentication(String, Option<DecodeError>),
     /// The client received data that was not UTF-8 encoded.
     DataNotUtf8(Vec<u8>, Utf8Error),
 }
@@ -248,7 +249,7 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ParseError::Invalid(_) => f.write_str("Unable to parse status response"),
-            ParseError::Authentication(_) => {
+            ParseError::Authentication(_, _) => {
                 f.write_str("Unable to parse authentication response")
             }
             ParseError::DataNotUtf8(_, _) => f.write_str("Unable to parse data as UTF-8 text"),
@@ -260,8 +261,15 @@ impl StdError for ParseError {
     fn description(&self) -> &str {
         match *self {
             ParseError::Invalid(_) => "Unable to parse status response",
-            ParseError::Authentication(_) => "Unable to parse authentication response",
+            ParseError::Authentication(_, _) => "Unable to parse authentication response",
             ParseError::DataNotUtf8(_, _) => "Unable to parse data as UTF-8 text",
+        }
+    }
+
+    fn cause(&self) -> Option<&dyn StdError> {
+        match *self {
+            ParseError::Authentication(_, Some(ref e)) => Some(e),
+            _ => None,
         }
     }
 }
