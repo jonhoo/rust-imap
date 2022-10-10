@@ -6,7 +6,8 @@ use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
 use std::str;
 use std::sync::mpsc;
-use std::sync::Arc;
+
+#[cfg(feature = "rsasl")]
 use rsasl::prelude::{Mechname, SASLClient, SASLConfig, Session as SASLSession, State as SASLState};
 
 use super::authenticator::Authenticator;
@@ -367,7 +368,7 @@ impl<T: Read + Write> Client<T> {
     /// match client.login("user", "pass") {
     ///     Ok(s) => {
     ///         // you are successfully authenticated!
-    ///     },
+    ///     }
     ///     Err((e, orig_client)) => {
     ///         eprintln!("error logging in: {}", e);
     ///         // prompt user and try again with orig_client here
@@ -425,7 +426,7 @@ impl<T: Read + Write> Client<T> {
     ///     match client.authenticate("XOAUTH2", &auth) {
     ///         Ok(session) => {
     ///             // you are successfully authenticated!
-    ///         },
+    ///         }
     ///         Err((e, orig_client)) => {
     ///             eprintln!("error authenticating: {}", e);
     ///             // prompt user and try again with orig_client here
@@ -434,9 +435,82 @@ impl<T: Read + Write> Client<T> {
     ///     };
     /// }
     /// ```
-    pub fn authenticate(
+    pub fn authenticate<A: Authenticator>(
         mut self,
-        config: Arc<SASLConfig>,
+        auth_type: impl AsRef<str>,
+        authenticator: &A,
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+        ok_or_unauth_client_err!(
+            self.run_command(&format!("AUTHENTICATE {}", auth_type.as_ref())),
+            self
+        );
+        self.do_auth_handshake(authenticator)
+    }
+
+    /// This func does the handshake process once the authenticate command is made.
+    fn do_auth_handshake<A: Authenticator>(
+        mut self,
+        authenticator: &A,
+    ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+        // TODO Clean up this code
+        loop {
+            let mut line = Vec::new();
+
+            // explicit match blocks neccessary to convert error to tuple and not bind self too
+            // early (see also comment on `login`)
+            ok_or_unauth_client_err!(self.readline(&mut line), self);
+
+            // ignore server comments
+            if line.starts_with(b"* ") {
+                continue;
+            }
+
+            // Some servers will only send `+\r\n`.
+            if line.starts_with(b"+ ") || &line == b"+\r\n" {
+                let challenge = if &line == b"+\r\n" {
+                    Vec::new()
+                } else {
+                    let line_str = ok_or_unauth_client_err!(
+                        match str::from_utf8(line.as_slice()) {
+                            Ok(line_str) => Ok(line_str),
+                            Err(e) => Err(Error::Parse(ParseError::DataNotUtf8(line, e))),
+                        },
+                        self
+                    );
+                    let data =
+                        ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
+                    ok_or_unauth_client_err!(
+                        base64::decode(data).map_err(|e| Error::Parse(ParseError::Authentication(
+                            data.to_string(),
+                            Some(e)
+                        ))),
+                        self
+                    )
+                };
+
+                let raw_response = &authenticator.process(&challenge);
+                let auth_response = base64::encode(raw_response);
+                ok_or_unauth_client_err!(
+                    self.write_line(auth_response.into_bytes().as_slice()),
+                    self
+                );
+            } else {
+                ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
+                return Ok(Session::new(self.conn));
+            }
+        }
+    }
+}
+
+#[cfg(feature = "rsasl")]
+impl<T: Read + Write> Client<T> {
+
+    /// Authenticate with the server using the given custom SASLConfig to handle the server's
+    /// challenge.
+    ///
+    pub fn sasl_auth(
+        mut self,
+        config: ::std::sync::Arc<SASLConfig>,
         mechanism: &Mechname,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
         let client = SASLClient::new(config);
@@ -450,11 +524,11 @@ impl<T: Read + Write> Client<T> {
             self.run_command(&format!("AUTHENTICATE {}", mechanism.as_str())),
             self
         );
-        self.do_auth_handshake(session)
+        self.do_sasl_handshake(session)
     }
 
-    /// This func does the handshake process once the authenticate command is made.
-    fn do_auth_handshake(
+    /// This func does the SASL handshake process once the authenticate command is made.
+    fn do_sasl_handshake(
         mut self,
         mut authenticator: SASLSession,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
