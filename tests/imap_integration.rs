@@ -99,7 +99,7 @@ fn get_greeting() -> String {
 }
 
 fn delete_mailbox(s: &mut imap::Session<native_tls::TlsStream<TcpStream>>, mailbox: &str) {
-    // we are silently eating any error (e.g. mailbox does not exist
+    // we are silently eating any error (e.g. mailbox does not exist)
     s.set_acl(
         mailbox,
         "cyrus",
