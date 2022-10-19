@@ -45,14 +45,22 @@ where
 {
     let mut other = Vec::new();
 
-    parse_many_into2::<_, (), _, _, _>(input, into, &mut other, unsolicited, |response| match map(
-        response,
-    )? {
-        MapOrNot::Map(t) => Ok(MapOrNot2::Map1(t)),
-        MapOrNot::MapVec(t) => Ok(MapOrNot2::MapVec1(t)),
-        MapOrNot::Not(t) => Ok(MapOrNot2::Not(t)),
-        MapOrNot::Ignore => Ok(MapOrNot2::Ignore),
-    })
+    parse_many_into2::<_, (), _, _, _>(
+        input,
+        into,
+        &mut other,
+        unsolicited,
+        |response| match map(response)? {
+            MapOrNot::Map(t) => Ok(MapOrNot2::Map1(t)),
+            MapOrNot::MapVec(t) => Ok(MapOrNot2::MapVec1(t)),
+            MapOrNot::Not(t) => Ok(MapOrNot2::Not(t)),
+            MapOrNot::Ignore => Ok(MapOrNot2::Ignore),
+        },
+    )?;
+
+    assert_eq!(other.len(), 0);
+
+    Ok(())
 }
 
 /// Parse and return an expected single `T` Response with `F`.
