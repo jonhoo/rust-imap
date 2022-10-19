@@ -1,5 +1,5 @@
 use crate::error::{Error, ParseError};
-use crate::parse::{parse_many_into2, parse_until_done, MapOrNot, MapOrNot2};
+use crate::parse::{parse_many_into2, parse_until_done_optional, MapOrNot, MapOrNot2};
 use crate::types::UnsolicitedResponse;
 use imap_proto::Response;
 use ouroboros::self_referencing;
@@ -90,7 +90,7 @@ impl QuotaResponse {
             data: owned,
             quota_builder: |input| {
                 // There should zero or one QUOTA response
-                parse_until_done(input, true, unsolicited, |response| match response {
+                parse_until_done_optional(input, unsolicited, |response| match response {
                     Response::Quota(q) => Ok(MapOrNot::Map(Quota::from_imap_proto(q))),
                     resp => Ok(MapOrNot::Not(resp)),
                 })
