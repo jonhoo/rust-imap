@@ -10,7 +10,7 @@ use std::sync::mpsc;
 /// From [SETQUOTA Resource limit](https://datatracker.ietf.org/doc/html/rfc2087#section-4.1)
 ///
 /// Used by [`Session::set_quota`]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct QuotaResourceLimit<'a> {
     /// The resource type
@@ -154,7 +154,7 @@ impl<'a> Quota<'a> {
 /// From [QUOTA Response](https://datatracker.ietf.org/doc/html/rfc2087#section-5.1)
 ///
 /// The quota resource sub-pieces in a [`Quota`]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct QuotaResource<'a> {
     /// The resource type
