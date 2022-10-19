@@ -725,15 +725,35 @@ fn quota() {
     if is_greenmail {
         let mut c = session(to);
 
+        // Set a quota
+        c.set_quota("INBOX", &[QuotaResourceLimit::new("STORAGE", 1000)])
+            .unwrap();
+
+        // Check it
         let quota_root = c.get_quota_root("INBOX").unwrap();
 
         assert_eq!(quota_root.mailbox_name(), "INBOX");
 
         let root_names = quota_root.quota_root_names().collect::<Vec<&str>>();
+        // not sure why, but greenmail returns no quota root names
         assert_eq!(root_names, Vec::<&str>::new());
-        // TODO build tests for greenmail
+
+        assert_eq!(quota_root.quotas().len(), 1);
+
+        let quota = quota_root.quotas().first().unwrap();
+        assert_eq!(quota.root_name, "INBOX");
+        assert_quota_resource(
+            &quota.resources[0],
+            QuotaResourceName::Storage,
+            1000,
+            Some(0),
+        );
+
+        // TODO no reliable way to delete a quota from greenmail other than resetting the whole system
+        // Deleting a mailbox or user in greenmail does not remove the quota
     } else {
         // because we are cyrus we can "test" the admin account for checking the GET/SET commands
+        // the clean: false is because the cyrus admin user has no INBOX.
         let mut admin = session_with_options("cyrus", false);
 
         // purge mailbox from previous run
