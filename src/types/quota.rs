@@ -21,7 +21,8 @@ pub struct QuotaResourceLimit<'a> {
 
 impl<'a> QuotaResourceLimit<'a> {
     /// Creates a new [`QuotaResourceLimit`]
-    pub fn new(name: QuotaResourceName<'a>, amount: u64) -> Self {
+    pub fn new(name: impl Into<QuotaResourceName<'a>>, amount: u64) -> Self {
+        let name = name.into();
         Self { name, amount }
     }
 }
@@ -44,6 +45,18 @@ pub enum QuotaResourceName<'a> {
     Message,
     /// Any other string (for future RFCs)
     Atom(Cow<'a, str>),
+}
+
+impl<'a> From<&'a str> for QuotaResourceName<'a> {
+    fn from(input: &'a str) -> Self {
+        if input == "STORAGE" {
+            QuotaResourceName::Storage
+        } else if input == "MESSAGE" {
+            QuotaResourceName::Message
+        } else {
+            QuotaResourceName::Atom(Cow::from(input))
+        }
+    }
 }
 
 impl Display for QuotaResourceName<'_> {
@@ -242,5 +255,13 @@ mod tests {
 
         let new_owned = borrowed.into_owned();
         assert!(matches!(new_owned, QuotaResourceName::Atom(Cow::Owned(_))));
+    }
+
+    #[test]
+    fn test_quota_resource_limit_new() {
+        let limit = QuotaResourceLimit::new("STORAGE", 1000);
+
+        assert_eq!(limit.name, QuotaResourceName::Storage);
+        assert_eq!(limit.amount, 1000);
     }
 }

@@ -2451,6 +2451,27 @@ mod tests {
     }
 
     #[test]
+    fn set_quota_via_quota_resource_limit_new() {
+        let response = b"* QUOTA my_root (STORAGE 10 500)\r\n\
+                a1 OK completed\r\n"
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let quota = session
+            .set_quota("my_root", &[QuotaResourceLimit::new("STORAGE", 500)])
+            .unwrap();
+        assert_eq!(
+            session.stream.get_ref().written_buf,
+            b"a1 SETQUOTA \"my_root\" (STORAGE 500)\r\n".to_vec(),
+            "Invalid setquota command"
+        );
+        let quota = quota.parsed().as_ref().unwrap();
+        assert_eq!(quota.root_name, "my_root");
+        assert_eq!(quota.resources.len(), 1);
+        assert_quota_resource(&quota.resources[0], QuotaResourceName::Storage, 500, 10);
+    }
+
+    #[test]
     fn set_quota_no_such_quota_root() {
         let response = b"a1 NO no such quota root\r\n".to_vec();
         let mock_stream = MockStream::new(response);
