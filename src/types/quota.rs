@@ -49,12 +49,10 @@ pub enum QuotaResourceName<'a> {
 
 impl<'a> From<&'a str> for QuotaResourceName<'a> {
     fn from(input: &'a str) -> Self {
-        if input == "STORAGE" {
-            QuotaResourceName::Storage
-        } else if input == "MESSAGE" {
-            QuotaResourceName::Message
-        } else {
-            QuotaResourceName::Atom(Cow::from(input))
+        match input {
+            "STORAGE" => QuotaResourceName::Storage,
+            "MESSAGE" => QuotaResourceName::Message,
+            _ => QuotaResourceName::Atom(Cow::from(input)),
         }
     }
 }

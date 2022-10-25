@@ -2556,9 +2556,10 @@ mod tests {
 
     #[test]
     fn get_quota_with_limits() {
-        let response = b"* QUOTA my_root (STORAGE 10 500)\r\n\
-                a1 OK completed\r\n"
-            .to_vec();
+        let response = b"* QUOTA my_root (STORAGE 10 500)\r
+a1 OK completed\r
+"
+        .to_vec();
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
         let quota = session.get_quota("my_root").unwrap();
