@@ -164,7 +164,9 @@ pub(crate) fn parse_until_done<'input, T, F>(
 where
     F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
 {
-    parse_until_done_internal(input, false, unsolicited, map).map(|e| e.unwrap())
+    parse_until_done_internal(input, false, unsolicited, map).map(|e| {
+        e.expect("optional = false, so Err(Invalid) would be returned instead of Ok(None)")
+    })
 }
 
 pub fn parse_expunge(
