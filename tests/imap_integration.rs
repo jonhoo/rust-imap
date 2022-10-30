@@ -27,7 +27,6 @@ fn test_smtp_host() -> String {
         .unwrap_or_else(|_| std::env::var("TEST_HOST").unwrap_or("127.0.0.1".to_string()))
 }
 
-#[cfg(feature = "test-full-imap")]
 fn test_imap_port() -> u16 {
     std::env::var("TEST_IMAP_PORT")
         .unwrap_or("3143".to_string())
@@ -71,7 +70,10 @@ fn wait_for_delivery() {
     std::thread::sleep(std::time::Duration::from_millis(500));
 }
 
-fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
+fn session_with_options(
+    user: &str,
+    clean: bool,
+) -> imap::Session<native_tls::TlsStream<TcpStream>> {
     let host = test_host();
     let mut s = imap::ClientBuilder::new(&host, test_imaps_port())
         .connect(|domain, tcp| {
@@ -82,8 +84,35 @@ fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
         .login(user, user)
         .unwrap();
     s.debug = true;
-    clean_mailbox(&mut s);
+    if clean {
+        clean_mailbox(&mut s);
+    }
     s
+}
+
+fn get_greeting() -> String {
+    let host = test_host();
+    let tcp = TcpStream::connect((host.as_ref(), test_imap_port())).unwrap();
+    let mut client = imap::Client::new(tcp);
+    let greeting = client.read_greeting().unwrap();
+    String::from_utf8(greeting).unwrap()
+}
+
+fn delete_mailbox(s: &mut imap::Session<native_tls::TlsStream<TcpStream>>, mailbox: &str) {
+    // we are silently eating any error (e.g. mailbox does not exist)
+    s.set_acl(
+        mailbox,
+        "cyrus",
+        &"x".try_into().unwrap(),
+        imap::types::AclModifyMode::Replace,
+    )
+    .unwrap_or(());
+
+    s.delete(mailbox).unwrap_or(());
+}
+
+fn session(user: &str) -> imap::Session<native_tls::TlsStream<TcpStream>> {
+    session_with_options(user, true)
 }
 
 fn smtp(user: &str) -> lettre::SmtpTransport {
@@ -669,4 +698,104 @@ fn qresync() {
     let r = s.uid_expunge(format!("{}", uid)).unwrap();
     // Assert that the new highest mod sequence is being returned
     assert_ne!(r.mod_seq, None);
+}
+
+fn assert_quota_resource(
+    resource: &imap::types::QuotaResource,
+    name: imap::types::QuotaResourceName,
+    limit: u64,
+    usage: Option<u64>,
+) {
+    assert_eq!(resource.name, name);
+    if let Some(usage) = usage {
+        assert_eq!(resource.usage, usage);
+    }
+    assert_eq!(resource.limit, limit);
+}
+
+#[test]
+fn quota() {
+    use imap::types::{QuotaResourceLimit, QuotaResourceName};
+
+    let greeting = get_greeting();
+    let is_greenmail = greeting.find("Cyrus").is_none();
+
+    let to = "inbox-quota@localhost";
+
+    if is_greenmail {
+        let mut c = session(to);
+
+        // Set a quota
+        c.set_quota("INBOX", &[QuotaResourceLimit::new("STORAGE", 1000)])
+            .unwrap();
+
+        // Check it
+        let quota_root = c.get_quota_root("INBOX").unwrap();
+
+        assert_eq!(quota_root.mailbox_name(), "INBOX");
+
+        let root_names = quota_root.quota_root_names().collect::<Vec<&str>>();
+        // not sure why, but greenmail returns no quota root names
+        assert_eq!(root_names, Vec::<&str>::new());
+
+        assert_eq!(quota_root.quotas().len(), 1);
+
+        let quota = quota_root.quotas().first().unwrap();
+        assert_eq!(quota.root_name, "INBOX");
+        assert_quota_resource(
+            &quota.resources[0],
+            QuotaResourceName::Storage,
+            1000,
+            Some(0),
+        );
+
+        // TODO no reliable way to delete a quota from greenmail other than resetting the whole system
+        // Deleting a mailbox or user in greenmail does not remove the quota
+    } else {
+        // because we are cyrus we can "test" the admin account for checking the GET/SET commands
+        // the clean: false is because the cyrus admin user has no INBOX.
+        let mut admin = session_with_options("cyrus", false);
+
+        // purge mailbox from previous run
+        delete_mailbox(&mut admin, "user/inbox-quota@localhost");
+
+        let mut c = session(to);
+
+        let quota_root = c.get_quota_root("INBOX").unwrap();
+
+        assert_eq!(quota_root.mailbox_name(), "INBOX");
+
+        let root_names = quota_root.quota_root_names().collect::<Vec<&str>>();
+
+        assert_eq!(root_names, vec!["INBOX"]);
+
+        let quota = quota_root.quotas().first().unwrap();
+        assert_eq!(quota.root_name, "INBOX");
+        assert_quota_resource(
+            &quota.resources[0],
+            QuotaResourceName::Storage,
+            1000,
+            Some(0),
+        );
+
+        let update = admin
+            .set_quota(
+                "user/inbox-quota@localhost",
+                &[QuotaResourceLimit::new(QuotaResourceName::Storage, 500)],
+            )
+            .unwrap();
+        // Cyrus does not return the quota root definition on modification
+        assert_eq!(update.parsed(), &None);
+
+        let quota_response = admin.get_quota("user/inbox-quota@localhost").unwrap();
+        let quota = quota_response.parsed().as_ref().unwrap();
+        assert_eq!(quota.root_name, "user/inbox-quota@localhost");
+        assert_eq!(quota.resources.len(), 1);
+        assert_quota_resource(
+            &quota.resources[0],
+            QuotaResourceName::Storage,
+            500,
+            Some(0),
+        );
+    }
 }

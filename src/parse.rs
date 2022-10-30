@@ -43,6 +43,50 @@ pub(crate) fn parse_many_into<'input, T, F>(
 where
     F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
 {
+    let mut other = Vec::new();
+
+    parse_many_into2::<_, (), _, _, _>(
+        input,
+        into,
+        &mut other,
+        unsolicited,
+        |response| match map(response)? {
+            MapOrNot::Map(t) => Ok(MapOrNot2::Map1(t)),
+            MapOrNot::MapVec(t) => Ok(MapOrNot2::MapVec1(t)),
+            MapOrNot::Not(t) => Ok(MapOrNot2::Not(t)),
+            MapOrNot::Ignore => Ok(MapOrNot2::Ignore),
+        },
+    )?;
+
+    assert_eq!(other.len(), 0);
+
+    Ok(())
+}
+
+pub(crate) enum MapOrNot2<'a, T, U> {
+    Map1(T),
+    Map2(U),
+    MapVec1(Vec<T>),
+    #[allow(dead_code)]
+    MapVec2(Vec<U>),
+    Not(Response<'a>),
+    Ignore,
+}
+
+/// Parse many `T` or `U` Responses with `F` and extend `into1` or `into2` with them.
+/// Responses other than `T` or `U` go into the `unsolicited` channel.
+pub(crate) fn parse_many_into2<'input, T, U, F, IU, IT>(
+    input: &'input [u8],
+    into1: &mut IT,
+    into2: &mut IU,
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    mut map: F,
+) -> Result<()>
+where
+    IT: Extend<T>,
+    IU: Extend<U>,
+    F: FnMut(Response<'input>) -> Result<MapOrNot2<'input, T, U>>,
+{
     let mut lines = input;
     loop {
         if lines.is_empty() {
@@ -54,14 +98,16 @@ where
                 lines = rest;
 
                 match map(resp)? {
-                    MapOrNot::Map(t) => into.extend(std::iter::once(t)),
-                    MapOrNot::MapVec(t) => into.extend(t),
-                    MapOrNot::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
+                    MapOrNot2::Map1(t) => into1.extend(std::iter::once(t)),
+                    MapOrNot2::Map2(t) => into2.extend(std::iter::once(t)),
+                    MapOrNot2::MapVec1(t) => into1.extend(t),
+                    MapOrNot2::MapVec2(t) => into2.extend(t),
+                    MapOrNot2::Not(resp) => match try_handle_unilateral(resp, unsolicited) {
                         Some(Response::Fetch(..)) => continue,
                         Some(resp) => break Err(resp.into()),
                         None => {}
                     },
-                    MapOrNot::Ignore => continue,
+                    MapOrNot2::Ignore => continue,
                 }
             }
             _ => {
@@ -71,15 +117,12 @@ where
     }
 }
 
-/// Parse and return an expected single `T` Response with `F`.
-/// Responses other than `T` go into the `unsolicited` channel.
-///
-/// If zero or more than one `T` is found then [`Error::Parse`] is returned
-pub(crate) fn parse_until_done<'input, T, F>(
+fn parse_until_done_internal<'input, T, F>(
     input: &'input [u8],
+    optional: bool,
     unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     map: F,
-) -> Result<T>
+) -> Result<Option<T>>
 where
     F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
 {
@@ -88,9 +131,42 @@ where
     parse_many_into(input, &mut temp_output, unsolicited, map)?;
 
     match temp_output.len() {
-        1 => Ok(temp_output.remove(0)),
+        1 => Ok(Some(temp_output.remove(0))),
+        0 if optional => Ok(None),
         _ => Err(Error::Parse(ParseError::Invalid(input.to_vec()))),
     }
+}
+
+/// Parse and return an optional single `T` Response with `F`.
+/// Responses other than `T` go into the `unsolicited` channel.
+///
+/// If more than one `T` are found then [`Error::Parse`] is returned
+pub(crate) fn parse_until_done_optional<'input, T, F>(
+    input: &'input [u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    map: F,
+) -> Result<Option<T>>
+where
+    F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
+{
+    parse_until_done_internal(input, true, unsolicited, map)
+}
+
+/// Parse and return an expected single `T` Response with `F`.
+/// Responses other than `T` go into the `unsolicited` channel.
+///
+/// If zero or more than one `T` are found then [`Error::Parse`] is returned.
+pub(crate) fn parse_until_done<'input, T, F>(
+    input: &'input [u8],
+    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    map: F,
+) -> Result<T>
+where
+    F: FnMut(Response<'input>) -> Result<MapOrNot<'input, T>>,
+{
+    parse_until_done_internal(input, false, unsolicited, map).map(|e| {
+        e.expect("optional = false, so Err(Invalid) would be returned instead of Ok(None)")
+    })
 }
 
 pub fn parse_expunge(
