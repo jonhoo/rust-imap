@@ -1,29 +1,30 @@
 use std::net::TcpStream;
 
 fn main() {
-    // REMINDER this is unsafe, the credentials are sent over the connection in CLEARTEXT
+    // REMINDER this is dangerous, the credentials are sent over the connection in CLEARTEXT!
     // Anyone or anything between this connection and the server can read your login creds!
     // Please oh please do not use this where this is even a possibility.
     match plaintext() {
         Ok(conn) => {
             eprintln!("Connection successful!");
-            println!("{:?}",conn);
-        },
+            println!("{:?}", conn);
+        }
         Err(e) => {
             eprintln!("Connection error!");
-            eprintln!("{:?}",e);
+            eprintln!("{:?}", e);
         }
     }
 }
 
 fn plaintext() -> imap::error::Result<Option<String>> {
-    // Make a raw TCP connection to an UNSAFE IMAP server
     let stream = TcpStream::connect("imap.example.com:143").unwrap(); // This is unsafe.
     let mut client = imap::Client::new(stream);
     client.read_greeting()?;
     eprintln!("\nUNENCRYPTED connection made!!!!\n");
     eprintln!("This is highly not recommended.\n");
     // to do anything useful with the e-mails, we need to log in
+
+    // Makes an unencrypted login message to the IMAP server. This is risky business!
     let mut imap_session = client.login("user", "pass").unwrap();
 
     // we want to fetch the first email in the INBOX mailbox
@@ -39,15 +40,11 @@ fn plaintext() -> imap::error::Result<Option<String>> {
     };
 
     // extract the message's body
-    let mut body;
-    match message.body() {
-        Some(msg) => {
-            body = std::str::from_utf8(msg)
-                .expect("message was not valid utf-8")
-                .to_string();
-        }
-        None => body = "".to_string(),
-    }
+    let body = message
+        .body()
+        .map(|body| String::from_utf8(body).expect("message was not valid utf-8"))
+        .unwrap_or_else(String::new);
+
     // be nice to the server and log out
     imap_session.logout()?;
     Ok(Some(body))
