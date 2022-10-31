@@ -17,7 +17,7 @@ fn main() {
 }
 
 fn plaintext() -> imap::error::Result<Option<String>> {
-    let stream = TcpStream::connect("imap.example.com:143").unwrap(); // This is unsafe.
+    let stream = TcpStream::connect("imap.example.com:143").unwrap(); // This is an unencrypted connection.
     let mut client = imap::Client::new(stream);
     client.read_greeting()?;
     eprintln!("\nUNENCRYPTED connection made!!!!\n");
