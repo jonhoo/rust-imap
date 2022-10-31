@@ -41,7 +41,7 @@ fn plaintext() -> imap::error::Result<Option<String>> {
     // extract the message's body
     let body = message
         .body()
-        .map(|body| String::from_utf8(body).expect("message was not valid utf-8"))
+        .map(|body| String::from_utf8(body.to_vec()).expect("message was not valid utf-8"))
         .unwrap_or_else(String::new);
 
     // be nice to the server and log out
