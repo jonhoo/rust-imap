@@ -23,8 +23,7 @@ fn plaintext() -> imap::error::Result<Option<String>> {
     eprintln!("\nUNENCRYPTED connection made!!!!\n");
     eprintln!("This is highly not recommended.\n");
     // to do anything useful with the e-mails, we need to log in
-
-    // Makes an unencrypted login message to the IMAP server. This is risky business!
+    // keep in mind that this is over plain TCP, so may leak all your secrets!
     let mut imap_session = client.login("user", "pass").unwrap();
 
     // we want to fetch the first email in the INBOX mailbox
