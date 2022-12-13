@@ -1113,6 +1113,7 @@ impl<T: Read + Write> Session<T> {
     ///  - `UIDNEXT`: The next [`Uid`] of the mailbox.
     ///  - `UIDVALIDITY`: The unique identifier validity value of the mailbox (see [`Uid`]).
     ///  - `UNSEEN`: The number of messages which do not have [`Flag::Seen`] set.
+    ///  - `HIGHESTMODSEQ`: The highest mod sequence of the mailbox, counting modifications made to it.
     ///
     /// `data_items` is a space-separated list enclosed in parentheses.
     pub fn status(
