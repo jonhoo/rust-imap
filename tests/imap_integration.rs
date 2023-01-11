@@ -659,7 +659,7 @@ fn status() {
 }
 
 #[test]
-#[ignore]
+#[cfg(feature = "test-full-imap")]
 fn qresync() {
     // Ignored because Greenmail does not support QRESYNC. Does work with Cyrus, though.
     let to = "inbox-qresync@localhost";
