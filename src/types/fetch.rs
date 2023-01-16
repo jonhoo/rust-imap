@@ -26,7 +26,7 @@ pub struct Fetches {
 
 impl Fetches {
     /// Parse one or more [`Fetch`] responses from a response buffer.
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
