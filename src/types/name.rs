@@ -18,7 +18,7 @@ pub struct Names {
 
 impl Names {
     /// Parse one or more [`Name`] from a response buffer
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {

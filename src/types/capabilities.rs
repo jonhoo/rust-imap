@@ -45,7 +45,7 @@ pub struct Capabilities {
 
 impl Capabilities {
     /// Parse the given input into one or more [`Capabilitity`] responses.
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {

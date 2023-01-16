@@ -115,7 +115,7 @@ pub struct AclResponse {
 
 impl AclResponse {
     /// Parse the given input into a [`Acl`] response.
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
@@ -198,7 +198,7 @@ pub struct ListRightsResponse {
 
 impl ListRightsResponse {
     /// Parse the given input into a [`ListRights`] response.
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
@@ -278,7 +278,7 @@ pub struct MyRightsResponse {
 
 impl MyRightsResponse {
     /// Parse the given input into a [`MyRights`] response.
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
