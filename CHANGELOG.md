@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - SORT command extension (#178).
  - Support for grabbing Gmail labels (#225).
  - Support for the ACL extension (#227).
+ - Support for the quote extension (#235).
+ - Support for the list-status extension (#249).
  - Expose APPENDUID data (#232).
 
 ### Changed
- - MSRV increased to 1.43 for nom6 and bitvec
+ - MSRV increased to 1.56.1 for 2021 edition
  - `expunge` and `uid_expunge` return `Result<Deleted>` instead of `Result<Vec<u32>>`.
  - IDLE capability now provides a builder interface. All `wait_*` functions are merged into `wait_while` which takes a callback with an `UnsolicitedResponse` in parameter.
  - All `Session.append_with_*` methods are obsoleted by `append` which returns now an `AppendCmd` builder.
