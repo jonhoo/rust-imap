@@ -384,6 +384,18 @@ fn list() {
 }
 
 #[test]
+#[cfg(feature = "test-full-imap")]
+fn list_status() {
+    let mut s = session("readonly-test@localhost");
+    let extnames = s.list_status(None, Some("*"), "(HIGHESTMODSEQ)").unwrap();
+    assert_eq!(extnames.len(), 1);
+    let (name, status) = extnames.get(0).unwrap();
+    assert_eq!(name.name(), "INBOX");
+    assert!(status.is_some());
+    assert!(status.as_ref().unwrap().highest_mod_seq.is_some());
+}
+
+#[test]
 fn append() {
     let to = "inbox-append1@localhost";
 
@@ -659,7 +671,7 @@ fn status() {
 }
 
 #[test]
-#[ignore]
+#[cfg(feature = "test-full-imap")]
 fn qresync() {
     // Ignored because Greenmail does not support QRESYNC. Does work with Cyrus, though.
     let to = "inbox-qresync@localhost";
