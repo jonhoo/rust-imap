@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine as _};
 use bufstream::BufStream;
 use chrono::{DateTime, FixedOffset};
 use imap_proto::Response;
@@ -471,16 +472,18 @@ impl<T: Read + Write> Client<T> {
                     let data =
                         ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
                     ok_or_unauth_client_err!(
-                        base64::decode(data).map_err(|e| Error::Parse(ParseError::Authentication(
-                            data.to_string(),
-                            Some(e)
-                        ))),
+                        general_purpose::STANDARD_NO_PAD
+                            .decode(data)
+                            .map_err(|e| Error::Parse(ParseError::Authentication(
+                                data.to_string(),
+                                Some(e)
+                            ))),
                         self
                     )
                 };
 
                 let raw_response = &authenticator.process(&challenge);
-                let auth_response = base64::encode(raw_response);
+                let auth_response = general_purpose::STANDARD_NO_PAD.encode(raw_response);
                 ok_or_unauth_client_err!(
                     self.write_line(auth_response.into_bytes().as_slice()),
                     self
