@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Expose APPENDUID data (#232).
 
 ### Changed
- - MSRV increased to 1.56.1 for 2021 edition
+ - MSRV increased to 1.57.0 for 2021 edition and base64
  - `expunge` and `uid_expunge` return `Result<Deleted>` instead of `Result<Vec<u32>>`.
  - IDLE capability now provides a builder interface. All `wait_*` functions are merged into `wait_while` which takes a callback with an `UnsolicitedResponse` in parameter.
  - All `Session.append_with_*` methods are obsoleted by `append` which returns now an `AppendCmd` builder.
