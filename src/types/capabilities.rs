@@ -48,7 +48,8 @@ impl Clone for Capabilities {
     fn clone(&self) -> Self {
         // Give _rx a name so it's not immediately dropped. Otherwise any unsolicited responses
         // that would be send there will return a SendError instead of the parsed response simply
-        // being dropped later.
+        // being dropped later. Those responses being dropped is safe as they were already parsed
+        // and sent to a consumer when this capabilities response was parsed the first time.
         let (mut tx, _rx) = mpsc::channel();
         Self::parse(self.borrow_data().clone(), &mut tx)
             .expect("failed to parse capabilities from data which was already successfully parse before")
