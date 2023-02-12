@@ -379,7 +379,7 @@ impl<T: Read + Write> Client<T> {
     /// one of the listed capabilities. See [`Capabilities`] for further details.
     ///
     /// This function will not query the server if a set of capabilities was cached, but request
-    /// and cache capabilities from the server otherwise. The [`Self::capabilities_refresh`] method
+    /// and cache capabilities from the server otherwise. The [`Self::current_capabilities`] method
     /// can be used to refresh the cache by forcing a `CAPABILITY` command to be send.
     pub fn capabilities(&mut self) -> Result<&Capabilities> {
         let (mut tx, _rx) = mpsc::channel();
@@ -846,7 +846,7 @@ impl<T: Read + Write> Session<T> {
     /// one of the listed capabilities. See [`Capabilities`] for further details.
     ///
     /// This function will not query the server if a set of capabilities was cached, but request
-    /// and cache capabilities from the server otherwise. The [`Self::capabilities_refresh`] method
+    /// and cache capabilities from the server otherwise. The [`Self::current_capabilities`] method
     /// can be used to refresh the cache by forcing a `CAPABILITY` command to be send.
     pub fn capabilities(&mut self) -> Result<&Capabilities> {
         if self.capability_cache.is_none() {
