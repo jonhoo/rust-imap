@@ -15,11 +15,9 @@ jobs:
         with:
           submodules: true
       - name: Install ${{ matrix.toolchain }}
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.toolchain }}
-          default: true
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         uses: actions-rs/cargo@v1
@@ -86,15 +84,11 @@ jobs:
         with:
           submodules: true
       - name: Install stable
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
+        uses: dtolnay/rust-toolchain@stable
       - name: Install nightly for -Zminimal-versions
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
+        uses: dtolnay/rust-toolchain@nightly
+      - name: rustup default stable
+        run: rustup default stable
       - name: cargo update -Zminimal-versions
         uses: actions-rs/cargo@v1
         with:
@@ -130,10 +124,7 @@ jobs:
         with:
           submodules: true
       - name: Install stable
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
+        uses: dtolnay/rust-toolchain@stable
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         uses: actions-rs/cargo@v1
@@ -152,10 +143,8 @@ jobs:
         with:
           submodules: true
       - name: Install stable
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
           components: llvm-tools-preview
       - name: cargo install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
