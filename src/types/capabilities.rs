@@ -5,6 +5,7 @@ use imap_proto::{Capability, Response};
 use ouroboros::self_referencing;
 use std::collections::hash_set::Iter;
 use std::collections::HashSet;
+use std::fmt;
 use std::sync::mpsc;
 
 const IMAP4REV1_CAPABILITY: &str = "IMAP4rev1";
@@ -41,6 +42,17 @@ pub struct Capabilities {
     #[borrows(data)]
     #[covariant]
     pub(crate) capabilities: HashSet<Capability<'this>>,
+}
+
+impl Clone for Capabilities {
+    fn clone(&self) -> Self {
+        // Give _rx a name so it's not immediately dropped. Otherwise any unsolicited responses
+        // that would be send there will return a SendError instead of the parsed response simply
+        // being dropped later.
+        let (mut tx, _rx) = mpsc::channel();
+        Self::parse(self.borrow_data().clone(), &mut tx)
+            .expect("failed to parse capabilities from data which was already successfully parse before")
+    }
 }
 
 impl Capabilities {
@@ -96,5 +108,15 @@ impl Capabilities {
     /// Returns true if the server purports to have no capabilities.
     pub fn is_empty(&self) -> bool {
         self.borrow_capabilities().is_empty()
+    }
+}
+
+impl fmt::Debug for Capabilities {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut dbg = f.debug_tuple("Capabilities");
+        for x in self.borrow_capabilities() {
+            dbg.field(x);
+        }
+        dbg.finish()
     }
 }

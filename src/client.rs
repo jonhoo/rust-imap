@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose, Engine as _};
 use bufstream::BufStream;
 use chrono::{DateTime, FixedOffset};
 use imap_proto::Response;
@@ -7,6 +6,7 @@ use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
 use std::str;
 use std::sync::mpsc;
+use base64::Engine;
 
 use super::authenticator::Authenticator;
 use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
@@ -138,6 +138,11 @@ fn validate_sequence_set(
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
+
+    // Capabilities are almost guaranteed to chance if encryption state or authentication state
+    // changes, so caching them in `Connection` is inappropiate.
+    capability_cache: Option<Capabilities>,
+
     pub(crate) unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
 
     /// Server responses that are not related to the current command. See also the note on
@@ -153,6 +158,10 @@ pub struct Session<T: Read + Write> {
 #[derive(Debug)]
 pub struct Client<T: Read + Write> {
     conn: Connection<T>,
+
+    // Capabilities are almost guaranteed to chance if encryption state or authentication state
+    // changes, so caching them in `Connection` is inappropiate.
+    capability_cache: Option<Capabilities>,
 }
 
 /// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
@@ -333,6 +342,7 @@ impl<T: Read + Write> Client<T> {
                 debug: false,
                 greeting_read: false,
             },
+            capability_cache: None,
         }
     }
 
@@ -343,6 +353,65 @@ impl<T: Read + Write> Client<T> {
     pub(crate) fn into_inner(self) -> Result<T> {
         let res = self.conn.stream.into_inner()?;
         Ok(res)
+    }
+
+    /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
+    /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
+    /// one of the listed capabilities. See [`Capabilities`] for further details.
+    ///
+    /// This method will always bypass the local capabilities cache and send a `CAPABILITY` command
+    /// to the server. The [`Self::capabilities()`] method can be used when returning a cached
+    /// response is acceptable.
+    pub fn capabilities_refresh(&mut self) -> Result<&Capabilities> {
+        let (mut tx, _rx) = mpsc::channel();
+        let caps = self.run_command_and_read_response("CAPABILITY")
+            .and_then(|lines| Capabilities::parse(lines, &mut tx))?;
+        self.capability_cache = Some(caps);
+
+        self.capability_cache.as_ref()
+            // This path will not be hit; if the cache is not populated the above calls will either
+            // populate it or return with an early error.
+            .ok_or_else(|| panic!("CAPABILITY call did not populate capability cache!"))
+    }
+
+    /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
+    /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
+    /// one of the listed capabilities. See [`Capabilities`] for further details.
+    ///
+    /// This function will not query the server if a set of capabilities was cached, but request
+    /// and cache capabilities from the server otherwise. The [`Self::capabilities_refresh`] method
+    /// can be used to refresh the cache by forcing a `CAPABILITY` command to be send.
+    pub fn capabilities_ref(&mut self) -> Result<&Capabilities> {
+        let (mut tx, _rx) = mpsc::channel();
+        if self.capability_cache.is_none() {
+            let caps = self.run_command_and_read_response("CAPABILITY")
+                .and_then(|lines| Capabilities::parse(lines, &mut tx))?;
+
+            self.capability_cache = Some(caps);
+        }
+
+        self.capability_cache.as_ref()
+            // This path will not be hit; if the cache is not populated the above `if` will either
+            // populate it or return with an early error.
+            .ok_or_else(|| panic!("CAPABILITY call did not populate capability cache!"))
+    }
+
+    /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
+    /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
+    /// one of the listed capabilities. See [`Capabilities`] for further details.
+    pub fn capabilities(&mut self) -> Result<&Capabilities> {
+        if self.capability_cache.is_none() {
+            // TODO: Figure out how to handle unsolicited messages here.
+            let (mut tx, _) = mpsc::channel();
+            let caps = self.run_command_and_read_response("CAPABILITY")
+                .and_then(|lines| Capabilities::parse(lines, &mut tx))?;
+            self.capability_cache = Some(caps);
+        }
+
+        self.capability_cache.as_ref()
+            // This path will not be hit; if the cache is not populated the above `if` will either
+            // populate it or return with an early error.
+            .ok_or_else(|| panic!("CAPABILITY call did not populate capability cache!"))
     }
 
     /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
@@ -360,7 +429,7 @@ impl<T: Read + Write> Client<T> {
     /// match client.login("user", "pass") {
     ///     Ok(s) => {
     ///         // you are successfully authenticated!
-    ///     },
+    ///     }
     ///     Err((e, orig_client)) => {
     ///         eprintln!("error logging in: {}", e);
     ///         // prompt user and try again with orig_client here
@@ -418,7 +487,7 @@ impl<T: Read + Write> Client<T> {
     ///     match client.authenticate("XOAUTH2", &auth) {
     ///         Ok(session) => {
     ///             // you are successfully authenticated!
-    ///         },
+    ///         }
     ///         Err((e, orig_client)) => {
     ///             eprintln!("error authenticating: {}", e);
     ///             // prompt user and try again with orig_client here
@@ -472,18 +541,16 @@ impl<T: Read + Write> Client<T> {
                     let data =
                         ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
                     ok_or_unauth_client_err!(
-                        general_purpose::STANDARD_NO_PAD
-                            .decode(data)
-                            .map_err(|e| Error::Parse(ParseError::Authentication(
-                                data.to_string(),
-                                Some(e)
-                            ))),
+                        base64::prelude::BASE64_STANDARD.decode(data).map_err(|e| Error::Parse(ParseError::Authentication(
+                            data.to_string(),
+                            Some(e)
+                        ))),
                         self
                     )
                 };
 
                 let raw_response = &authenticator.process(&challenge);
-                let auth_response = general_purpose::STANDARD_NO_PAD.encode(raw_response);
+                let auth_response = base64::prelude::BASE64_STANDARD.encode(raw_response);
                 ok_or_unauth_client_err!(
                     self.write_line(auth_response.into_bytes().as_slice()),
                     self
@@ -496,12 +563,125 @@ impl<T: Read + Write> Client<T> {
     }
 }
 
+#[cfg(feature = "rsasl")]
+mod rsasl {
+    use super::*;
+    use std::sync::Arc;
+    use ::rsasl::prelude::{Mechname, SASLClient, SASLConfig, Session as SASLSession, State as SASLState};
+    use imap_proto::Capability;
+
+    impl<T: Read + Write> Client<T> {
+        /// Authenticate with the server using the given custom SASLConfig to handle the server's
+        /// challenge.
+        ///
+        pub fn sasl_auth(
+            mut self,
+            config: Arc<SASLConfig>,
+        ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+            let caps = match self.capabilities() {
+                Ok(caps) => caps,
+                Err(error) => { return Err((error, self)) },
+            };
+            let mechs = caps
+                .iter()
+                .filter_map(|capability| match capability {
+                    // TODO: When rust-imap starts using a tracing/logging crate failures to parse
+                    //       should be logged.
+                    Capability::Auth(name) => Mechname::parse(name.as_bytes()).ok(),
+                    _ => None,
+                });
+
+            let client = SASLClient::new(config);
+            let session = ok_or_unauth_client_err!(
+                // TODO: Allow rsasl to select the mechanism
+                client.start_suggested_iter(mechs).map_err(Error::AuthenticationSetup),
+                self
+            );
+            // TODO: check for `SASL-IR` capability and send initial data if it's supported.
+            ok_or_unauth_client_err!(
+                self.run_command(&format!("AUTHENTICATE {}", session.get_mechname().as_str())),
+                self
+            );
+            self.do_sasl_handshake(session)
+        }
+
+        /// This func does the SASL handshake process once the authenticate command is made.
+        fn do_sasl_handshake(
+            mut self,
+            mut authenticator: SASLSession,
+        ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+            let mut line = Vec::new();
+            let mut output = Vec::new();
+            let mut state = SASLState::Running;
+
+            while {
+                while {
+                    // Drop all read data
+                    line.clear();
+                    // explicit match blocks necessary to convert error to tuple and not bind self too
+                    // early (see also comment on `login`)
+                    ok_or_unauth_client_err!(self.readline(&mut line), self);
+
+                    // ignore server comments — keep going until a line not starting with * is found
+                    line.starts_with(b"* ")
+                } {}
+
+                line.starts_with(b"+ ") || &line == b"+\r\n"
+            } {
+                let challenge = if &line == b"+\r\n" {
+                    None
+                } else {
+                    let line_str = ok_or_unauth_client_err!(
+                        match str::from_utf8(line.as_slice()) {
+                            Ok(line_str) => Ok(line_str),
+                            Err(e) => Err(Error::Parse(ParseError::DataNotUtf8(line.clone(), e))),
+                        },
+                        self
+                    );
+                    let data = ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
+                    if data.is_empty() {
+                        None
+                    } else {
+                        Some(data.as_bytes())
+                    }
+                };
+
+                // Remove all data written in a previous round
+                output.clear();
+                state = ok_or_unauth_client_err!(
+                    authenticator.step64(challenge, &mut output).map_err(Error::Authentication),
+                    self
+                );
+
+                ok_or_unauth_client_err!(
+                    self.write_line(output.as_slice()),
+                    self
+                );
+            }
+
+            // It's important to call the SASL mechanism one last time when the server indicates
+            // finished authentication but the SASL session doesn't; otherwise a server could subvert
+            // mutual authentication.
+            if state.is_running() {
+                ok_or_unauth_client_err!(
+                    authenticator.step64(None, &mut output).map_err(Error::Authentication),
+                    self
+                );
+            }
+
+            ok_or_unauth_client_err!(self.read_response_onto(&mut line), self);
+            return Ok(Session::new(self.conn));
+        }
+    }
+}
+
 impl<T: Read + Write> Session<T> {
     // not public, just to avoid duplicating the channel creation code
     fn new(conn: Connection<T>) -> Self {
         let (tx, rx) = mpsc::channel();
         Session {
             conn,
+            capability_cache: None,
             unsolicited_responses: rx,
             unsolicited_responses_tx: tx,
         }
@@ -774,9 +954,49 @@ impl<T: Read + Write> Session<T> {
     /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
     /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
     /// one of the listed capabilities. See [`Capabilities`] for further details.
+    ///
+    /// This method will always bypass the local capabilities cache and send a `CAPABILITY` command
+    /// to the server. The [`Self::capabilities()`] method can be used when returning a cached
+    /// response is acceptable.
+    pub fn capabilities_refresh(&mut self) -> Result<&Capabilities> {
+        let caps = self.run_command_and_read_response("CAPABILITY")
+            .and_then(|lines| Capabilities::parse(lines, &mut self.unsolicited_responses_tx))?;
+        self.capability_cache = Some(caps);
+
+        self.capability_cache.as_ref()
+            // This path will not be hit; if the cache is not populated the above calls will either
+            // populate it or return with an early error.
+            .ok_or_else(|| panic!("CAPABILITY call did not populate capability cache!"))
+    }
+
+    /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
+    /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
+    /// one of the listed capabilities. See [`Capabilities`] for further details.
+    ///
+    /// This function will not query the server if a set of capabilities was cached, but request
+    /// and cache capabilities from the server otherwise. The [`Self::capabilities_refresh`] method
+    /// can be used to refresh the cache by forcing a `CAPABILITY` command to be send.
+    pub fn capabilities_ref(&mut self) -> Result<&Capabilities> {
+        if self.capability_cache.is_none() {
+            let caps = self.run_command_and_read_response("CAPABILITY")
+                .and_then(|lines| Capabilities::parse(lines, &mut self.unsolicited_responses_tx))?;
+
+            self.capability_cache = Some(caps);
+        }
+
+        self.capability_cache.as_ref()
+            // This path will not be hit; if the cache is not populated the above `if` will either
+            // populate it or return with an early error.
+            .ok_or_else(|| panic!("CAPABILITY call did not populate capability cache!"))
+    }
+
+    /// The [`CAPABILITY` command](https://tools.ietf.org/html/rfc3501#section-6.1.1) requests a
+    /// listing of capabilities that the server supports.  The server will include "IMAP4rev1" as
+    /// one of the listed capabilities. See [`Capabilities`] for further details.
     pub fn capabilities(&mut self) -> Result<Capabilities> {
-        self.run_command_and_read_response("CAPABILITY")
-            .and_then(|lines| Capabilities::parse(lines, &mut self.unsolicited_responses_tx))
+        // TODO: This emulated the same behaviour as before, with each call issuing a command.
+        //       It may be sensible to allow hitting the cache here.
+        self.capabilities_refresh().map(|caps| caps.clone())
     }
 
     /// The [`EXPUNGE` command](https://tools.ietf.org/html/rfc3501#section-6.4.3) permanently

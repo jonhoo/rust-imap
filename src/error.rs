@@ -14,6 +14,8 @@ use imap_proto::{types::ResponseCode, Response};
 use native_tls::Error as TlsError;
 #[cfg(feature = "native-tls")]
 use native_tls::HandshakeError as TlsHandshakeError;
+#[cfg(feature = "rsasl")]
+use rsasl::prelude::{SASLError, SessionError as SASLSessionError};
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::HandshakeError as RustlsHandshakeError;
 
@@ -92,6 +94,12 @@ pub enum Error {
     ConnectionLost,
     /// Error parsing a server response.
     Parse(ParseError),
+    #[cfg(feature = "rsasl")]
+    /// Error occurred when tyring to set up authentication
+    AuthenticationSetup(SASLError),
+    /// Error occurred during authentication
+    #[cfg(feature = "rsasl")]
+    Authentication(SASLSessionError),
     /// Command inputs were not valid [IMAP
     /// strings](https://tools.ietf.org/html/rfc3501#section-4.3).
     Validate(ValidateError),
@@ -115,6 +123,19 @@ impl From<IoError> for Error {
 impl From<ParseError> for Error {
     fn from(err: ParseError) -> Error {
         Error::Parse(err)
+    }
+}
+
+#[cfg(feature = "rsasl")]
+impl From<SASLError> for Error {
+    fn from(err: SASLError) -> Self {
+        Error::AuthenticationSetup(err)
+    }
+}
+#[cfg(feature = "rsasl")]
+impl From<SASLSessionError> for Error {
+    fn from(err: SASLSessionError) -> Self {
+        Error::Authentication(err)
     }
 }
 
@@ -170,6 +191,10 @@ impl fmt::Display for Error {
             Error::Append => f.write_str("Could not append mail to mailbox"),
             Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
             Error::MissingStatusResponse => write!(f, "Missing STATUS Response"),
+            #[cfg(feature = "rsasl")]
+            Error::AuthenticationSetup(ref e) => fmt::Display::fmt(e, f),
+            #[cfg(feature = "rsasl")]
+            Error::Authentication(ref e) => fmt::Display::fmt(e, f),
         }
     }
 }
@@ -194,6 +219,10 @@ impl StdError for Error {
             Error::Append => "Could not append mail to mailbox",
             Error::Unexpected(_) => "Unexpected Response",
             Error::MissingStatusResponse => "Missing STATUS Response",
+            #[cfg(feature = "rsasl")]
+            Error::AuthenticationSetup(_) => "Failed to setup authentication",
+            #[cfg(feature = "rsasl")]
+            Error::Authentication(_) => "Authentication Failed",
         }
     }
 
@@ -207,6 +236,10 @@ impl StdError for Error {
             #[cfg(feature = "native-tls")]
             Error::TlsHandshake(ref e) => Some(e),
             Error::Parse(ParseError::DataNotUtf8(_, ref e)) => Some(e),
+            #[cfg(feature = "rsasl")]
+            Error::AuthenticationSetup(ref e) => Some(e),
+            #[cfg(feature = "rsasl")]
+            Error::Authentication(ref e) => Some(e),
             _ => None,
         }
     }
