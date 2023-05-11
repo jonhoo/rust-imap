@@ -5,6 +5,7 @@ extern crate native_tls;
 
 use chrono::{FixedOffset, TimeZone};
 use lettre::Transport;
+use std::collections::VecDeque;
 use std::net::TcpStream;
 
 use crate::imap::extensions::sort::{SortCharset, SortCriterion};
@@ -206,9 +207,9 @@ fn inbox() {
 
     // we should also get two unsolicited responses: Exists and Recent
     c.noop().unwrap();
-    let mut unsolicited = Vec::new();
-    while let Ok(m) = c.unsolicited_responses.try_recv() {
-        unsolicited.push(m);
+    let mut unsolicited = VecDeque::new();
+    while let Some(m) = c.unsolicited_responses.pop_front() {
+        unsolicited.push_back(m);
     }
     assert_eq!(unsolicited.len(), 2);
     assert!(unsolicited
@@ -324,9 +325,9 @@ fn inbox_uid() {
 
     // we should also get two unsolicited responses: Exists and Recent
     c.noop().unwrap();
-    let mut unsolicited = Vec::new();
-    while let Ok(m) = c.unsolicited_responses.try_recv() {
-        unsolicited.push(m);
+    let mut unsolicited = VecDeque::new();
+    while let Some(m) = c.unsolicited_responses.pop_front() {
+        unsolicited.push_back(m);
     }
     assert_eq!(unsolicited.len(), 2);
     assert!(unsolicited
