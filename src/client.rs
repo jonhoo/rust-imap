@@ -368,10 +368,10 @@ impl<T: Read + Write> Client<T> {
     ///
     /// This allows reading capabilities before authentication.
     pub fn capabilities(&mut self) -> Result<Capabilities> {
-        // Create a temporary channel as we do not care about out of band responses before login
-        let (mut tx, _rx) = mpsc::channel();
+        // Create a temporary vec deque as we do not care about out of band responses before login
+        let mut unsolicited_responses = VecDeque::new();
         self.run_command_and_read_response("CAPABILITY")
-            .and_then(|lines| Capabilities::parse(lines, &mut tx))
+            .and_then(|lines| Capabilities::parse(lines, &mut unsolicited_responses))
     }
 
     /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
