@@ -517,9 +517,10 @@ fn append_with_flags_and_date() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     // append
-    let date = FixedOffset::east(8 * 3600)
-        .ymd(2020, 12, 13)
-        .and_hms(13, 36, 36);
+    let date = FixedOffset::east_opt(8 * 3600)
+        .unwrap()
+        .with_ymd_and_hms(2020, 12, 13, 13, 36, 36)
+        .unwrap();
     c.append(mbox, &e.formatted())
         .flag(Flag::Seen)
         .flag(Flag::Flagged)
