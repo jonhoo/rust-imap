@@ -4,8 +4,8 @@ use crate::types::UnsolicitedResponse;
 use imap_proto::{MailboxDatum, NameAttribute, Response};
 use ouroboros::self_referencing;
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::slice::Iter;
-use std::sync::mpsc;
 
 /// A wrapper for one or more [`Name`] responses.
 #[self_referencing]
@@ -20,7 +20,7 @@ impl Names {
     /// Parse one or more [`Name`] from a response buffer
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         NamesTryBuilder {
             data: owned,

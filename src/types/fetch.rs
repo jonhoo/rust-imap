@@ -7,8 +7,8 @@ use imap_proto::types::{
     AttributeValue, BodyStructure, Envelope, MessageSection, Response, SectionPath,
 };
 use ouroboros::self_referencing;
+use std::collections::VecDeque;
 use std::slice::Iter;
-use std::sync::mpsc;
 
 /// Format of Date and Time as defined RFC3501.
 /// See `date-time` element in [Formal Syntax](https://tools.ietf.org/html/rfc3501#section-9)
@@ -28,7 +28,7 @@ impl Fetches {
     /// Parse one or more [`Fetch`] responses from a response buffer.
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         FetchesTryBuilder {
             data: owned,

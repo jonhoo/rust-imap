@@ -2,9 +2,9 @@ use imap_proto::{MailboxDatum, Response, ResponseCode, StatusAttribute};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::iter::Extend;
-use std::sync::mpsc;
 
 use super::error::{Error, ParseError, Result};
 use super::types::*;
@@ -37,7 +37,7 @@ pub(crate) enum MapOrNot<'a, T> {
 pub(crate) fn parse_many_into<'input, T, F>(
     input: &'input [u8],
     into: &mut impl Extend<T>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
     mut map: F,
 ) -> Result<()>
 where
@@ -79,7 +79,7 @@ pub(crate) fn parse_many_into2<'input, T, U, F, IU, IT>(
     input: &'input [u8],
     into1: &mut IT,
     into2: &mut IU,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
     mut map: F,
 ) -> Result<()>
 where
@@ -120,7 +120,7 @@ where
 fn parse_until_done_internal<'input, T, F>(
     input: &'input [u8],
     optional: bool,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
     map: F,
 ) -> Result<Option<T>>
 where
@@ -143,7 +143,7 @@ where
 /// If more than one `T` are found then [`Error::Parse`] is returned
 pub(crate) fn parse_until_done_optional<'input, T, F>(
     input: &'input [u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
     map: F,
 ) -> Result<Option<T>>
 where
@@ -158,7 +158,7 @@ where
 /// If zero or more than one `T` are found then [`Error::Parse`] is returned.
 pub(crate) fn parse_until_done<'input, T, F>(
     input: &'input [u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
     map: F,
 ) -> Result<T>
 where
@@ -171,7 +171,7 @@ where
 
 pub fn parse_expunge(
     lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
 ) -> Result<Deleted> {
     let mut lines: &[u8] = &lines;
     let mut expunged = Vec::new();
@@ -224,7 +224,7 @@ pub fn parse_expunge(
 
 pub fn parse_append(
     mut lines: &[u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
 ) -> Result<Appended> {
     let mut appended = Appended::default();
 
@@ -256,10 +256,7 @@ pub fn parse_append(
     }
 }
 
-pub fn parse_noop(
-    lines: Vec<u8>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
-) -> Result<()> {
+pub fn parse_noop(lines: Vec<u8>, unsolicited: &mut VecDeque<UnsolicitedResponse>) -> Result<()> {
     let mut lines: &[u8] = &lines;
 
     loop {
@@ -283,7 +280,7 @@ pub fn parse_noop(
 
 pub fn parse_mailbox(
     mut lines: &[u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
 ) -> Result<Mailbox> {
     let mut mailbox = Mailbox::default();
 
@@ -333,12 +330,10 @@ pub fn parse_mailbox(
 
                 match m {
                     MailboxDatum::Status { mailbox, status } => {
-                        unsolicited
-                            .send(UnsolicitedResponse::Status {
-                                mailbox: mailbox.into(),
-                                attributes: status,
-                            })
-                            .unwrap();
+                        unsolicited.push_back(UnsolicitedResponse::Status {
+                            mailbox: mailbox.into(),
+                            attributes: status,
+                        })
                     }
                     MailboxDatum::Exists(e) => {
                         mailbox.exists = e;
@@ -354,7 +349,7 @@ pub fn parse_mailbox(
             }
             Ok((rest, Response::Expunge(n))) => {
                 lines = rest;
-                unsolicited.send(UnsolicitedResponse::Expunge(n)).unwrap();
+                unsolicited.push_front(UnsolicitedResponse::Expunge(n))
             }
             Ok((_, resp)) => {
                 break Err(resp.into());
@@ -373,7 +368,7 @@ pub fn parse_mailbox(
 pub fn parse_status(
     mut lines: &[u8],
     mailbox_name: &str,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
 ) -> Result<Mailbox> {
     let mut mailbox = Mailbox::default();
     let mut got_anything = false;
@@ -419,7 +414,7 @@ pub fn parse_status(
 
 fn parse_ids_with<T: Extend<u32>>(
     lines: &[u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
     mut collection: T,
 ) -> Result<T> {
     let mut lines = lines;
@@ -452,14 +447,14 @@ fn parse_ids_with<T: Extend<u32>>(
 
 pub fn parse_id_set(
     lines: &[u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
 ) -> Result<HashSet<u32>> {
     parse_ids_with(lines, unsolicited, HashSet::new())
 }
 
 pub fn parse_id_seq(
     lines: &[u8],
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
 ) -> Result<Vec<u32>> {
     parse_ids_with(lines, unsolicited, Vec::new())
 }
@@ -484,11 +479,11 @@ pub fn parse_idle(lines: &[u8]) -> (&[u8], Option<Result<UnsolicitedResponse>>) 
 // Returns `None` if the response was handled, `Some(res)` if not.
 pub(crate) fn try_handle_unilateral<'a>(
     res: Response<'a>,
-    unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &mut VecDeque<UnsolicitedResponse>,
 ) -> Option<Response<'a>> {
     match UnsolicitedResponse::try_from(res) {
         Ok(response) => {
-            unsolicited.send(response).ok();
+            unsolicited.push_back(response);
             None
         }
         Err(unhandled) => Some(unhandled),
@@ -510,10 +505,10 @@ mod tests {
             Capability::Atom(Cow::Borrowed("LOGINDISABLED")),
         ];
         let lines = b"* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut queue).unwrap();
         // shouldn't be any unexpected responses parsed
-        assert!(recv.try_recv().is_err());
+        assert!(queue.pop_front().is_none());
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
             assert!(capabilities.has(&e));
@@ -528,10 +523,10 @@ mod tests {
             Capability::Atom(Cow::Borrowed("STARTTLS")),
         ];
         let lines = b"* CAPABILITY IMAP4REV1 STARTTLS\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut queue).unwrap();
         // shouldn't be any unexpected responses parsed
-        assert!(recv.try_recv().is_err());
+        assert!(queue.pop_front().is_none());
         assert_eq!(capabilities.len(), 2);
         for e in expected_capabilities {
             assert!(capabilities.has(&e));
@@ -541,18 +536,18 @@ mod tests {
     #[test]
     #[should_panic]
     fn parse_capability_invalid_test() {
-        let (mut send, recv) = mpsc::channel();
+        let mut queue = VecDeque::new();
         let lines = b"* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
-        Capabilities::parse(lines.to_vec(), &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        Capabilities::parse(lines.to_vec(), &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
     }
 
     #[test]
     fn parse_names_test() {
         let lines = b"* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let names = Names::parse(lines.to_vec(), &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        let mut queue = VecDeque::new();
+        let names = Names::parse(lines.to_vec(), &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
         assert_eq!(names.len(), 1);
         let first = names.get(0).unwrap();
         assert_eq!(
@@ -566,9 +561,9 @@ mod tests {
     #[test]
     fn parse_fetches_empty() {
         let lines = b"";
-        let (mut send, recv) = mpsc::channel();
-        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        let mut queue = VecDeque::new();
+        let fetches = Fetches::parse(lines.to_vec(), &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
         assert!(fetches.is_empty());
     }
 
@@ -577,9 +572,9 @@ mod tests {
         let lines = b"\
                     * 24 FETCH (FLAGS (\\Seen) UID 4827943)\r\n\
                     * 25 FETCH (FLAGS (\\Seen))\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        let mut queue = VecDeque::new();
+        let fetches = Fetches::parse(lines.to_vec(), &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
         assert_eq!(fetches.len(), 2);
         let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 24);
@@ -601,9 +596,9 @@ mod tests {
         let lines = b"\
             * 37 FETCH (UID 74)\r\n\
             * 1 RECENT\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
-        assert_eq!(recv.try_recv(), Ok(UnsolicitedResponse::Recent(1)));
+        let mut queue = VecDeque::new();
+        let fetches = Fetches::parse(lines.to_vec(), &mut queue).unwrap();
+        assert_eq!(queue.pop_front(), Some(UnsolicitedResponse::Recent(1)));
         assert_eq!(fetches.len(), 1);
         let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 37);
@@ -618,11 +613,11 @@ mod tests {
         let lines = b"\
             * OK Searched 91% of the mailbox, ETA 0:01\r\n\
             * 37 FETCH (UID 74)\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let fetches = Fetches::parse(lines.to_vec(), &mut queue).unwrap();
         assert_eq!(
-            recv.try_recv(),
-            Ok(UnsolicitedResponse::Ok {
+            queue.pop_front(),
+            Some(UnsolicitedResponse::Ok {
                 code: None,
                 information: Some(String::from("Searched 91% of the mailbox, ETA 0:01")),
             })
@@ -638,10 +633,10 @@ mod tests {
         let lines = b"\
                     * LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n\
                     * 4 EXPUNGE\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let names = Names::parse(lines.to_vec(), &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let names = Names::parse(lines.to_vec(), &mut queue).unwrap();
 
-        assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Expunge(4));
+        assert_eq!(queue.pop_front(), Some(UnsolicitedResponse::Expunge(4)));
 
         assert_eq!(names.len(), 1);
         let first = names.get(0).unwrap();
@@ -665,8 +660,8 @@ mod tests {
                     * CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n\
                     * STATUS dev.github (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n\
                     * 4 EXISTS\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let capabilities = Capabilities::parse(lines.to_vec(), &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let capabilities = Capabilities::parse(lines.to_vec(), &mut queue).unwrap();
 
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
@@ -674,8 +669,8 @@ mod tests {
         }
 
         assert_eq!(
-            recv.try_recv().unwrap(),
-            UnsolicitedResponse::Status {
+            queue.pop_front(),
+            Some(UnsolicitedResponse::Status {
                 mailbox: "dev.github".to_string(),
                 attributes: vec![
                     StatusAttribute::Messages(10),
@@ -683,9 +678,9 @@ mod tests {
                     StatusAttribute::UidValidity(1408806928),
                     StatusAttribute::Unseen(0)
                 ]
-            }
+            })
         );
-        assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Exists(4));
+        assert_eq!(queue.pop_front(), Some(UnsolicitedResponse::Exists(4)));
     }
 
     #[test]
@@ -694,14 +689,14 @@ mod tests {
             * SEARCH 23 42 4711\r\n\
             * 1 RECENT\r\n\
             * STATUS INBOX (MESSAGES 10 UIDNEXT 11 UIDVALIDITY 1408806928 UNSEEN 0)\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let ids = parse_id_set(lines, &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let ids = parse_id_set(lines, &mut queue).unwrap();
 
         assert_eq!(ids, [23, 42, 4711].iter().cloned().collect());
 
-        assert_eq!(recv.try_recv().unwrap(), UnsolicitedResponse::Recent(1));
+        assert_eq!(queue.pop_front().unwrap(), UnsolicitedResponse::Recent(1));
         assert_eq!(
-            recv.try_recv().unwrap(),
+            queue.pop_front().unwrap(),
             UnsolicitedResponse::Status {
                 mailbox: "INBOX".to_string(),
                 attributes: vec![
@@ -718,9 +713,9 @@ mod tests {
     fn parse_ids_test() {
         let lines = b"* SEARCH 1600 1698 1739 1781 1795 1885 1891 1892 1893 1898 1899 1901 1911 1926 1932 1933 1993 1994 2007 2032 2033 2041 2053 2062 2063 2065 2066 2072 2078 2079 2082 2084 2095 2100 2101 2102 2103 2104 2107 2116 2120 2135 2138 2154 2163 2168 2172 2189 2193 2198 2199 2205 2212 2213 2221 2227 2267 2275 2276 2295 2300 2328 2330 2332 2333 2334\r\n\
             * SEARCH 2335 2336 2337 2338 2339 2341 2342 2347 2349 2350 2358 2359 2362 2369 2371 2372 2373 2374 2375 2376 2377 2378 2379 2380 2381 2382 2383 2384 2385 2386 2390 2392 2397 2400 2401 2403 2405 2409 2411 2414 2417 2419 2420 2424 2426 2428 2439 2454 2456 2467 2468 2469 2490 2515 2519 2520 2521\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let ids = parse_id_set(lines, &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        let mut queue = VecDeque::new();
+        let ids = parse_id_set(lines, &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(
             ids,
@@ -741,16 +736,16 @@ mod tests {
         );
 
         let lines = b"* SEARCH\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let ids = parse_id_set(lines, &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        let mut queue = VecDeque::new();
+        let ids = parse_id_set(lines, &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(ids, HashSet::<u32>::new());
 
         let lines = b"* SORT\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let ids = parse_id_seq(lines, &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        let mut queue = VecDeque::new();
+        let ids = parse_id_seq(lines, &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
         let ids: Vec<u32> = ids.iter().cloned().collect();
         assert_eq!(ids, Vec::<u32>::new());
     }
@@ -762,8 +757,8 @@ mod tests {
         // two cases the VANISHED response will be a different type than expected
         // and so goes into the unsolicited responses channel.
         let lines = b"* VANISHED 3\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let resp = parse_expunge(lines.to_vec(), &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let resp = parse_expunge(lines.to_vec(), &mut queue).unwrap();
 
         // Should be not empty, and have no seqs
         assert!(!resp.is_empty());
@@ -775,14 +770,14 @@ mod tests {
         assert_eq!(None, uids.next());
 
         // Should be nothing in the unsolicited responses channel
-        assert!(recv.try_recv().is_err());
+        assert!(queue.pop_front().is_none());
 
         // Test VANISHED mixed with FETCH
         let lines = b"* VANISHED (EARLIER) 3:8,12,50:60\r\n\
                       * 49 FETCH (UID 117 FLAGS (\\Seen \\Answered) MODSEQ (90060115194045001))\r\n";
 
-        let fetches = Fetches::parse(lines.to_vec(), &mut send).unwrap();
-        match recv.try_recv().unwrap() {
+        let fetches = Fetches::parse(lines.to_vec(), &mut queue).unwrap();
+        match queue.pop_front().unwrap() {
             UnsolicitedResponse::Vanished { earlier, uids } => {
                 assert!(earlier);
                 assert_eq!(uids.len(), 3);
@@ -795,7 +790,7 @@ mod tests {
             }
             what => panic!("Unexpected response in unsolicited responses: {:?}", what),
         }
-        assert!(recv.try_recv().is_err());
+        assert!(queue.pop_front().is_none());
         assert_eq!(fetches.len(), 1);
         let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 49);
@@ -811,16 +806,16 @@ mod tests {
         // SELECT/EXAMINE (QRESYNC); UID FETCH (VANISHED); or EXPUNGE commands. In the latter
         // case, the VANISHED responses will be parsed with the response and the list of
         // expunged message is included in the returned struct.
-        let (mut send, recv) = mpsc::channel();
+        let mut queue = VecDeque::new();
 
         // Test VANISHED mixed with FETCH
         let lines = b"* VANISHED 3:5,12\r\n\
                       B202 OK [HIGHESTMODSEQ 20010715194045319] expunged\r\n";
 
-        let deleted = parse_expunge(lines.to_vec(), &mut send).unwrap();
+        let deleted = parse_expunge(lines.to_vec(), &mut queue).unwrap();
 
         // No unsolicited responses, they are aggregated in the returned type
-        assert!(recv.try_recv().is_err());
+        assert!(queue.pop_front().is_none());
 
         assert_eq!(deleted.mod_seq, Some(20010715194045319));
         let mut del = deleted.uids();
@@ -838,10 +833,10 @@ mod tests {
         // UID assigned to the appended message in the destination mailbox.
         // If the MULTIAPPEND extension is also used, there can be multiple UIDs.
         let lines = b"A003 OK [APPENDUID 38505 3955] APPEND completed\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let resp = parse_append(lines, &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let resp = parse_append(lines, &mut queue).unwrap();
 
-        assert!(recv.try_recv().is_err());
+        assert!(queue.pop_front().is_none());
         assert_eq!(resp.uid_validity, Some(38505));
         match resp.uids {
             Some(uid_list) => {
@@ -860,10 +855,10 @@ mod tests {
         // UID assigned to the appended message in the destination mailbox.
         // If the MULTIAPPEND extension is also used, there can be multiple UIDs.
         let lines = b"A003 OK [APPENDUID 38505 3955:3957] APPEND completed\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let resp = parse_append(lines, &mut send).unwrap();
+        let mut queue = VecDeque::new();
+        let resp = parse_append(lines, &mut queue).unwrap();
 
-        assert!(recv.try_recv().is_err());
+        assert!(queue.pop_front().is_none());
         assert_eq!(resp.uid_validity, Some(38505));
         match resp.uids {
             Some(uid_list) => {
