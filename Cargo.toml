@@ -16,6 +16,8 @@ categories = ["email", "network-programming"]
 [features]
 rustls-tls = ["rustls-connector"]
 default = ["native-tls"]
+# Used to expose helpers in the imap::testing module to build response objects
+test_helpers = []
 # Used to activate full integration tests when running against a more complete IMAP server
 test-full-imap = []
 
@@ -69,3 +71,6 @@ required-features = ["default"]
 [[test]]
 name = "imap_integration"
 required-features = ["default"]
+
+[package.metadata.docs.rs]
+all-features = true
