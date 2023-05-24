@@ -516,9 +516,13 @@ fn append_with_flags_and_date() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     // append
-    let date = FixedOffset::east(8 * 3600)
-        .ymd(2020, 12, 13)
-        .and_hms(13, 36, 36);
+    #[allow(deprecated)]
+    // ymd_opt is deprecated in chrono 0.4.23 and replace with new with_ymd_and_hms
+    let date = FixedOffset::east_opt(8 * 3600)
+        .unwrap()
+        .ymd_opt(2020, 12, 13)
+        .and_hms_opt(13, 36, 36)
+        .unwrap();
     c.append(mbox, &e.formatted())
         .flag(Flag::Seen)
         .flag(Flag::Flagged)
