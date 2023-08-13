@@ -95,5 +95,8 @@ pub use error::{Error, Result};
 
 pub mod extensions;
 
+/// imap_proto types
+pub use imap_proto::types as prototypes;
+
 #[cfg(test)]
 mod mock_stream;
