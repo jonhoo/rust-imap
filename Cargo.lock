@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "imap"
-version = "3.0.0-alpha.10"
+version = "3.0.0-alpha.11"
 dependencies = [
  "base64 0.21.0",
  "bufstream",
