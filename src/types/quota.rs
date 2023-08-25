@@ -93,7 +93,7 @@ pub struct QuotaResponse {
 
 impl QuotaResponse {
     /// Parse the [`Quota`] response from a response buffer.
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
@@ -188,7 +188,7 @@ pub(crate) struct InnerQuotaRootResponse<'a> {
 
 impl QuotaRootResponse {
     /// Parse the [`QuotaRoot`] response from a response buffer.
-    pub fn parse(
+    pub(crate) fn parse(
         owned: Vec<u8>,
         unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
     ) -> Result<Self, Error> {

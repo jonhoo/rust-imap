@@ -95,5 +95,8 @@ pub use error::{Error, Result};
 
 pub mod extensions;
 
+#[cfg(feature = "test_helpers")]
+pub mod testing;
+
 #[cfg(test)]
 mod mock_stream;
