@@ -39,10 +39,11 @@ rustls-connector = "0.18.0"
 structopt = "0.3"
 
 # to make -Zminimal-versions work
-encoding = "0.2.32"
-failure = "0.1.8"
-mime = "0.3.4"
-openssl = "0.10.55"
+[target.'cfg(any())'.dependencies]
+encoding = { version = "0.2.32", optional = true }
+failure = { version = "0.1.8", optional = true }
+mime = { version = "0.3.4", optional = true }
+openssl = { version = "0.10.55", optional = true }
 
 [[example]]
 name = "basic"
