@@ -24,7 +24,7 @@
 //! # #[cfg(feature = "native-tls")]
 //! fn fetch_inbox_top() -> imap::error::Result<Option<String>> {
 //!
-//!     let client = imap::ClientBuilder::new("imap.example.com", 993).native_tls()?;
+//!     let client = imap::ClientBuilder::new("imap.example.com", 993).connect()?;
 //!
 //!     // the client we have here is unauthenticated.
 //!     // to do anything useful with the e-mails, we need to log in
@@ -85,10 +85,15 @@ pub mod types;
 mod authenticator;
 pub use crate::authenticator::Authenticator;
 
+mod conn;
+pub use conn::{Connection, ImapConnection};
+
 mod client;
 pub use crate::client::*;
 mod client_builder;
-pub use crate::client_builder::ClientBuilder;
+#[cfg(any(feature = "native-tls", feature = "rustls-tls"))]
+pub use crate::client_builder::TlsKind;
+pub use crate::client_builder::{ClientBuilder, ConnectionMode};
 
 pub mod error;
 pub use error::{Error, Result};

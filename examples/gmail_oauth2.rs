@@ -24,7 +24,7 @@ fn main() {
     };
 
     let client = imap::ClientBuilder::new("imap.gmail.com", 993)
-        .native_tls()
+        .connect()
         .expect("Could not connect to imap.gmail.com");
 
     let mut imap_session = match client.authenticate("XOAUTH2", &gmail_auth) {

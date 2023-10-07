@@ -5,12 +5,14 @@ use crate::client::Session;
 use crate::error::{Error, Result};
 use crate::parse::parse_idle;
 use crate::types::UnsolicitedResponse;
+use crate::Connection;
 #[cfg(feature = "native-tls")]
 use native_tls::TlsStream;
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::TlsStream as RustlsStream;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::ops::DerefMut;
 use std::time::Duration;
 
 /// `Handle` allows a client to block waiting for changes to the remote mailbox.
@@ -31,7 +33,7 @@ use std::time::Duration;
 /// use imap::extensions::idle;
 /// # #[cfg(feature = "native-tls")]
 /// # {
-/// let client = imap::ClientBuilder::new("example.com", 993).native_tls()
+/// let client = imap::ClientBuilder::new("example.com", 993).connect()
 ///     .expect("Could not connect to imap server");
 /// let mut imap = client.login("user@example.com", "password")
 ///     .expect("Could not authenticate");
@@ -242,6 +244,12 @@ impl<'a, T: Read + Write + 'a> Drop for Handle<'a, T> {
     fn drop(&mut self) {
         // we don't want to panic here if we can't terminate the Idle
         let _ = self.terminate().is_ok();
+    }
+}
+
+impl<'a> SetReadTimeout for Connection {
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
+        self.deref_mut().set_read_timeout(timeout)
     }
 }
 

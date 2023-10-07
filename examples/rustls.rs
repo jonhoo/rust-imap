@@ -22,7 +22,7 @@ fn fetch_inbox_top(
     password: String,
     port: u16,
 ) -> Result<Option<String>, Box<dyn Error>> {
-    let client = imap::ClientBuilder::new(&host, port).rustls()?;
+    let client = imap::ClientBuilder::new(&host, port).connect()?;
 
     // the client we have here is unauthenticated.
     // to do anything useful with the e-mails, we need to log in

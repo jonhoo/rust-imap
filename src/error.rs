@@ -3,6 +3,7 @@
 use std::error::Error as StdError;
 use std::fmt;
 use std::io::Error as IoError;
+#[cfg(any(feature = "native-tls", feature = "rustls-tls"))]
 use std::net::TcpStream;
 use std::result;
 use std::str::Utf8Error;
@@ -104,6 +105,10 @@ pub enum Error {
     /// In response to a STATUS command, the server sent OK without actually sending any STATUS
     /// responses first.
     MissingStatusResponse,
+    /// StartTls is not available on the server
+    StartTlsNotAvailable,
+    /// Returns when Tls is not configured
+    TlsNotConfigured,
 }
 
 impl From<IoError> for Error {
@@ -170,6 +175,10 @@ impl fmt::Display for Error {
             Error::Append => f.write_str("Could not append mail to mailbox"),
             Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
             Error::MissingStatusResponse => write!(f, "Missing STATUS Response"),
+            Error::StartTlsNotAvailable => write!(f, "StartTls is not available on the server"),
+            Error::TlsNotConfigured => {
+                write!(f, "TLS was requested, but no TLS features are enabled")
+            }
         }
     }
 }
@@ -194,6 +203,8 @@ impl StdError for Error {
             Error::Append => "Could not append mail to mailbox",
             Error::Unexpected(_) => "Unexpected Response",
             Error::MissingStatusResponse => "Missing STATUS Response",
+            Error::StartTlsNotAvailable => "StartTls is not available on the server",
+            Error::TlsNotConfigured => "TLS was requested, but no TLS features are enabled",
         }
     }
 

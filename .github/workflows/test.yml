@@ -118,8 +118,10 @@ jobs:
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         run: cargo generate-lockfile
+      - name: cargo install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
       - name: cargo check
-        run: cargo check --locked --all-features --all-targets
+        run: cargo hack --feature-powerset check --locked --all-targets
   coverage:
     runs-on: ubuntu-latest
     name: ubuntu / stable / coverage

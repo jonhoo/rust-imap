@@ -2,7 +2,7 @@
  * Here's an example showing how to connect to the IMAP server with STARTTLS.
  *
  * The only difference is calling `starttls()` on the `ClientBuilder` before
- * initiating the secure connection with `native_tls()` or `rustls()`, so you
+ * initiating the secure connection with `connect()`, so you
  * can connect on port 143 instead of 993.
  *
  * The following env vars are expected to be set:
@@ -42,8 +42,7 @@ fn fetch_inbox_top(
     port: u16,
 ) -> Result<Option<String>, Box<dyn Error>> {
     let client = imap::ClientBuilder::new(&host, port)
-        .starttls()
-        .native_tls()
+        .connect()
         .expect("Could not connect to server");
 
     // the client we have here is unauthenticated.
