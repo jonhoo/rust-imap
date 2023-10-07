@@ -9,7 +9,7 @@ use std::str;
 use std::sync::mpsc;
 
 use super::authenticator::Authenticator;
-use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
+use super::error::{Bad, Bye, Error, No, ParseError, Result, TagCorrupted, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
@@ -1483,7 +1483,11 @@ impl<T: Read + Write> Connection<T> {
 
     fn run_command(&mut self, untagged_command: &str) -> Result<()> {
         let command = self.create_command(untagged_command);
-        self.write_line(command.into_bytes().as_slice())
+        let result = self.write_line(command.into_bytes().as_slice());
+        if result.is_err() {
+            self.tag -= 1; // rollback tag increase in create_command()
+        }
+        result
     }
 
     fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
@@ -1535,7 +1539,17 @@ impl<T: Read + Write> Connection<T> {
                             ..
                         },
                     )) => {
-                        assert_eq!(tag.as_bytes(), match_tag.as_bytes());
+                        // check if tag matches
+                        if tag.as_bytes() != match_tag.as_bytes() {
+                            let expect = self.tag;
+                            let actual = tag
+                                .0
+                                .trim_start_matches(TAG_PREFIX)
+                                .parse::<u32>()
+                                .unwrap_or_default();
+                            break Err(Error::TagCorrupted(TagCorrupted { expect, actual }));
+                        }
+
                         Some(match status {
                             Status::Bad | Status::No | Status::Bye => Err((
                                 status,
