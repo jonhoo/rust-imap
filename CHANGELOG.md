@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - `Flag`, `Mailbox`, `UnsolicitedResponse` and `Error` are now declared as non exhaustive.
  - `ClientBuilder` now replaces the `imap::connect` function [#197](https://github.com/jonhoo/rust-imap/pull/197).
  - The `tls` feature is now `native-tls` to disambiguate it from the new `rustls-tls` feature. `native-tls` remains in the default feature set.
+ - TLS is now enforced by default, and doesn't require generics [#245]
 
 ## [2.4.1] - 2021-01-12
 ### Changed
