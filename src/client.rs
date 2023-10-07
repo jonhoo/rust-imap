@@ -3,10 +3,10 @@ use bufstream::BufStream;
 use chrono::{DateTime, FixedOffset};
 use imap_proto::Response;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
 use std::str;
-use std::sync::mpsc;
 
 use super::authenticator::Authenticator;
 use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
@@ -138,11 +138,9 @@ fn validate_sequence_set(
 #[derive(Debug)]
 pub struct Session<T: Read + Write> {
     conn: Connection<T>,
-    pub(crate) unsolicited_responses_tx: mpsc::Sender<UnsolicitedResponse>,
-
     /// Server responses that are not related to the current command. See also the note on
     /// [unilateral server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
-    pub unsolicited_responses: mpsc::Receiver<UnsolicitedResponse>,
+    pub unsolicited_responses: VecDeque<UnsolicitedResponse>,
 }
 
 /// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
@@ -243,7 +241,7 @@ impl<'a, T: Read + Write> AppendCmd<'a, T> {
         self.session.stream.flush()?;
         self.session
             .read_response()
-            .and_then(|(lines, _)| parse_append(&lines, &mut self.session.unsolicited_responses_tx))
+            .and_then(|(lines, _)| parse_append(&lines, &mut self.session.unsolicited_responses))
     }
 }
 
@@ -499,11 +497,9 @@ impl<T: Read + Write> Client<T> {
 impl<T: Read + Write> Session<T> {
     // not public, just to avoid duplicating the channel creation code
     fn new(conn: Connection<T>) -> Self {
-        let (tx, rx) = mpsc::channel();
         Session {
             conn,
-            unsolicited_responses: rx,
-            unsolicited_responses_tx: tx,
+            unsolicited_responses: VecDeque::new(),
         }
     }
 
@@ -530,7 +526,7 @@ impl<T: Read + Write> Session<T> {
             "SELECT {}",
             validate_str("SELECT", "mailbox", mailbox_name.as_ref())?
         ))
-        .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
+        .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses))
     }
 
     /// The `EXAMINE` command is identical to [`Session::select`] and returns the same output;
@@ -542,7 +538,7 @@ impl<T: Read + Write> Session<T> {
             "EXAMINE {}",
             validate_str("EXAMINE", "mailbox", mailbox_name.as_ref())?
         ))
-        .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses_tx))
+        .and_then(|(lines, _)| parse_mailbox(&lines[..], &mut self.unsolicited_responses))
     }
 
     /// Fetch retrieves data associated with a set of messages in the mailbox.
@@ -609,7 +605,7 @@ impl<T: Read + Write> Session<T> {
         query: impl AsRef<str>,
     ) -> Result<Fetches> {
         if sequence_set.as_ref().is_empty() {
-            Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
+            Fetches::parse(vec![], &mut self.unsolicited_responses)
         } else {
             let synopsis = "FETCH";
             self.run_command_and_read_response(&format!(
@@ -617,7 +613,7 @@ impl<T: Read + Write> Session<T> {
                 validate_sequence_set(synopsis, "seq", sequence_set.as_ref())?,
                 validate_str_noquote(synopsis, "query", query.as_ref())?
             ))
-            .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses))
         }
     }
 
@@ -629,7 +625,7 @@ impl<T: Read + Write> Session<T> {
         query: impl AsRef<str>,
     ) -> Result<Fetches> {
         if uid_set.as_ref().is_empty() {
-            Fetches::parse(vec![], &mut self.unsolicited_responses_tx)
+            Fetches::parse(vec![], &mut self.unsolicited_responses)
         } else {
             let synopsis = "UID FETCH";
             self.run_command_and_read_response(&format!(
@@ -637,14 +633,14 @@ impl<T: Read + Write> Session<T> {
                 validate_sequence_set(synopsis, "seq", uid_set.as_ref())?,
                 validate_str_noquote(synopsis, "query", query.as_ref())?
             ))
-            .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses))
         }
     }
 
     /// Noop always succeeds, and it does nothing.
     pub fn noop(&mut self) -> Result<()> {
         self.run_command_and_read_response("NOOP")
-            .and_then(|lines| parse_noop(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_noop(lines, &mut self.unsolicited_responses))
     }
 
     /// Logout informs the server that the client is done with the connection.
@@ -776,7 +772,7 @@ impl<T: Read + Write> Session<T> {
     /// one of the listed capabilities. See [`Capabilities`] for further details.
     pub fn capabilities(&mut self) -> Result<Capabilities> {
         self.run_command_and_read_response("CAPABILITY")
-            .and_then(|lines| Capabilities::parse(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| Capabilities::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`EXPUNGE` command](https://tools.ietf.org/html/rfc3501#section-6.4.3) permanently
@@ -785,7 +781,7 @@ impl<T: Read + Write> Session<T> {
     pub fn expunge(&mut self) -> Result<Deleted> {
         self.run_command("EXPUNGE")?;
         self.read_response()
-            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`UID EXPUNGE` command](https://tools.ietf.org/html/rfc4315#section-2.1) permanently
@@ -813,7 +809,7 @@ impl<T: Read + Write> Session<T> {
     pub fn uid_expunge(&mut self, uid_set: impl AsRef<str>) -> Result<Deleted> {
         self.run_command(&format!("UID EXPUNGE {}", uid_set.as_ref()))?;
         self.read_response()
-            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses_tx))
+            .and_then(|(lines, _)| parse_expunge(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`CHECK` command](https://tools.ietf.org/html/rfc3501#section-6.4.1) requests a
@@ -903,7 +899,7 @@ impl<T: Read + Write> Session<T> {
             sequence_set.as_ref(),
             query.as_ref()
         ))
-        .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// Equivalent to [`Session::store`], except that all identifiers in `sequence_set` are
@@ -918,7 +914,7 @@ impl<T: Read + Write> Session<T> {
             uid_set.as_ref(),
             query.as_ref()
         ))
-        .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Fetches::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`COPY` command](https://tools.ietf.org/html/rfc3501#section-6.4.7) copies the
@@ -1053,7 +1049,7 @@ impl<T: Read + Write> Session<T> {
             quote!(reference_name.unwrap_or("")),
             mailbox_pattern.unwrap_or("\"\"")
         ))
-        .and_then(|lines| Names::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Names::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`LSUB` command](https://tools.ietf.org/html/rfc3501#section-6.3.9) returns a subset of
@@ -1081,7 +1077,7 @@ impl<T: Read + Write> Session<T> {
             quote!(reference_name.unwrap_or("")),
             mailbox_pattern.unwrap_or("")
         ))
-        .and_then(|lines| Names::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| Names::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`STATUS` command](https://tools.ietf.org/html/rfc3501#section-6.3.10) requests the
@@ -1130,9 +1126,7 @@ impl<T: Read + Write> Session<T> {
             validate_str("STATUS", "mailbox", mailbox_name)?,
             data_items.as_ref()
         ))
-        .and_then(|lines| {
-            parse_status(&lines[..], mailbox_name, &mut self.unsolicited_responses_tx)
-        })
+        .and_then(|lines| parse_status(&lines[..], mailbox_name, &mut self.unsolicited_responses))
     }
 
     /// This method returns a handle that lets you use the [`IDLE`
@@ -1233,7 +1227,7 @@ impl<T: Read + Write> Session<T> {
     ///  - `SINCE <date>`: Messages whose internal date (disregarding time and timezone) is within or later than the specified date.
     pub fn search(&mut self, query: impl AsRef<str>) -> Result<HashSet<Seq>> {
         self.run_command_and_read_response(&format!("SEARCH {}", query.as_ref()))
-            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses))
     }
 
     /// Equivalent to [`Session::search`], except that the returned identifiers
@@ -1241,7 +1235,7 @@ impl<T: Read + Write> Session<T> {
     /// command](https://tools.ietf.org/html/rfc3501#section-6.4.8).
     pub fn uid_search(&mut self, query: impl AsRef<str>) -> Result<HashSet<Uid>> {
         self.run_command_and_read_response(&format!("UID SEARCH {}", query.as_ref()))
-            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses_tx))
+            .and_then(|lines| parse_id_set(&lines, &mut self.unsolicited_responses))
     }
 
     /// This issues the [SORT command](https://tools.ietf.org/html/rfc5256#section-3),
@@ -1261,7 +1255,7 @@ impl<T: Read + Write> Session<T> {
             charset,
             query.as_ref()
         ))
-        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses))
     }
 
     /// Equivalent to [`Session::sort`], except that it returns [`Uid`]s.
@@ -1279,7 +1273,7 @@ impl<T: Read + Write> Session<T> {
             charset,
             query.as_ref()
         ))
-        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| parse_id_seq(&lines, &mut self.unsolicited_responses))
     }
 
     /// The [`SETACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.1)
@@ -1342,7 +1336,7 @@ impl<T: Read + Write> Session<T> {
             "GETACL {}",
             validate_str("GETACL", "mailbox", mailbox_name.as_ref())?
         ))
-        .and_then(|lines| AclResponse::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| AclResponse::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`LISTRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.4)
@@ -1363,7 +1357,7 @@ impl<T: Read + Write> Session<T> {
             validate_str("LISTRIGHTS", "mailbox", mailbox_name.as_ref())?,
             validate_str("LISTRIGHTS", "identifier", identifier.as_ref())?
         ))
-        .and_then(|lines| ListRightsResponse::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| ListRightsResponse::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`MYRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.5)
@@ -1377,7 +1371,7 @@ impl<T: Read + Write> Session<T> {
             "MYRIGHTS {}",
             validate_str("MYRIGHTS", "mailbox", mailbox_name.as_ref())?,
         ))
-        .and_then(|lines| MyRightsResponse::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| MyRightsResponse::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`SETQUOTA` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.1)
@@ -1397,7 +1391,7 @@ impl<T: Read + Write> Session<T> {
             validate_str("SETQUOTA", "quota_root", quota_root.as_ref())?,
             limits,
         ))
-        .and_then(|lines| QuotaResponse::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| QuotaResponse::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`GETQUOTA` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.2)
@@ -1408,7 +1402,7 @@ impl<T: Read + Write> Session<T> {
             "GETQUOTA {}",
             validate_str("GETQUOTA", "quota_root", quota_root.as_ref())?
         ))
-        .and_then(|lines| QuotaResponse::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| QuotaResponse::parse(lines, &mut self.unsolicited_responses))
     }
 
     /// The [`GETQUOTAROOT` command](https://datatracker.ietf.org/doc/html/rfc2087#section-4.3)
@@ -1419,7 +1413,7 @@ impl<T: Read + Write> Session<T> {
             "GETQUOTAROOT {}",
             validate_str("GETQUOTAROOT", "mailbox", mailbox_name.as_ref())?
         ))
-        .and_then(|lines| QuotaRootResponse::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| QuotaRootResponse::parse(lines, &mut self.unsolicited_responses))
     }
 
     // these are only here because they are public interface, the rest is in `Connection`

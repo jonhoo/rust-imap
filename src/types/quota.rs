@@ -4,8 +4,8 @@ use crate::types::UnsolicitedResponse;
 use imap_proto::Response;
 use ouroboros::self_referencing;
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt::{Debug, Display, Formatter};
-use std::sync::mpsc;
 
 /// From [SETQUOTA Resource limit](https://datatracker.ietf.org/doc/html/rfc2087#section-4.1)
 ///
@@ -105,7 +105,7 @@ impl QuotaResponse {
     /// Parse the [`Quota`] response from a response buffer.
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         QuotaResponseTryBuilder {
             data: owned,
@@ -200,7 +200,7 @@ impl QuotaRootResponse {
     /// Parse the [`QuotaRoot`] response from a response buffer.
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         QuotaRootResponseTryBuilder {
             data: owned,

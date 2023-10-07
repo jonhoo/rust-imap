@@ -7,9 +7,9 @@ use crate::parse::try_handle_unilateral;
 use crate::types::{Mailbox, Name, UnsolicitedResponse};
 use imap_proto::types::{MailboxDatum, Response, StatusAttribute};
 use ouroboros::self_referencing;
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::slice::Iter;
-use std::sync::mpsc;
 
 /// A wrapper for one or more [`Name`] responses paired with optional [`Mailbox`] responses.
 ///
@@ -27,7 +27,7 @@ impl ExtendedNames {
     /// Parse one or more LIST-STATUS responses from a response buffer
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> core::result::Result<Self, Error> {
         ExtendedNamesTryBuilder {
             data: owned,
@@ -151,7 +151,7 @@ impl<T: Read + Write> Session<T> {
             mailbox_pattern.unwrap_or("\"\""),
             data_items
         ))
-        .and_then(|lines| ExtendedNames::parse(lines, &mut self.unsolicited_responses_tx))
+        .and_then(|lines| ExtendedNames::parse(lines, &mut self.unsolicited_responses))
     }
 }
 
@@ -171,9 +171,9 @@ mod tests {
                     * LIST (\\UnMarked) \".\" feeds\r\n\
                     * LIST () \".\" feeds.test\r\n\
                     * STATUS feeds.test (HIGHESTMODSEQ 757)\r\n";
-        let (mut send, recv) = mpsc::channel();
-        let fetches = ExtendedNames::parse(lines.to_vec(), &mut send).unwrap();
-        assert!(recv.try_recv().is_err());
+        let mut queue = VecDeque::new();
+        let fetches = ExtendedNames::parse(lines.to_vec(), &mut queue).unwrap();
+        assert!(queue.pop_front().is_none());
         assert!(!fetches.is_empty());
         assert_eq!(fetches.len(), 4);
         let (name, status) = fetches.get(0).unwrap();

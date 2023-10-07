@@ -15,8 +15,8 @@ use crate::error::{Error, ParseError, Result};
 use crate::parse::try_handle_unilateral;
 use crate::types::*;
 use imap_proto::types::{MailboxDatum, Metadata, Response, ResponseCode};
+use std::collections::VecDeque;
 use std::io::{Read, Write};
-use std::sync::mpsc;
 
 // for intra-doc links
 #[allow(unused_imports)]
@@ -83,7 +83,7 @@ impl MetadataDepth {
 
 fn parse_metadata<'a>(
     mut lines: &'a [u8],
-    unsolicited: &'a mut mpsc::Sender<UnsolicitedResponse>,
+    unsolicited: &'a mut VecDeque<UnsolicitedResponse>,
 ) -> Result<Vec<Metadata>> {
     let mut res: Vec<Metadata> = Vec::new();
     loop {
@@ -197,7 +197,7 @@ impl<T: Read + Write> Session<T> {
             .as_str(),
         );
         let (lines, ok) = self.run(command)?;
-        let meta = parse_metadata(&lines[..ok], &mut self.unsolicited_responses_tx)?;
+        let meta = parse_metadata(&lines[..ok], &mut self.unsolicited_responses)?;
         let missed = if maxsize.is_some() {
             if let Ok((_, Response::Done { code, .. })) =
                 imap_proto::parser::parse_response(&lines[ok..])
