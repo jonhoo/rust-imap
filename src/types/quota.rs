@@ -57,6 +57,16 @@ impl<'a> From<&'a str> for QuotaResourceName<'a> {
     }
 }
 
+impl From<String> for QuotaResourceName<'_> {
+    fn from(input: String) -> Self {
+        match input.as_str() {
+            "STORAGE" => QuotaResourceName::Storage,
+            "MESSAGE" => QuotaResourceName::Message,
+            _ => QuotaResourceName::Atom(Cow::from(input)),
+        }
+    }
+}
+
 impl Display for QuotaResourceName<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -256,10 +266,73 @@ mod tests {
     }
 
     #[test]
+    fn test_quota_resource_name_from_str() {
+        let name = "STORAGE";
+
+        let name: QuotaResourceName<'_> = name.into();
+
+        assert!(matches!(name, QuotaResourceName::Storage));
+    }
+
+    #[test]
+    fn test_quota_resource_name_from_string() {
+        let name = "STORAGE".to_string();
+
+        let name: QuotaResourceName<'_> = name.into();
+
+        assert!(matches!(name, QuotaResourceName::Storage));
+    }
+
+    #[test]
     fn test_quota_resource_limit_new() {
         let limit = QuotaResourceLimit::new("STORAGE", 1000);
 
         assert_eq!(limit.name, QuotaResourceName::Storage);
         assert_eq!(limit.amount, 1000);
+    }
+
+    #[test]
+    fn test_quota_resource_limit_new_custom() {
+        let name = "X-NUM-FOLDERS";
+
+        let limit = QuotaResourceLimit::new(name, 50);
+
+        assert!(matches!(
+            limit.name,
+            QuotaResourceName::Atom(x) if x == Cow::from("X-NUM-FOLDERS")
+        ));
+        assert_eq!(limit.amount, 50);
+    }
+    #[test]
+    fn test_quota_resource_limit_new_from_string() {
+        let name = "STORAGE".to_string();
+
+        // use a function to for use of a dropped string
+        fn make_limit(name: String) -> QuotaResourceLimit<'static> {
+            QuotaResourceLimit::new(name, 1000)
+        }
+
+        let limit = make_limit(name);
+
+        assert_eq!(limit.name, QuotaResourceName::Storage);
+        assert_eq!(limit.amount, 1000);
+    }
+
+    #[test]
+    fn test_quota_resource_limit_new_custom_from_string() {
+        let name = "X-NUM-FOLDERS".to_string();
+
+        // use a function to for use of a dropped string
+        fn make_limit(name: String) -> QuotaResourceLimit<'static> {
+            QuotaResourceLimit::new(name, 50)
+        }
+
+        let limit = make_limit(name);
+
+        assert!(matches!(
+            limit.name,
+            QuotaResourceName::Atom(x) if x == Cow::from("X-NUM-FOLDERS")
+        ));
+        assert_eq!(limit.amount, 50);
     }
 }
