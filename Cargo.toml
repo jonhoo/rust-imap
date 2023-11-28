@@ -43,7 +43,7 @@ structopt = "0.3"
 encoding = { version = "0.2.32", optional = true }
 failure = { version = "0.1.8", optional = true }
 mime = { version = "0.3.4", optional = true }
-openssl = { version = "0.10.55", optional = true }
+openssl = { version = "0.10.60", optional = true }
 
 [[example]]
 name = "basic"
