@@ -105,6 +105,8 @@ pub enum Error {
     /// In response to a STATUS command, the server sent OK without actually sending any STATUS
     /// responses first.
     MissingStatusResponse,
+    /// Tag mismatch between client and server. New session must be created.
+    TagMismatch(TagMismatch),
     /// StartTls is not available on the server
     StartTlsNotAvailable,
     /// Returns when Tls is not configured
@@ -175,6 +177,7 @@ impl fmt::Display for Error {
             Error::Append => f.write_str("Could not append mail to mailbox"),
             Error::Unexpected(ref r) => write!(f, "Unexpected Response: {:?}", r),
             Error::MissingStatusResponse => write!(f, "Missing STATUS Response"),
+            Error::TagMismatch(ref data) => write!(f, "Mismatched Tag: {:?}", data),
             Error::StartTlsNotAvailable => write!(f, "StartTls is not available on the server"),
             Error::TlsNotConfigured => {
                 write!(f, "TLS was requested, but no TLS features are enabled")
@@ -203,6 +206,7 @@ impl StdError for Error {
             Error::Append => "Could not append mail to mailbox",
             Error::Unexpected(_) => "Unexpected Response",
             Error::MissingStatusResponse => "Missing STATUS Response",
+            Error::TagMismatch(ref e) => e.description(),
             Error::StartTlsNotAvailable => "StartTls is not available on the server",
             Error::TlsNotConfigured => "TLS was requested, but no TLS features are enabled",
         }
@@ -218,6 +222,7 @@ impl StdError for Error {
             #[cfg(feature = "native-tls")]
             Error::TlsHandshake(ref e) => Some(e),
             Error::Parse(ParseError::DataNotUtf8(_, ref e)) => Some(e),
+            Error::TagMismatch(ref e) => Some(e),
             _ => None,
         }
     }
@@ -289,6 +294,36 @@ impl fmt::Display for ValidateError {
 impl StdError for ValidateError {
     fn description(&self) -> &str {
         "Invalid character in command argument"
+    }
+
+    fn cause(&self) -> Option<&dyn StdError> {
+        None
+    }
+}
+
+/// Tag was corrupted during session.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct TagMismatch {
+    /// Expected tag number
+    pub(crate) expect: u32,
+    /// Actual tag number, 0 if parse failed
+    pub(crate) actual: u32,
+}
+
+impl fmt::Display for TagMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Expected tag number is {}, actual {}",
+            self.expect, self.actual
+        )
+    }
+}
+
+impl StdError for TagMismatch {
+    fn description(&self) -> &str {
+        "Tag is corrupted, session is in an inconsistent state"
     }
 
     fn cause(&self) -> Option<&dyn StdError> {
