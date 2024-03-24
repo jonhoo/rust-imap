@@ -8,6 +8,8 @@ use std::ops::{Deref, DerefMut};
 use std::str;
 use std::sync::mpsc;
 
+use crate::error::TagMismatch;
+
 use super::authenticator::Authenticator;
 use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
 use super::extensions;
@@ -153,6 +155,13 @@ pub struct Session<T: Read + Write> {
 #[derive(Debug)]
 pub struct Client<T: Read + Write> {
     conn: Connection<T>,
+}
+
+impl<T: Read + Write> Client<T> {
+    /// Manually increment the current tag.
+    pub fn skip_tag(&mut self) {
+        self.conn.tag += 1;
+    }
 }
 
 /// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
@@ -1495,7 +1504,12 @@ impl<T: Read + Write> Connection<T> {
 
     fn run_command(&mut self, untagged_command: &str) -> Result<()> {
         let command = self.create_command(untagged_command);
-        self.write_line(command.into_bytes().as_slice())
+        let result = self.write_line(command.into_bytes().as_slice());
+        if result.is_err() {
+            // rollback tag increased in create_command()
+            self.tag -= 1;
+        }
+        result
     }
 
     fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
@@ -1547,7 +1561,17 @@ impl<T: Read + Write> Connection<T> {
                             ..
                         },
                     )) => {
-                        assert_eq!(tag.as_bytes(), match_tag.as_bytes());
+                        // check if tag matches
+                        if tag.as_bytes() != match_tag.as_bytes() {
+                            let expect = self.tag;
+                            let actual = tag
+                                .0
+                                .trim_start_matches(TAG_PREFIX)
+                                .parse::<u32>()
+                                .unwrap_or_default();
+                            break Err(Error::TagMismatch(TagMismatch { expect, actual }));
+                        }
+
                         Some(match status {
                             Status::Bad | Status::No | Status::Bye => Err((
                                 status,
