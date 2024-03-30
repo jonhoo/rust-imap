@@ -105,7 +105,9 @@ pub enum Error {
     /// In response to a STATUS command, the server sent OK without actually sending any STATUS
     /// responses first.
     MissingStatusResponse,
-    /// Tag mismatch between client and server. New session must be created.
+    /// The server responded with a different command tag than the one we just sent.
+    ///
+    /// A new session must generally be established to recover from this.
     TagMismatch(TagMismatch),
     /// StartTls is not available on the server
     StartTlsNotAvailable,
@@ -301,35 +303,27 @@ impl StdError for ValidateError {
     }
 }
 
-/// Tag was corrupted during session.
-#[derive(Debug)]
+/// The server responded with a different command tag than last one we sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct TagMismatch {
     /// Expected tag number
     pub(crate) expect: u32,
     /// Actual tag number, 0 if parse failed
-    pub(crate) actual: u32,
+    pub(crate) actual: std::result::Result<u32, Vec<u8>>,
 }
 
 impl fmt::Display for TagMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Expected tag number is {}, actual {}",
+            "Expected tag number is {}, actual {:?}",
             self.expect, self.actual
         )
     }
 }
 
-impl StdError for TagMismatch {
-    fn description(&self) -> &str {
-        "Tag is corrupted, session is in an inconsistent state"
-    }
-
-    fn cause(&self) -> Option<&dyn StdError> {
-        None
-    }
-}
+impl StdError for TagMismatch {}
 
 #[cfg(test)]
 mod tests {

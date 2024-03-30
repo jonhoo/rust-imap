@@ -157,13 +157,6 @@ pub struct Client<T: Read + Write> {
     conn: Connection<T>,
 }
 
-impl<T: Read + Write> Client<T> {
-    /// Manually increment the current tag.
-    pub fn skip_tag(&mut self) {
-        self.conn.tag += 1;
-    }
-}
-
 /// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
 /// login) use a `Connection` internally for the TCP stream primitives.
 #[derive(Debug)]
@@ -178,6 +171,17 @@ pub struct Connection<T: Read + Write> {
 
     /// Tracks if we have read a greeting.
     pub greeting_read: bool,
+}
+
+impl<T: Read + Write> Connection<T> {
+    /// Manually increment the current tag.
+    ///
+    /// This function can be manually executed by callers when the
+    /// previous tag was not reused, for example when a timeout did
+    /// not write anything on the stream.
+    pub fn skip_tag(&mut self) {
+        self.tag += 1;
+    }
 }
 
 /// A builder for the append command
@@ -1568,7 +1572,7 @@ impl<T: Read + Write> Connection<T> {
                                 .0
                                 .trim_start_matches(TAG_PREFIX)
                                 .parse::<u32>()
-                                .unwrap_or_default();
+                                .map_err(|_| tag.as_bytes().to_vec());
                             break Err(Error::TagMismatch(TagMismatch { expect, actual }));
                         }
 
