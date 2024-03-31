@@ -13,6 +13,8 @@
 //! imap = { version = "3.0", features = ["test_helpers"] }
 //! ```
 //!
+#[cfg(doc)]
+use crate::{extensions::list_status::ExtendedNames, types::*};
 
 /// Methods to build a [`Capabilities`] response object
 pub mod capabilities {

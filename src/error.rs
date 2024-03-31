@@ -108,7 +108,8 @@ pub enum Error {
     /// The server responded with a different command tag than the one we just sent.
     ///
     /// A new session must generally be established to recover from this. You can also use
-    /// [`Connection::skip_tag`] (which is available through both [`Client`] and [`Session`]).
+    /// [`Connection::skip_tag`](crate::client::Connection::skip_tag) (which is available through
+    /// both [`Client`](crate::Client) and [`Session`](crate::Session)).
     TagMismatch(TagMismatch),
     /// StartTls is not available on the server
     StartTlsNotAvailable,

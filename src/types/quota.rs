@@ -9,7 +9,7 @@ use std::sync::mpsc;
 
 /// From [SETQUOTA Resource limit](https://datatracker.ietf.org/doc/html/rfc2087#section-4.1)
 ///
-/// Used by [`Session::set_quota`]
+/// Used by [`Session::set_quota`](crate::Session::set_quota).
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct QuotaResourceLimit<'a> {
@@ -35,7 +35,7 @@ impl Display for QuotaResourceLimit<'_> {
 
 /// From [Resources](https://datatracker.ietf.org/doc/html/rfc2087#section-3)
 ///
-/// Used by [`QuotaLimit`], and [`QuotaResource`]
+/// Used by [`QuotaResourceLimit`], and [`QuotaResource`]
 #[derive(Debug, Eq, PartialEq, Clone)]
 #[non_exhaustive]
 pub enum QuotaResourceName<'a> {
@@ -128,7 +128,7 @@ impl QuotaResponse {
 
 /// From [QUOTA Response](https://datatracker.ietf.org/doc/html/rfc2087#section-5.1)
 ///
-/// Used by [`QuotaResponse`] and [`QuotaRoot`]
+/// Used by [`QuotaResponse`] and [`QuotaRootResponse`]
 #[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct Quota<'a> {

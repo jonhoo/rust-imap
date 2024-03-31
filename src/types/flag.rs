@@ -1,5 +1,8 @@
 use std::borrow::Cow;
 
+#[cfg(doc)]
+use crate::types::Mailbox;
+
 /// With the exception of [`Flag::Custom`], these flags are system flags that are pre-defined in
 /// [RFC 3501 section 2.3.2](https://tools.ietf.org/html/rfc3501#section-2.3.2). All system flags
 /// begin with `\` in the IMAP protocol.  Certain system flags (`\Deleted` and `\Seen`) have

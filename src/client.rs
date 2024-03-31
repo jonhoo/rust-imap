@@ -8,14 +8,15 @@ use std::ops::{Deref, DerefMut};
 use std::str;
 use std::sync::mpsc;
 
-use crate::error::TagMismatch;
-
 use super::authenticator::Authenticator;
-use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
+use super::error::{Bad, Bye, Error, No, ParseError, Result, TagMismatch, ValidateError};
 use super::extensions;
 use super::parse::*;
 use super::types::*;
 use super::utils::*;
+
+#[cfg(doc)]
+use imap_proto::NameAttribute;
 
 static TAG_PREFIX: &str = "a";
 const INITIAL_TAG: u32 = 0;
