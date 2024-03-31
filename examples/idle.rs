@@ -1,33 +1,33 @@
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "idle")]
+#[derive(Parser, Debug)]
+#[clap(name = "idle")]
 struct Opt {
     // The server name to connect to
-    #[structopt(short, long)]
+    #[clap(short, long)]
     server: String,
 
     // The port to use
-    #[structopt(short, long, default_value = "993")]
+    #[clap(short, long, default_value = "993")]
     port: u16,
 
     // The account username
-    #[structopt(short, long)]
+    #[clap(short, long)]
     username: String,
 
     // The account password. In a production system passwords
     // would normally be in a config or fetched at runtime from
     // a password manager or user prompt and not passed on the
     // command line.
-    #[structopt(short = "w", long)]
+    #[clap(short = 'w', long)]
     password: String,
 
     // The mailbox to IDLE on
-    #[structopt(short, long, default_value = "INBOX")]
+    #[clap(short, long, default_value = "INBOX")]
     mailbox: String,
 
-    #[structopt(
-        short = "x",
+    #[clap(
+        short = 'x',
         long,
         help = "The number of responses to receive before exiting",
         default_value = "5"
@@ -36,7 +36,7 @@ struct Opt {
 }
 
 fn main() {
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
 
     let client = imap::ClientBuilder::new(opt.server.clone(), opt.port)
         .connect()
