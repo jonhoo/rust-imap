@@ -11,7 +11,8 @@ use crate::extensions::idle::SetReadTimeout;
 #[cfg(feature = "rustls-tls")]
 use rustls_connector::{
     rustls,
-    rustls::{Certificate, ClientConfig, RootCertStore, ServerName},
+    rustls::pki_types::{CertificateDer, ServerName},
+    rustls::{ClientConfig, RootCertStore},
     rustls_native_certs::load_native_certs,
     RustlsConnector,
 };
@@ -19,20 +20,43 @@ use rustls_connector::{
 use std::sync::Arc;
 
 #[cfg(feature = "rustls-tls")]
-struct NoCertVerification;
+#[derive(Debug)]
+struct NoCertVerification(rustls::client::WebPkiServerVerifier);
 
 #[cfg(feature = "rustls-tls")]
-impl rustls::client::ServerCertVerifier for NoCertVerification {
+impl rustls::client::danger::ServerCertVerifier for NoCertVerification {
     fn verify_server_cert(
         &self,
-        _: &Certificate,
-        _: &[Certificate],
-        _: &ServerName,
-        _: &mut dyn Iterator<Item = &[u8]>,
+        _: &CertificateDer<'_>,
+        _: &[CertificateDer<'_>],
+        _: &ServerName<'_>,
         _: &[u8],
-        _: std::time::SystemTime,
-    ) -> std::result::Result<rustls::client::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::ServerCertVerified::assertion())
+        _: rustls::pki_types::UnixTime,
+    ) -> std::result::Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> std::result::Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        self.0.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> std::prelude::v1::Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
+    {
+        self.0.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.0.supported_verify_schemes()
     }
 }
 
@@ -41,7 +65,7 @@ lazy_static! {
     static ref CACERTS: RootCertStore = {
         let mut store = RootCertStore::empty();
         for cert in load_native_certs().unwrap_or_else(|_| vec![]) {
-            if let Ok(_) = store.add(&Certificate(cert.0)) {}
+            if let Ok(_) = store.add(cert) {}
         }
         store
     };
@@ -335,14 +359,19 @@ where
     #[cfg(feature = "rustls-tls")]
     fn build_tls_rustls(&self, tcp: TcpStream) -> Result<Connection> {
         let mut config = ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(CACERTS.clone())
             .with_no_client_auth();
         if self.skip_tls_verify {
-            let no_cert_verifier = NoCertVerification;
             config
                 .dangerous()
-                .set_certificate_verifier(Arc::new(no_cert_verifier));
+                .set_certificate_verifier(Arc::new(NoCertVerification(
+                    Arc::into_inner(
+                        rustls::client::WebPkiServerVerifier::builder(Arc::new(CACERTS.clone()))
+                            .build()
+                            .expect("can construct standard verifier"),
+                    )
+                    .expect("just constructed, so should only be one"),
+                )));
         }
         let ssl_conn: RustlsConnector = config.into();
         Ok(Box::new(ssl_conn.connect(self.domain.as_ref(), tcp)?))
