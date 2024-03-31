@@ -1741,7 +1741,6 @@ pub(crate) mod testutils {
 
 #[cfg(test)]
 mod tests {
-    use super::super::error::Result;
     use super::super::mock_stream::MockStream;
     use super::*;
     use imap_proto::types::Capability;
