@@ -247,27 +247,27 @@ impl<'a, T: Read + Write + 'a> Drop for Handle<'a, T> {
     }
 }
 
-impl<'a> SetReadTimeout for Connection {
+impl SetReadTimeout for Connection {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.deref_mut().set_read_timeout(timeout)
     }
 }
 
-impl<'a> SetReadTimeout for TcpStream {
+impl SetReadTimeout for TcpStream {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         TcpStream::set_read_timeout(self, timeout).map_err(Error::Io)
     }
 }
 
 #[cfg(feature = "native-tls")]
-impl<'a> SetReadTimeout for TlsStream<TcpStream> {
+impl SetReadTimeout for TlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
     }
 }
 
 #[cfg(feature = "rustls-tls")]
-impl<'a> SetReadTimeout for RustlsStream<TcpStream> {
+impl SetReadTimeout for RustlsStream<TcpStream> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()> {
         self.get_ref().set_read_timeout(timeout).map_err(Error::Io)
     }

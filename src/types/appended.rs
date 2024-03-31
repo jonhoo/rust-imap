@@ -1,5 +1,8 @@
 use imap_proto::UidSetMember;
 
+#[cfg(doc)]
+use crate::types::Uid;
+
 /// Meta-information about a message, as returned by
 /// [`APPEND`](https://tools.ietf.org/html/rfc3501#section-6.3.11).
 /// Note that `APPEND` only returns any data if certain extensions are enabled,

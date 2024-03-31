@@ -64,7 +64,7 @@ impl Deleted {
     pub fn from_expunged(v: Vec<u32>, mod_seq: Option<u64>) -> Self {
         Self {
             messages: DeletedMessages::Expunged(v),
-            mod_seq: mod_seq,
+            mod_seq,
         }
     }
 
@@ -73,7 +73,7 @@ impl Deleted {
     pub fn from_vanished(v: Vec<RangeInclusive<u32>>, mod_seq: Option<u64>) -> Self {
         Self {
             messages: DeletedMessages::Vanished(v),
-            mod_seq: mod_seq,
+            mod_seq,
         }
     }
 

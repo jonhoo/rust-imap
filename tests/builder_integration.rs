@@ -45,7 +45,10 @@ fn starttls_force() {
     assert!(list_mailbox(&mut s).is_ok());
 }
 
-#[cfg(any(feature = "native-tls", feature = "rustls-tls"))]
+#[cfg(all(
+    any(feature = "native-tls", feature = "rustls-tls"),
+    feature = "test-full-imap"
+))]
 #[test]
 fn tls_force() {
     let user = "tls@localhost";

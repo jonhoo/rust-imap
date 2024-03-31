@@ -162,12 +162,12 @@ pub struct Acl<'a> {
 impl<'a> Acl<'a> {
     /// Return the mailbox the ACL entries belong to
     pub fn mailbox(&self) -> &str {
-        &*self.mailbox
+        &self.mailbox
     }
 
     /// Returns a list of identifier/rights pairs for the mailbox
     pub fn acls(&self) -> &[AclEntry<'_>] {
-        &*self.acls
+        &self.acls
     }
 }
 
@@ -244,12 +244,12 @@ pub struct ListRights<'a> {
 impl ListRights<'_> {
     /// Returns the mailbox for the rights
     pub fn mailbox(&self) -> &str {
-        &*self.mailbox
+        &self.mailbox
     }
 
     /// Returns the user identifier for the rights
     pub fn identifier(&self) -> &str {
-        &*self.identifier
+        &self.identifier
     }
 
     /// Returns the set of rights that are always provided for this identifier
@@ -318,7 +318,7 @@ pub struct MyRights<'a> {
 impl MyRights<'_> {
     /// Returns the mailbox for the rights
     pub fn mailbox(&self) -> &str {
-        &*self.mailbox
+        &self.mailbox
     }
 
     /// Returns the rights for the mailbox

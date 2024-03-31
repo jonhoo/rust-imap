@@ -92,7 +92,7 @@ impl<'a> Name<'a> {
     /// the name is also valid as an argument for commands, such as `SELECT`, that accept mailbox
     /// names.
     pub fn name(&self) -> &str {
-        &*self.name
+        &self.name
     }
 
     /// Get an owned version of this [`Name`].

@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use super::{Flag, Seq};
 
 /// re-exported from imap_proto;
@@ -77,7 +75,7 @@ pub enum UnsolicitedResponse {
     // TODO: the spec doesn't seem to say anything about when these may be received as unsolicited?
     Flags(Vec<Flag<'static>>),
 
-    /// An unsolicited METADATA response (https://tools.ietf.org/html/rfc5464#section-4.4.2)
+    /// An unsolicited [METADATA response](https://tools.ietf.org/html/rfc5464#section-4.4.2)
     /// that reports a change in a server or mailbox annotation.
     Metadata {
         /// Mailbox name for which annotations were changed.

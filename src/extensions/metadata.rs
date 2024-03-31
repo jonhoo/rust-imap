@@ -33,12 +33,12 @@ impl CmdListItemFormat for Metadata {
             "{} {}",
             validate_str(
                 synopsis,
-                &format!("entry#{}", item_index + 1),
+                format!("entry#{}", item_index + 1),
                 self.entry.as_str()
             )?,
             self.value
                 .as_ref()
-                .map(|v| validate_str(synopsis, &format!("value#{}", item_index + 1), v.as_str()))
+                .map(|v| validate_str(synopsis, format!("value#{}", item_index + 1), v.as_str()))
                 .unwrap_or_else(|| Ok("NIL".to_string()))?
         ))
     }

@@ -64,7 +64,7 @@ impl Capabilities {
     }
 
     /// Check if the server has the given capability.
-    pub fn has<'a>(&self, cap: &Capability<'a>) -> bool {
+    pub fn has(&self, cap: &Capability<'_>) -> bool {
         self.borrow_capabilities().contains(cap)
     }
 
