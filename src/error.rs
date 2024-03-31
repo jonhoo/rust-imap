@@ -107,7 +107,8 @@ pub enum Error {
     MissingStatusResponse,
     /// The server responded with a different command tag than the one we just sent.
     ///
-    /// A new session must generally be established to recover from this.
+    /// A new session must generally be established to recover from this. You can also use
+    /// [`Connection::skip_tag`] (which is available through both [`Client`] and [`Session`]).
     TagMismatch(TagMismatch),
     /// StartTls is not available on the server
     StartTlsNotAvailable,

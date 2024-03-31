@@ -176,9 +176,14 @@ pub struct Connection<T: Read + Write> {
 impl<T: Read + Write> Connection<T> {
     /// Manually increment the current tag.
     ///
-    /// This function can be manually executed by callers when the
-    /// previous tag was not reused, for example when a timeout did
-    /// not write anything on the stream.
+    /// If writing a command to the server fails, [`Client`] assumes that the command did not reach
+    /// the server, and thus that the next tag that should be sent is still the one used for the
+    /// failed command. However, it could be the case that the command _did_ reach the server
+    /// before failing, and thus a fresh tag needs to be issued instead.
+    ///
+    /// This function can be used to attempt to manually re-synchronize the client's tag tracker in
+    /// such cases. It forcibly increments the client's tag counter such that the next command
+    /// sent to the server will have a tag that is one greater than it otherwise would.
     pub fn skip_tag(&mut self) {
         self.tag += 1;
     }
