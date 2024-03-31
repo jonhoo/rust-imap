@@ -32,7 +32,7 @@ impl ExtendedNames {
         ExtendedNamesTryBuilder {
             data: owned,
             extended_names_builder: |input| {
-                let mut lines: &[u8] = &input;
+                let mut lines: &[u8] = input;
                 let mut names = Vec::new();
                 let mut current_name: Option<Name<'_>> = None;
                 let mut current_mailbox: Option<Mailbox> = None;

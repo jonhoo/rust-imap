@@ -234,7 +234,7 @@ impl QuotaRootResponse {
 
     /// The mailbox name
     pub fn mailbox_name(&self) -> &str {
-        &*self.borrow_inner().quota_root.mailbox_name
+        &self.borrow_inner().quota_root.mailbox_name
     }
 
     /// The list of quota roots for the mailbox name (could be empty)
@@ -243,7 +243,7 @@ impl QuotaRootResponse {
             .quota_root
             .quota_root_names
             .iter()
-            .map(|e| &*e.as_ref())
+            .map(|e| e.as_ref())
     }
 
     /// The set of quotas for each named quota root (could be empty)
