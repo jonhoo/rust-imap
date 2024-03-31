@@ -8,6 +8,8 @@ use std::ops::{Deref, DerefMut};
 use std::str;
 use std::sync::mpsc;
 
+use crate::error::TagMismatch;
+
 use super::authenticator::Authenticator;
 use super::error::{Bad, Bye, Error, No, ParseError, Result, ValidateError};
 use super::extensions;
@@ -169,6 +171,17 @@ pub struct Connection<T: Read + Write> {
 
     /// Tracks if we have read a greeting.
     pub greeting_read: bool,
+}
+
+impl<T: Read + Write> Connection<T> {
+    /// Manually increment the current tag.
+    ///
+    /// This function can be manually executed by callers when the
+    /// previous tag was not reused, for example when a timeout did
+    /// not write anything on the stream.
+    pub fn skip_tag(&mut self) {
+        self.tag += 1;
+    }
 }
 
 /// A builder for the append command
@@ -1495,7 +1508,12 @@ impl<T: Read + Write> Connection<T> {
 
     fn run_command(&mut self, untagged_command: &str) -> Result<()> {
         let command = self.create_command(untagged_command);
-        self.write_line(command.into_bytes().as_slice())
+        let result = self.write_line(command.into_bytes().as_slice());
+        if result.is_err() {
+            // rollback tag increased in create_command()
+            self.tag -= 1;
+        }
+        result
     }
 
     fn run_command_and_read_response(&mut self, untagged_command: &str) -> Result<Vec<u8>> {
@@ -1547,7 +1565,17 @@ impl<T: Read + Write> Connection<T> {
                             ..
                         },
                     )) => {
-                        assert_eq!(tag.as_bytes(), match_tag.as_bytes());
+                        // check if tag matches
+                        if tag.as_bytes() != match_tag.as_bytes() {
+                            let expect = self.tag;
+                            let actual = tag
+                                .0
+                                .trim_start_matches(TAG_PREFIX)
+                                .parse::<u32>()
+                                .map_err(|_| tag.as_bytes().to_vec());
+                            break Err(Error::TagMismatch(TagMismatch { expect, actual }));
+                        }
+
                         Some(match status {
                             Status::Bad | Status::No | Status::Bye => Err((
                                 status,
