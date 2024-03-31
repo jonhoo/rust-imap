@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 #[cfg(feature = "rustls-tls")]
 #[derive(Debug)]
-struct NoCertVerification(rustls::client::WebPkiServerVerifier);
+struct NoCertVerification(Arc<rustls::client::WebPkiServerVerifier>);
 
 #[cfg(feature = "rustls-tls")]
 impl rustls::client::danger::ServerCertVerifier for NoCertVerification {
@@ -365,12 +365,9 @@ where
             config
                 .dangerous()
                 .set_certificate_verifier(Arc::new(NoCertVerification(
-                    Arc::into_inner(
-                        rustls::client::WebPkiServerVerifier::builder(Arc::new(CACERTS.clone()))
-                            .build()
-                            .expect("can construct standard verifier"),
-                    )
-                    .expect("just constructed, so should only be one"),
+                    rustls::client::WebPkiServerVerifier::builder(Arc::new(CACERTS.clone()))
+                        .build()
+                        .expect("can construct standard verifier"),
                 )));
         }
         let ssl_conn: RustlsConnector = config.into();
