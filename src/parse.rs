@@ -2,8 +2,6 @@ use imap_proto::{MailboxDatum, Response, ResponseCode, StatusAttribute};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashSet;
-use std::convert::TryFrom;
-use std::iter::Extend;
 use std::sync::mpsc;
 
 use super::error::{Error, ParseError, Result};

@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use super::{Flag, Seq};
 
 /// re-exported from imap_proto;
