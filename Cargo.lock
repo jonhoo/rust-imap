@@ -458,6 +458,7 @@ dependencies = [
  "native-tls",
  "nom",
  "openssl",
+ "openssl-macros",
  "ouroboros",
  "regex",
  "rustls-connector",
