@@ -153,9 +153,9 @@ pub enum UnsolicitedResponse {
 ///
 /// Not all `Response` variants are supported - only those which
 /// are known or likely to be sent by a server as a unilateral response
-/// during normal operations or during an IDLE session are implented.
+/// during normal operations or during an IDLE session are implemented.
 ///
-/// If the conversion fails, the input `Reponse` is returned.
+/// If the conversion fails, the input `Response` is returned.
 impl<'a> TryFrom<Response<'a>> for UnsolicitedResponse {
     type Error = Response<'a>;
 

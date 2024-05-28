@@ -1,4 +1,4 @@
-//! Adds support for the IMAP LIST-STATUS extension specificed in [RFC
+//! Adds support for the IMAP LIST-STATUS extension specified in [RFC
 //! 5819](https://tools.ietf.org/html/rfc5819).
 
 use crate::client::{validate_str, Session};

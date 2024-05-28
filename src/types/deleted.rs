@@ -15,7 +15,7 @@ use std::ops::RangeInclusive;
 /// knows that they should be receiving an `EXPUNGE` or `VANISHED` response,
 /// then they can use [`seqs()`](#method.seqs) to get an iterator over `EXPUNGE`
 /// message sequence numbers, or [`uids()`](#method.uids) to get an iterator over
-/// the `VANISHED` UIDs. As a convenience `Deleted` also implents `IntoIterator`
+/// the `VANISHED` UIDs. As a convenience `Deleted` also implements `IntoIterator`
 /// which just returns an iterator over whatever is contained within.
 ///
 /// # Examples
