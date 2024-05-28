@@ -1,4 +1,4 @@
-//! Adds support for the IMAP METADATA extension specificed in [RFC
+//! Adds support for the IMAP METADATA extension specified in [RFC
 //! 5464](https://tools.ietf.org/html/rfc5464).
 //!
 //! Mailboxes or the server as a whole may have zero or more annotations associated with them. An

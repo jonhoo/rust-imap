@@ -98,7 +98,7 @@ fn validate_str_noquote(
 
 /// This ensures the input doesn't contain a command-terminator or any other whitespace
 /// while leaving it not-quoted.
-/// This is needed because, per [the formal grammer given in RFC
+/// This is needed because, per [the formal grammar given in RFC
 /// 3501](https://tools.ietf.org/html/rfc3501#section-9), a sequence set consists of the following:
 ///
 /// > sequence-set = (seq-number / seq-range) *("," sequence-set)
@@ -130,7 +130,7 @@ fn validate_sequence_set(
 }
 
 /// An authenticated IMAP session providing the usual IMAP commands. This type is what you get from
-/// a succesful login attempt.
+/// a successful login attempt.
 ///
 /// Note that the server *is* allowed to unilaterally send things to the client for messages in
 /// a selected mailbox whose status has changed. See the note on [unilateral server responses
@@ -149,7 +149,7 @@ pub struct Session<T: Read + Write> {
 }
 
 /// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
-/// connecting. A succesfull call to [`Client::login`] or [`Client::authenticate`] will return a
+/// connecting. A successful call to [`Client::login`] or [`Client::authenticate`] will return a
 /// [`Session`] instance that provides the usual IMAP methods.
 // Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
 // primitives type.
@@ -158,7 +158,7 @@ pub struct Client<T: Read + Write> {
     conn: Connection<T>,
 }
 
-/// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
+/// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after successful
 /// login) use a `Connection` internally for the TCP stream primitives.
 #[derive(Debug)]
 #[doc(hidden)]
@@ -297,7 +297,7 @@ impl<T: Read + Write> DerefMut for Session<T> {
 }
 
 // As the pattern of returning the unauthenticated `Client` (a.k.a. `self`) back with a login error
-// is relatively common, it's abstacted away into a macro here.
+// is relatively common, it's abstracted away into a macro here.
 //
 // Note: 1) using `.map_err(|e| (e, self))` or similar here makes the closure own self, so we can't
 //          do that.
@@ -379,7 +379,7 @@ impl<T: Read + Write> Client<T> {
     /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
     /// returned; on error the original `Client` instance is returned in addition to the error.
     /// This is because `login` takes ownership of `self`, so in order to try again (e.g. after
-    /// prompting the user for credetials), ownership of the original `Client` needs to be
+    /// prompting the user for credentials), ownership of the original `Client` needs to be
     /// transferred back to the caller.
     ///
     /// ```rust,no_run
@@ -479,7 +479,7 @@ impl<T: Read + Write> Client<T> {
         loop {
             let mut line = Vec::new();
 
-            // explicit match blocks neccessary to convert error to tuple and not bind self too
+            // explicit match blocks necessary to convert error to tuple and not bind self too
             // early (see also comment on `login`)
             ok_or_unauth_client_err!(self.readline(&mut line), self);
 
@@ -827,7 +827,7 @@ impl<T: Read + Write> Session<T> {
     ///
     /// This command is particularly useful for disconnected use clients. By using `uid_expunge`
     /// instead of [`expunge`](Session::expunge) when resynchronizing with the server, the client
-    /// can ensure that it does not inadvertantly remove any messages that have been marked as
+    /// can ensure that it does not inadvertently remove any messages that have been marked as
     /// [`Flag::Deleted`] by other clients between the time that the client was last connected and
     /// the time the client resynchronizes.
     ///
@@ -1363,7 +1363,7 @@ impl<T: Read + Write> Session<T> {
 
     /// The [`GETACL` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.3)
     ///
-    /// Returns the ACLs on the given mailbox. A set ot `ACL` responses are returned if the
+    /// Returns the ACLs on the given mailbox. A set of `ACL` responses are returned if the
     /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
     ///
     /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]
@@ -1379,7 +1379,7 @@ impl<T: Read + Write> Session<T> {
     /// The [`LISTRIGHTS` command](https://datatracker.ietf.org/doc/html/rfc4314#section-3.4)
     ///
     /// Returns the always granted and optionally granted rights on the given mailbox for the
-    /// specified identifier (login). A set ot `LISTRIGHTS` responses are returned if the
+    /// specified identifier (login). A set of `LISTRIGHTS` responses are returned if the
     /// logged in user has `a` rights on the mailbox.  Otherwise, will return [`Error::No`].
     ///
     /// This method only works against a server with the ACL capability. Otherwise [`Error::Bad`]

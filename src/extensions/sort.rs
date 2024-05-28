@@ -1,4 +1,4 @@
-//! Adds support for the IMAP SORT extension specificed in [RFC
+//! Adds support for the IMAP SORT extension specified in [RFC
 //! 5464](https://tools.ietf.org/html/rfc5256#section-3).
 //!
 //! The SORT command is a variant of SEARCH with sorting semantics for
