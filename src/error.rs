@@ -25,7 +25,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Bad {
-    /// Human-redable message included with the Bad response.
+    /// Human-readable message included with the Bad response.
     pub information: String,
     /// A more specific error status code included with the Bad response.
     pub code: Option<ResponseCode<'static>>,
@@ -41,7 +41,7 @@ impl fmt::Display for Bad {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct No {
-    /// Human-redable message included with the NO response.
+    /// Human-readable message included with the NO response.
     pub information: String,
     /// A more specific error status code included with the NO response.
     pub code: Option<ResponseCode<'static>>,
@@ -57,7 +57,7 @@ impl fmt::Display for No {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Bye {
-    /// Human-redable message included with the response.
+    /// Human-readable message included with the response.
     pub information: String,
     /// A more specific error status code included with the response.
     pub code: Option<ResponseCode<'static>>,
@@ -232,7 +232,7 @@ impl StdError for Error {
     }
 }
 
-/// An error occured while trying to parse a server response.
+/// An error occurred while trying to parse a server response.
 #[derive(Debug)]
 pub enum ParseError {
     /// Indicates an error parsing the status response. Such as OK, NO, and BAD.

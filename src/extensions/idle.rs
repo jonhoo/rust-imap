@@ -1,4 +1,4 @@
-//! Adds support for the IMAP IDLE command specificed in [RFC
+//! Adds support for the IMAP IDLE command specified in [RFC
 //! 2177](https://tools.ietf.org/html/rfc2177).
 
 use crate::client::Session;
@@ -18,7 +18,7 @@ use std::time::Duration;
 /// `Handle` allows a client to block waiting for changes to the remote mailbox.
 ///
 /// The handle blocks using the [`IDLE` command](https://tools.ietf.org/html/rfc2177#section-3)
-/// specificed in [RFC 2177](https://tools.ietf.org/html/rfc2177) until the underlying server state
+/// specified in [RFC 2177](https://tools.ietf.org/html/rfc2177) until the underlying server state
 /// changes in some way.
 ///
 /// The `wait_while` function takes a callback function which receives any responses
