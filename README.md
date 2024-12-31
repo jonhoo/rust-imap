@@ -1,12 +1,9 @@
-<!-- this file uses https://github.com/livioribeiro/cargo-readme -->
-<!-- do not manually edit README.md, instead edit README.tpl or src/lib.rs -->
-
 # imap
 
 [![Crates.io](https://img.shields.io/crates/v/imap.svg)](https://crates.io/crates/imap)
 [![Documentation](https://docs.rs/imap/badge.svg)](https://docs.rs/imap/)
 [![Crate License](https://img.shields.io/crates/l/imap.svg)](https://crates.io/crates/imap)
-[![Codecov](https://codecov.io/github/jonhoo/rust-imap/coverage.svg?branch=master)](https://codecov.io/gh/jonhoo/rust-imap)
+[![codecov](https://codecov.io/gh/jonhoo/rust-imap/graph/badge.svg?token=2cO5sjtmyR)](https://codecov.io/gh/jonhoo/rust-imap)
 [![Dependency status](https://deps.rs/repo/github/jonhoo/rust-imap/status.svg)](https://deps.rs/repo/github/jonhoo/rust-imap)
 
 This crate lets you connect to and interact with servers that implement the IMAP protocol ([RFC
