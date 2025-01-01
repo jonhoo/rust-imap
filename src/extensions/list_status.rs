@@ -145,7 +145,7 @@ impl<T: Read + Write> Session<T> {
         data_items: &str,
     ) -> Result<ExtendedNames> {
         let reference = validate_str("LIST-STATUS", "reference", reference_name.unwrap_or(""))?;
-        let lines = self.run_command_and_read_response(&format!(
+        let lines = self.run_command_and_read_response(format!(
             "LIST {} {} RETURN (STATUS {})",
             &reference,
             mailbox_pattern.unwrap_or("\"\""),
