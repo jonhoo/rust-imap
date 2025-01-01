@@ -145,13 +145,14 @@ impl<T: Read + Write> Session<T> {
         data_items: &str,
     ) -> Result<ExtendedNames> {
         let reference = validate_str("LIST-STATUS", "reference", reference_name.unwrap_or(""))?;
-        self.run_command_and_read_response(&format!(
+        let lines = self.run_command_and_read_response(&format!(
             "LIST {} {} RETURN (STATUS {})",
             &reference,
             mailbox_pattern.unwrap_or("\"\""),
             data_items
-        ))
-        .and_then(|lines| ExtendedNames::parse(lines, &mut self.unsolicited_responses))
+        ))?;
+        let mut unsolicited_responses = self.all_unsolicited().collect();
+        ExtendedNames::parse(lines, &mut unsolicited_responses)
     }
 }
 

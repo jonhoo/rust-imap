@@ -143,7 +143,7 @@ pub struct Session<T: Read + Write> {
     conn: Connection<T>,
     /// Server responses that are not related to the current command. See also the note on
     /// [unilateral server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
-    pub unsolicited_responses: VecDeque<UnsolicitedResponse>,
+    unsolicited_responses: VecDeque<UnsolicitedResponse>,
 }
 
 /// An (unauthenticated) handle to talk to an IMAP server. This is what you get when first
@@ -532,6 +532,11 @@ impl<T: Read + Write> Session<T> {
             conn,
             unsolicited_responses: VecDeque::new(),
         }
+    }
+
+    /// Takes all the unsolicited responses
+    pub fn all_unsolicited(&mut self) -> impl ExactSizeIterator<Item = UnsolicitedResponse> {
+        std::mem::take(&mut self.unsolicited_responses).into_iter()
     }
 
     /// Selects a mailbox

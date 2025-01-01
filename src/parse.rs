@@ -349,7 +349,7 @@ pub fn parse_mailbox(
             }
             Ok((rest, Response::Expunge(n))) => {
                 lines = rest;
-                unsolicited.push_front(UnsolicitedResponse::Expunge(n))
+                unsolicited.push_back(UnsolicitedResponse::Expunge(n))
             }
             Ok((_, resp)) => {
                 break Err(resp.into());
