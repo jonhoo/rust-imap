@@ -8,8 +8,8 @@ use imap_proto::Response;
 use ouroboros::self_referencing;
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
-use std::sync::mpsc;
 
 /// Specifies how [`Session::set_acl`] should modify an existing permission set.
 #[derive(Debug, Clone, Copy)]
@@ -117,7 +117,7 @@ impl AclResponse {
     /// Parse the given input into a [`Acl`] response.
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         AclResponseTryBuilder {
             data: owned,
@@ -200,7 +200,7 @@ impl ListRightsResponse {
     /// Parse the given input into a [`ListRights`] response.
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         ListRightsResponseTryBuilder {
             data: owned,
@@ -280,7 +280,7 @@ impl MyRightsResponse {
     /// Parse the given input into a [`MyRights`] response.
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         MyRightsResponseTryBuilder {
             data: owned,
