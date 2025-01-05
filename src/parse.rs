@@ -508,7 +508,7 @@ mod tests {
         let mut queue = VecDeque::new();
         let capabilities = Capabilities::parse(lines.to_vec(), &mut queue).unwrap();
         // shouldn't be any unexpected responses parsed
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert_eq!(capabilities.len(), 4);
         for e in expected_capabilities {
             assert!(capabilities.has(&e));
@@ -526,7 +526,7 @@ mod tests {
         let mut queue = VecDeque::new();
         let capabilities = Capabilities::parse(lines.to_vec(), &mut queue).unwrap();
         // shouldn't be any unexpected responses parsed
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert_eq!(capabilities.len(), 2);
         for e in expected_capabilities {
             assert!(capabilities.has(&e));
@@ -539,7 +539,7 @@ mod tests {
         let mut queue = VecDeque::new();
         let lines = b"* JUNK IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n";
         Capabilities::parse(lines.to_vec(), &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
     }
 
     #[test]
@@ -547,7 +547,7 @@ mod tests {
         let lines = b"* LIST (\\HasNoChildren) \".\" \"INBOX\"\r\n";
         let mut queue = VecDeque::new();
         let names = Names::parse(lines.to_vec(), &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert_eq!(names.len(), 1);
         let first = names.get(0).unwrap();
         assert_eq!(
@@ -563,7 +563,7 @@ mod tests {
         let lines = b"";
         let mut queue = VecDeque::new();
         let fetches = Fetches::parse(lines.to_vec(), &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert!(fetches.is_empty());
     }
 
@@ -574,7 +574,7 @@ mod tests {
                     * 25 FETCH (FLAGS (\\Seen))\r\n";
         let mut queue = VecDeque::new();
         let fetches = Fetches::parse(lines.to_vec(), &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert_eq!(fetches.len(), 2);
         let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 24);
@@ -715,7 +715,7 @@ mod tests {
             * SEARCH 2335 2336 2337 2338 2339 2341 2342 2347 2349 2350 2358 2359 2362 2369 2371 2372 2373 2374 2375 2376 2377 2378 2379 2380 2381 2382 2383 2384 2385 2386 2390 2392 2397 2400 2401 2403 2405 2409 2411 2414 2417 2419 2420 2424 2426 2428 2439 2454 2456 2467 2468 2469 2490 2515 2519 2520 2521\r\n";
         let mut queue = VecDeque::new();
         let ids = parse_id_set(lines, &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(
             ids,
@@ -738,14 +738,14 @@ mod tests {
         let lines = b"* SEARCH\r\n";
         let mut queue = VecDeque::new();
         let ids = parse_id_set(lines, &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         let ids: HashSet<u32> = ids.iter().cloned().collect();
         assert_eq!(ids, HashSet::<u32>::new());
 
         let lines = b"* SORT\r\n";
         let mut queue = VecDeque::new();
         let ids = parse_id_seq(lines, &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         let ids: Vec<u32> = ids.iter().cloned().collect();
         assert_eq!(ids, Vec::<u32>::new());
     }
@@ -770,7 +770,7 @@ mod tests {
         assert_eq!(None, uids.next());
 
         // Should be nothing in the unsolicited responses channel
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
 
         // Test VANISHED mixed with FETCH
         let lines = b"* VANISHED (EARLIER) 3:8,12,50:60\r\n\
@@ -790,7 +790,7 @@ mod tests {
             }
             what => panic!("Unexpected response in unsolicited responses: {:?}", what),
         }
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert_eq!(fetches.len(), 1);
         let first = fetches.get(0).unwrap();
         assert_eq!(first.message, 49);
@@ -815,7 +815,7 @@ mod tests {
         let deleted = parse_expunge(lines.to_vec(), &mut queue).unwrap();
 
         // No unsolicited responses, they are aggregated in the returned type
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
 
         assert_eq!(deleted.mod_seq, Some(20010715194045319));
         let mut del = deleted.uids();
@@ -836,7 +836,7 @@ mod tests {
         let mut queue = VecDeque::new();
         let resp = parse_append(lines, &mut queue).unwrap();
 
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert_eq!(resp.uid_validity, Some(38505));
         match resp.uids {
             Some(uid_list) => {
@@ -858,7 +858,7 @@ mod tests {
         let mut queue = VecDeque::new();
         let resp = parse_append(lines, &mut queue).unwrap();
 
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert_eq!(resp.uid_validity, Some(38505));
         match resp.uids {
             Some(uid_list) => {

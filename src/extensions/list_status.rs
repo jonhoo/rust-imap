@@ -174,7 +174,7 @@ mod tests {
                     * STATUS feeds.test (HIGHESTMODSEQ 757)\r\n";
         let mut queue = VecDeque::new();
         let fetches = ExtendedNames::parse(lines.to_vec(), &mut queue).unwrap();
-        assert!(queue.pop_front().is_none());
+        assert_eq!(queue.pop_front(), None);
         assert!(!fetches.is_empty());
         assert_eq!(fetches.len(), 4);
         let (name, status) = fetches.get(0).unwrap();
