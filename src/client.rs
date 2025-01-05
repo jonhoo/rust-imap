@@ -534,7 +534,7 @@ impl<T: Read + Write> Session<T> {
         }
     }
 
-    /// Takes all the unsolicited responses
+    /// Takes all the unsolicited responses received thus far.
     pub fn all_unsolicited(&mut self) -> impl ExactSizeIterator<Item = UnsolicitedResponse> {
         std::mem::take(&mut self.unsolicited_responses).into_iter()
     }
