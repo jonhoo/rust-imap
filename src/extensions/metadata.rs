@@ -197,8 +197,7 @@ impl<T: Read + Write> Session<T> {
             .as_str(),
         );
         let (lines, ok) = self.run(command)?;
-        let mut unsolicited_responses = self.all_unsolicited().collect();
-        let meta = parse_metadata(&lines[..ok], &mut unsolicited_responses)?;
+        let meta = parse_metadata(&lines[..ok], &mut self.unsolicited_responses)?;
         let missed = if maxsize.is_some() {
             if let Ok((_, Response::Done { code, .. })) =
                 imap_proto::parser::parse_response(&lines[ok..])

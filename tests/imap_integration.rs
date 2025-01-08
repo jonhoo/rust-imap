@@ -207,7 +207,7 @@ fn inbox() {
 
     // we should also get two unsolicited responses: Exists and Recent
     c.noop().unwrap();
-    let unsolicited: VecDeque<_> = c.all_unsolicited().collect();
+    let unsolicited: VecDeque<_> = c.take_all_unsolicited().collect();
     assert_eq!(unsolicited.len(), 2);
     assert!(unsolicited
         .iter()
@@ -322,7 +322,7 @@ fn inbox_uid() {
 
     // we should also get two unsolicited responses: Exists and Recent
     c.noop().unwrap();
-    let unsolicited: VecDeque<_> = c.all_unsolicited().collect();
+    let unsolicited: VecDeque<_> = c.take_all_unsolicited().collect();
     assert_eq!(unsolicited.len(), 2);
     assert!(unsolicited
         .iter()

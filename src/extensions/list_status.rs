@@ -151,8 +151,7 @@ impl<T: Read + Write> Session<T> {
             mailbox_pattern.unwrap_or("\"\""),
             data_items
         ))?;
-        let mut unsolicited_responses = self.all_unsolicited().collect();
-        ExtendedNames::parse(lines, &mut unsolicited_responses)
+        ExtendedNames::parse(lines, &mut self.unsolicited_responses)
     }
 }
 
