@@ -19,7 +19,7 @@ use crate::{extensions::list_status::ExtendedNames, types::*};
 /// Methods to build a [`Capabilities`] response object
 pub mod capabilities {
     use crate::types::Capabilities;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`Capabilities`] based on the provided input
     ///
@@ -30,16 +30,16 @@ pub mod capabilities {
     /// let response = imap::testing::capabilities::parse(input);
     /// ```
     pub fn parse(input: impl Into<Vec<u8>>) -> Capabilities {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        Capabilities::parse(input.into(), &mut tx).unwrap()
+        Capabilities::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`Fetches`] response object
 pub mod fetches {
     use crate::types::Fetches;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`Fetches`] based on the provided input
     ///
@@ -53,16 +53,16 @@ pub mod fetches {
     /// let response = imap::testing::fetches::parse(input);
     /// ```
     pub fn parse(input: impl Into<Vec<u8>>) -> Fetches {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        Fetches::parse(input.into(), &mut tx).unwrap()
+        Fetches::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`Names`] response object
 pub mod names {
     use crate::types::Names;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`Names`] based on the provided input
     /// Example input.
@@ -74,16 +74,16 @@ pub mod names {
     /// let response = imap::testing::names::parse(input);
     ///```
     pub fn parse(input: impl Into<Vec<u8>>) -> Names {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        Names::parse(input.into(), &mut tx).unwrap()
+        Names::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`ExtendedNames`] response object
 pub mod extended_names {
     use crate::extensions::list_status::ExtendedNames;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`ExtendedNames`] based on the provided input
     ///
@@ -102,16 +102,16 @@ pub mod extended_names {
     /// let response = imap::testing::extended_names::parse(input);
     /// ```
     pub fn parse(input: impl Into<Vec<u8>>) -> ExtendedNames {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        ExtendedNames::parse(input.into(), &mut tx).unwrap()
+        ExtendedNames::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`AclResponse`] response object
 pub mod acl_response {
     use crate::types::AclResponse;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`AclResponse`] based on the provided input
     ///
@@ -122,16 +122,16 @@ pub mod acl_response {
     /// let response = imap::testing::acl_response::parse(input);
     /// ```
     pub fn parse(input: impl Into<Vec<u8>>) -> AclResponse {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        AclResponse::parse(input.into(), &mut tx).unwrap()
+        AclResponse::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`ListRightsResponse`] response object
 pub mod list_rights_response {
     use crate::types::ListRightsResponse;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`ListRightsResponse`] based on the provided input
     ///
@@ -142,16 +142,16 @@ pub mod list_rights_response {
     /// let response = imap::testing::list_rights_response::parse(input);
     ///```
     pub fn parse(input: impl Into<Vec<u8>>) -> ListRightsResponse {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        ListRightsResponse::parse(input.into(), &mut tx).unwrap()
+        ListRightsResponse::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`MyRightsResponse`] response object
 pub mod my_rights_response {
     use crate::types::MyRightsResponse;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`MyRightsResponse`] based on the provided input
     ///
@@ -162,16 +162,16 @@ pub mod my_rights_response {
     /// let response = imap::testing::my_rights_response::parse(input);
     /// ```
     pub fn parse(input: impl Into<Vec<u8>>) -> MyRightsResponse {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        MyRightsResponse::parse(input.into(), &mut tx).unwrap()
+        MyRightsResponse::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`QuotaResponse`] response object
 pub mod quota_response {
     use crate::types::QuotaResponse;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`QuotaResponse`] based on the provided input
     ///
@@ -182,16 +182,16 @@ pub mod quota_response {
     /// let response = imap::testing::quota_response::parse(input);
     /// ```
     pub fn parse(input: impl Into<Vec<u8>>) -> QuotaResponse {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        QuotaResponse::parse(input.into(), &mut tx).unwrap()
+        QuotaResponse::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }
 
 /// Methods to build a [`QuotaRootResponse`] response object
 pub mod quota_root_response {
     use crate::types::QuotaRootResponse;
-    use std::sync::mpsc;
+    use std::collections::VecDeque;
 
     /// Builds an [`QuotaRootResponse`] based on the provided input
     ///
@@ -205,8 +205,8 @@ pub mod quota_root_response {
     /// let response = imap::testing::quota_root_response::parse(input);
     /// ```
     pub fn parse(input: impl Into<Vec<u8>>) -> QuotaRootResponse {
-        let (mut tx, _rx) = mpsc::channel();
+        let mut unsolicited_responses = VecDeque::new();
 
-        QuotaRootResponse::parse(input.into(), &mut tx).unwrap()
+        QuotaRootResponse::parse(input.into(), &mut unsolicited_responses).unwrap()
     }
 }

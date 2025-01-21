@@ -5,6 +5,7 @@ extern crate native_tls;
 
 use chrono::{FixedOffset, TimeZone};
 use lettre::Transport;
+use std::collections::VecDeque;
 use std::net::TcpStream;
 
 use crate::imap::extensions::sort::{SortCharset, SortCriterion};
@@ -206,10 +207,7 @@ fn inbox() {
 
     // we should also get two unsolicited responses: Exists and Recent
     c.noop().unwrap();
-    let mut unsolicited = Vec::new();
-    while let Ok(m) = c.unsolicited_responses.try_recv() {
-        unsolicited.push(m);
-    }
+    let unsolicited: VecDeque<_> = c.take_all_unsolicited().collect();
     assert_eq!(unsolicited.len(), 2);
     assert!(unsolicited
         .iter()
@@ -324,10 +322,7 @@ fn inbox_uid() {
 
     // we should also get two unsolicited responses: Exists and Recent
     c.noop().unwrap();
-    let mut unsolicited = Vec::new();
-    while let Ok(m) = c.unsolicited_responses.try_recv() {
-        unsolicited.push(m);
-    }
+    let unsolicited: VecDeque<_> = c.take_all_unsolicited().collect();
     assert_eq!(unsolicited.len(), 2);
     assert!(unsolicited
         .iter()
@@ -502,12 +497,9 @@ fn append_with_flags_and_date() {
     let mbox = "INBOX";
     c.select(mbox).unwrap();
     // append
-    #[allow(deprecated)]
-    // ymd_opt is deprecated in chrono 0.4.23 and replace with new with_ymd_and_hms
     let date = FixedOffset::east_opt(8 * 3600)
         .unwrap()
-        .ymd_opt(2020, 12, 13)
-        .and_hms_opt(13, 36, 36)
+        .with_ymd_and_hms(2020, 12, 13, 13, 36, 36)
         .unwrap();
     c.append(mbox, &e.formatted())
         .flag(Flag::Seen)

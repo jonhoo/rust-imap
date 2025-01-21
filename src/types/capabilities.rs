@@ -5,7 +5,7 @@ use imap_proto::{Capability, Response};
 use ouroboros::self_referencing;
 use std::collections::hash_set::Iter;
 use std::collections::HashSet;
-use std::sync::mpsc;
+use std::collections::VecDeque;
 
 const IMAP4REV1_CAPABILITY: &str = "IMAP4rev1";
 const AUTH_CAPABILITY_PREFIX: &str = "AUTH=";
@@ -47,7 +47,7 @@ impl Capabilities {
     /// Parse the given input into one or more [`Capabilitity`] responses.
     pub(crate) fn parse(
         owned: Vec<u8>,
-        unsolicited: &mut mpsc::Sender<UnsolicitedResponse>,
+        unsolicited: &mut VecDeque<UnsolicitedResponse>,
     ) -> Result<Self, Error> {
         CapabilitiesTryBuilder {
             data: owned,
