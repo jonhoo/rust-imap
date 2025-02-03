@@ -40,7 +40,7 @@ clap = { version = "4.5.4", features = ["derive"] }
 
 # to make -Zminimal-versions work
 [target.'cfg(any())'.dependencies]
-openssl = { version = "0.10.60", optional = true }
+openssl = { version = "0.10.70", optional = true }
 openssl-macros = { version = "0.1.1", optional = true }
 
 [[example]]
