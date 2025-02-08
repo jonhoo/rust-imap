@@ -501,7 +501,7 @@ impl<T: Read + Write> Client<T> {
                     let data =
                         ok_or_unauth_client_err!(parse_authenticate_response(line_str), self);
                     ok_or_unauth_client_err!(
-                        general_purpose::STANDARD_NO_PAD
+                        general_purpose::STANDARD
                             .decode(data)
                             .map_err(|e| Error::Parse(ParseError::Authentication(
                                 data.to_string(),
@@ -512,7 +512,7 @@ impl<T: Read + Write> Client<T> {
                 };
 
                 let raw_response = &authenticator.process(&challenge);
-                let auth_response = general_purpose::STANDARD_NO_PAD.encode(raw_response);
+                let auth_response = general_purpose::STANDARD.encode(raw_response);
                 ok_or_unauth_client_err!(
                     self.write_line(auth_response.into_bytes().as_slice()),
                     self
