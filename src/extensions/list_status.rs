@@ -145,10 +145,12 @@ impl<T: Read + Write> Session<T> {
         data_items: &str,
     ) -> Result<ExtendedNames> {
         let reference = validate_str("LIST-STATUS", "reference", reference_name.unwrap_or(""))?;
+        let capabilities = self.capabilities();
         let lines = self.run_command_and_read_response(format!(
-            "LIST {} {} RETURN (STATUS {})",
+            "LIST {} {} RETURN ({}STATUS {})",
             &reference,
             mailbox_pattern.unwrap_or("\"\""),
+            if capabilities.is_ok_and(|c| c.has_str("SPECIAL-USE")) { "SPECIAL-USE " } else { "" },
             data_items
         ))?;
         ExtendedNames::parse(lines, &mut self.unsolicited_responses)
