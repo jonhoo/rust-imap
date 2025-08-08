@@ -241,6 +241,28 @@ impl<'a> Fetch<'a> {
         })
     }
 
+    /// Extract the `X-GM-MSGID` of a `FETCH` response
+    ///
+    /// This is a Gmail-specific extension. See their
+    /// [developer's page](https://developers.google.com/gmail/imap/imap-extensions) for details.
+    pub fn gmail_msgid(&'a self) -> Option<&'a u64> {
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::GmailMsgId(msgid) => Some(msgid),
+            _ => None,
+        })
+    }
+
+    /// Extract the `X-GM-THRID` of a `FETCH` response
+    ///
+    /// This is a Gmail-specific extension. See their
+    /// [developer's page](https://developers.google.com/gmail/imap/imap-extensions) for details.
+    pub fn gmail_thrid(&'a self) -> Option<&'a u64> {
+        self.fetch.iter().find_map(|av| match av {
+            AttributeValue::GmailThrId(thrid) => Some(thrid),
+            _ => None,
+        })
+    }
+
     /// Get an owned copy of the [`Fetch`].
     pub fn into_owned(self) -> Fetch<'static> {
         Fetch {
