@@ -1452,6 +1452,37 @@ impl<T: Read + Write> Session<T> {
         .and_then(|lines| QuotaRootResponse::parse(lines, &mut self.unsolicited_responses))
     }
 
+    /// The [`ID` command](https://datatracker.ietf.org/doc/html/rfc2971)
+    pub fn id(&mut self, fields: &[(&str, Option<&str>)]) -> Result<IdResponse> {
+        let mut cmd = String::from("ID ");
+
+        if fields.is_empty() {
+            cmd.push_str("NIL");
+        } else {
+            cmd.push('(');
+            for (i, (k, v)) in fields.iter().enumerate() {
+                if i > 0 {
+                    cmd.push(' ');
+                }
+
+                cmd.push_str(&quote!(k));
+                cmd.push_str(" ");
+                match v {
+                    Some(val) => {
+                        let quoted = validate_str("ID", format!("field #{}", i + 1), val)?;
+                        cmd.push_str(&quoted);
+                    }
+                    None => cmd.push_str("NIL"),
+                }
+            }
+            cmd.push(')');
+        }
+
+        let response = self.run_command_and_read_response(cmd)?;
+        let response = IdResponse::parse(&response);
+        Ok(response)
+    }
+
     // these are only here because they are public interface, the rest is in `Connection`
     /// Runs a command and checks if it returns OK.
     pub fn run_command_and_check_ok(&mut self, command: impl AsRef<str>) -> Result<()> {
@@ -1742,11 +1773,10 @@ pub(crate) mod testutils {
 #[cfg(test)]
 mod tests {
     use super::super::mock_stream::MockStream;
+    use super::testutils::*;
     use super::*;
     use imap_proto::types::Capability;
     use std::borrow::Cow;
-
-    use super::testutils::*;
 
     macro_rules! mock_session {
         ($s:expr) => {
@@ -3112,5 +3142,40 @@ a1 OK completed\r
             panic!("Wrong error: {:?}", e);
         }
         panic!("No error");
+    }
+
+    #[test]
+    fn id_command() {
+        let response = "* ID (\"name\" NIL \"version\" \"1.0\")\r\n\
+        a1 OK ID command completed\r\n"
+            .as_bytes()
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+
+        let response = session
+            .id(&[
+                ("version", Some("1.0.0")),
+                ("vendor", None),
+                ("client", Some(r#"my "client""#)),
+            ])
+            .unwrap();
+
+        assert_eq!(response.len(), 2);
+        assert_eq!(response.get(b"name"), None);
+        assert_eq!(response.get(b"version"), Some(String::from("1.0")));
+    }
+
+    #[test]
+    fn id_command_nil_response() {
+        let response = "* ID NIL\r\n\
+        a1 OK ID command completed\r\n"
+            .as_bytes()
+            .to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+
+        let response = session.id(&[]).unwrap();
+        assert_eq!(response.len(), 0);
     }
 }
